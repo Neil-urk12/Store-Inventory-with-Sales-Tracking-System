@@ -23,7 +23,7 @@ p{
 .dailyPNLcontainer {
   color:#fff;
   width: 100%;
-  padding: 0.5rem 1rem;
+  margin: 1rem auto;
   display: flex;
   flex-direction: column;
 }
@@ -32,8 +32,8 @@ p{
   justify-content: space-evenly;
   align-items: center;
   flex-direction: row;
+  padding: 1rem 2rem;
   width: 100%;
-  padding: 0.5rem 1rem;
   border-radius: 8px;
   margin-bottom: 1rem;
 }

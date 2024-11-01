@@ -1,7 +1,7 @@
 <template>
   <q-item
     clickable
-    tag="a"
+    tag="RouterLink"
     :to="props.link"
   >
     <q-item-section

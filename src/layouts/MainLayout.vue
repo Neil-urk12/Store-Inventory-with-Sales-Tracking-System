@@ -31,7 +31,6 @@
         >
           NJL Store Inventory System
         </q-item-label>
-
         <EssentialLink
           v-for="link in linksList"
           :key="link.title"
@@ -42,13 +41,16 @@
     </q-drawer>
 
     <q-page-container>
-      <router-view />
+      <RouterView/>
     </q-page-container>
-    <q-footer reveal bordered class="bg-primary text-white" v-show="isFooterVisible">
+    <q-footer reveal bordered class="bg-primary text-white" v-show="isAtBottomOfPage">
       <q-toolbar>
-        <q-toolbar-title>
-          <div class="absolute-right bg-primary">
-            Neil Jhonreise Vallecer
+        <q-toolbar-title class="row justify-center">
+          <div class="col-12 col-md-6 text-center">
+            <div class="text-h6">NJL Inventory System</div>
+            <div class="text-caption">Copyright {{ copyrightYear }} NJL Inventory System. All rights reserved.</div>
+            <div class="text-caption">Developed by: <a href="#" target="_blank" class="text-white">Neil Jhonreise Vallecer</a></div>
+            <SocialMediaLinks></SocialMediaLinks>
           </div>
         </q-toolbar-title>
       </q-toolbar>
@@ -61,16 +63,15 @@ import { useScroll } from '@vueuse/core'
 import { ref, watch } from 'vue'
 import EssentialLink from 'components/EssentialLink.vue'
 import ColorToggle from 'components/ColorToggle.vue'
+import SocialMediaLinks from 'src/components/SocialMediaLinks.vue'
 
-const isFooterVisible = ref(false)
-
+const isAtBottomOfPage = ref(false);
 const { y } = useScroll(document)
 
-
 watch(y, (newValue) => {
-  const isAtBottom = newValue + window.innerHeight >= document.documentElement.scrollHeight
-  isFooterVisible.value = isAtBottom
-})
+  const isAtBottom = newValue + window.innerHeight >= document.documentElement.scrollHeight;
+  isAtBottomOfPage.value = isAtBottom;
+});
 
 defineOptions({
   name: 'MainLayout'
@@ -79,43 +80,36 @@ defineOptions({
 const linksList = [
   {
     title: 'Dashboard',
-    caption: 'quasar.dev',
-    icon: 'school',
-    link: 'https://quasar.dev'
+    icon: 'dashboard',
+    link: '/'
   },
   {
-    title: 'Github',
-    caption: 'github.com/quasarframework',
-    icon: 'code',
-    link: 'https://github.com/quasarframework'
+    title: 'Inventory',
+    icon: 'inventory',
+    link: '/inventory'
   },
   {
-    title: 'Discord Chat Channel',
-    caption: 'chat.quasar.dev',
-    icon: 'chat',
-    link: 'https://chat.quasar.dev'
+    title: 'Reports',
+    icon: 'analytics',
+    link: '/reports'
   },
   {
-    title: 'Forum',
-    caption: 'forum.quasar.dev',
-    icon: 'record_voice_over',
-    link: 'https://forum.quasar.dev'
+    title: 'Contacts',
+    icon: 'contacts',
+    link: '/contacts'
   },
   {
-    title: 'Twitter',
-    caption: '@quasarframework',
-    icon: 'rss_feed',
-    link: 'https://twitter.quasar.dev'
+    title: 'Profile',
+    icon: 'person',
+    link: '/profile'
   },
   {
     title: 'Facebook',
-    caption: '@QuasarFramework',
     icon: 'public',
     link: 'https://facebook.quasar.dev'
   },
   {
     title: 'Quasar Awesome',
-    caption: 'Community Quasar projects',
     icon: 'favorite',
     link: 'https://awesome.quasar.dev'
   }
