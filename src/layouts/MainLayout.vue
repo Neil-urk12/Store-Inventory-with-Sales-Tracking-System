@@ -1,5 +1,5 @@
 <template>
-  <q-layout view="lHh Lpr lFf">
+  <q-layout view="hHh lpR lFf">
     <q-header elevated>
       <q-toolbar>
         <q-btn
@@ -12,23 +12,24 @@
         />
 
         <q-toolbar-title>
-          Quasar App
+          <div class="absolute-center bg-primary">
+            NJL Inventory System
+          </div>
         </q-toolbar-title>
-
-        <div>Quasar v{{ $q.version }}</div>
       </q-toolbar>
     </q-header>
 
     <q-drawer
       v-model="leftDrawerOpen"
       show-if-above
+      overlay behavior="desktop"
       bordered
     >
       <q-list>
         <q-item-label
           header
         >
-          Essential Links
+          NJL Store Inventory System
         </q-item-label>
 
         <EssentialLink
@@ -36,18 +37,30 @@
           :key="link.title"
           v-bind="link"
         />
+        <ColorToggle class="bg-accent"></ColorToggle>
       </q-list>
     </q-drawer>
 
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <q-footer reveal bordered class="bg-primary text-white">
+      <q-toolbar>
+        <q-toolbar-title>
+          <div class="absolute-right bg-primary">
+            Neil Jhonreise Vallecer
+          </div>
+        </q-toolbar-title>
+      </q-toolbar>
+    </q-footer>
   </q-layout>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import EssentialLink from 'components/EssentialLink.vue'
+import ColorToggle from 'components/ColorToggle.vue'
 
 defineOptions({
   name: 'MainLayout'
@@ -55,7 +68,7 @@ defineOptions({
 
 const linksList = [
   {
-    title: 'Docs',
+    title: 'Dashboard',
     caption: 'quasar.dev',
     icon: 'school',
     link: 'https://quasar.dev'
