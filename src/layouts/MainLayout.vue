@@ -44,8 +44,7 @@
     <q-page-container>
       <router-view />
     </q-page-container>
-
-    <q-footer reveal bordered class="bg-primary text-white">
+    <q-footer reveal bordered class="bg-primary text-white" v-show="isFooterVisible">
       <q-toolbar>
         <q-toolbar-title>
           <div class="absolute-right bg-primary">
@@ -58,9 +57,20 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { useScroll } from '@vueuse/core'
+import { ref, watch } from 'vue'
 import EssentialLink from 'components/EssentialLink.vue'
 import ColorToggle from 'components/ColorToggle.vue'
+
+const isFooterVisible = ref(false)
+
+const { y } = useScroll(document)
+
+
+watch(y, (newValue) => {
+  const isAtBottom = newValue + window.innerHeight >= document.documentElement.scrollHeight
+  isFooterVisible.value = isAtBottom
+})
 
 defineOptions({
   name: 'MainLayout'

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -86,7 +86,7 @@ const yearlyData = {
       backgroundColor: '#FF6384',
     }
   ]
-};
+}
 
 const options = {
   responsive: true,
@@ -96,7 +96,7 @@ const options = {
     },
     title: {
       display: true,
-      text: 'Sales and Expenses Chart'
+      text: 'Sales and Expenses Chart',
     }
   },
   scales: {
@@ -126,6 +126,7 @@ const updateChart = () => {
   }
 }
 
+
 onMounted(() => {
   comboChart = new Chart(chartCanvas.value, {
     type: 'bar',
@@ -141,7 +142,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="chart-container bg-secondary">
+    <div class="chart-container" :style="{ color: $q.dark.isActive? 'white' : 'black' }">
         <select v-model="selectedTimeframe" @change="updateChart" class="timeframe-select bg-secondary text-black">
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>

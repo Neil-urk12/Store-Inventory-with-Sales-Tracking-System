@@ -21,7 +21,7 @@ const noStockWidth = computed(
 </script>
 
 <template>
-  <div class="stock-bars">
+  <div class="stock-bars bg-accent">
     <div class="stock-flex">
         <div class="bar green" :style="{ width: inStockWidth }">
             {{ inStock }}
