@@ -43,6 +43,4 @@ import StockBars from '../components/StockBars.vue'
 import DailyPnl from '../components/DailyPnl.vue'
 import DoughnutChart from '../components/DoughnutChart.vue'
 import DashboardTable from '../components/DashboardTable.vue'
-
-
 </script>
