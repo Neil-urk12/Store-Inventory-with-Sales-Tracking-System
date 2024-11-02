@@ -184,7 +184,6 @@ export const useInventoryStore = defineStore('inventory', {
          ? aValue - bValue
           : bValue - aValue
       })
-
       return sorted
     }
   },
