@@ -89,7 +89,7 @@
             outlined
             dense
             label="Sort by"
-            @update:model-value="inventoryStore.handleSortForGrid"
+
           />
         </div>
         <div class="col-12 col-sm-4">
@@ -102,7 +102,7 @@
               { label: 'Ascending', value: 'asc' },
               { label: 'Descending', value: 'desc' }
             ]"
-            @update:model-value="inventoryStore.handleSortForGrid"
+
           />
         </div>
       </div>
@@ -311,7 +311,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { mapState } from 'pinia';
 

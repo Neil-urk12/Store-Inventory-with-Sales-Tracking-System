@@ -67,7 +67,7 @@ import SocialMediaLinks from 'src/components/SocialMediaLinks.vue'
 
 const isAtBottomOfPage = ref(false);
 const { y } = useScroll(document)
-
+const copyrightYear = new Date().getFullYear();
 watch(y, (newValue) => {
   const isAtBottom = newValue + window.innerHeight >= document.documentElement.scrollHeight;
   isAtBottomOfPage.value = isAtBottom;

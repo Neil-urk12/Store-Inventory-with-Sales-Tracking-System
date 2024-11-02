@@ -21,7 +21,9 @@ export default route(function (/* { store, ssrContext } */) {
     routes:[
       { path: '/', component: () => import('layouts/MainLayout.vue'),
         children: [
-          { path: '', component: () => import('pages/HomeView.vue') }
+          { path: '', component: () => import('pages/HomeView.vue') },
+          { path: '/inventory', component: () => import('pages/InventoryView.vue') },
+          { path: '/reports', component: () => import('pages/ReportsView.vue') },
         ]
       },
       { path: '/:catchAll(.*)*', component: () => import('pages/ErrorNotFound.vue') },
@@ -34,8 +36,6 @@ export default route(function (/* { store, ssrContext } */) {
       { path: '/change-password', component: () => import('pages/ChangePasswordPage.vue') },
       { path: '/change-email', component: () => import('pages/ChangeEmailPage.vue') },
       { path: '/settings', component: () => import('pages/SettingsPage.vue') },
-      { path: '/reports', component: () => import('pages/ReportsPage.vue') },
-      { path: '/inventory', component: () => import('pages/InventoryPage.vue') },
       { path: '/about', component: () => import('pages/AboutPage.vue') },
       { path: '/contact', component: () => import('pages/ContactPage.vue') },
     ],
