@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
+import { ref, computed, watch } from 'vue'
 import { debounce } from 'lodash'
-import { useQuasar } from 'quasar'
 
 const mockData = [
   {
@@ -130,7 +130,7 @@ export const useInventoryStore = defineStore('inventory', {
     columns: [
       { name: 'image', label: 'Image', field: 'image', align: 'left' },
       { name: 'name', label: 'Name', field: 'name', align: 'left', sortable: true },
-      { name: 'ku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
+      { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
       { name: 'category', label: 'Category', field: 'category', align: 'left', sortable: true },
       { name: 'quantity', label: 'Stock', field: 'quantity', align: 'left', sortable: true },
       { name: 'price', label: 'Price', field: 'price', align: 'left', sortable: true },
@@ -140,6 +140,33 @@ export const useInventoryStore = defineStore('inventory', {
   }),
 
   getters: {
+    // filteredItems: computed(() => {
+    //   let result = [...items.value]
+    //   if (searchQuery.value) {
+    //     const query = searchQuery.value.toLowerCase()
+    //     result = result.filter((item) =>
+    //       item.name.toLowerCase().includes(query) || item.sku.toLowerCase().includes(query)
+    //     )
+    //   }
+    //   if (categoryFilter.value) {
+    //     result = result.filter((item) => item.category === categoryFilter.value)
+    //   }
+    //   return result
+    // }),
+    // sortedItems: computed(() => {
+    //   let sorted = [...filteredItems.value]
+    //   if (sortBy.value && sortOptions.value.some((option) => option.value === sortBy.value)) {
+    //     sorted.sort((a, b) => {
+    //       const aValue = a[sortBy.value]
+    //       const bValue = b[sortBy.value]
+    //       if (typeof aValue === 'string') {
+    //         return sortDirection.value === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+    //       }
+    //       return sortDirection.value === 'asc' ? aValue - bValue : bValue - aValue
+    //     })
+    //   }
+    //   return sorted
+    // })
     filteredItems: (state) => {
       let result = [...state.items]
 
@@ -151,14 +178,13 @@ export const useInventoryStore = defineStore('inventory', {
         )
       }
 
-      if (state.categoryFilter) {
+      if (state.categoryFilter)
         result = result.filter(item => item.category === state.categoryFilter)
-      }
 
       return result
     },
     sortedItems: (state) => {
-      let sorted = [...state.filteredItems]
+      let sorted = state.filteredItems
 
       // if (state.sortBy && state.sortDirection) {
       //   sorted = sorted.sort((a, b) => {
@@ -169,26 +195,39 @@ export const useInventoryStore = defineStore('inventory', {
       //     }
       //   })
       // }
+      if(state.sortBy && state.sortOptions.some(option => option.value === state.sortBy))  {
+        sorted.sort((a, b) => {
+          const aValue = a[state.sortBy]
+          const bValue = b[state.sortBy]
 
-      sorted.sort((a, b) => {
-        const aValue = a[state.sortBy]
-        const bValue = b[state.sortBy]
-
-        if (typeof aValue === 'string') {
-          return state.sortDirection === 'asc'
-            ? aValue.localeCompare(bValue)
-            : bValue.localeCompare(aValue)
-        }
-
-        return state.sortDirection === 'asc'
-         ? aValue - bValue
-          : bValue - aValue
-      })
+          if (typeof aValue === 'string') {
+            return state.sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+          }
+          return state.sortDirection === 'asc'? aValue - bValue: bValue - aValue
+        })
+      }
       return sorted
     }
   },
 
   actions: {
+    async customSort(rows, sortBy, descending) {
+      return rows.sort((a, b) => {
+        const aValue = a[sortBy]
+        const bValue = b[sortBy]
+
+        if (typeof aValue === 'string') {
+          return descending
+            ? bValue.localeCompare(aValue)
+            : aValue.localeCompare(bValue)
+        }
+
+        return descending
+          ? bValue - aValue
+          : aValue - bValue
+      })
+    },
+
     async loadInventory() {
       this.loading = true
       this.error = null
@@ -205,17 +244,39 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
-    debouncedSearch: debounce(function(query) {
+    // sortedItems() {
+    //   const { sortBy, sortDirection, items } = this
+    //   this.items = items.sort((a, b) => {
+    //     if (a[sortBy] < b[sortBy]) {
+    //       return sortDirection === 'asc'? -1 : 1
+    //     }
+    //     if (a[sortBy] > b[sortBy]) {
+    //       return sortDirection === 'asc'? 1 : -1
+    //     }
+    //     return 0
+    //   })
+    // },
+    toggleSortDirection() {
+      // this.sortDirection = this.sortDirection === 'asc'? 'desc' : 'asc'
+      // this.sortedItems()
+      this.items = this.sortedItems
+    },
+    setSortBy() {
+      this.items = this.sortedItems
+    },
+
+    debouncedSearch: debounce(function (query) {
       this.handleSearch(query)
     }, 300),
 
-    handleSearch(val) {
-      this.debouncedSearch(val)
+    handleSearch(query) {
+      this.debouncedSearch(query)
     },
 
     handleFilters() {
       this.pagination.page = 1
     },
+
     handleSortForGrid() {
       this.pagination.page = 1
       this.items = this.sortedItems
@@ -253,60 +314,30 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     async deleteSelected() {
-      try {
-        // Uncomment the API call here
-        this.items = this.items.filter(item =>!this.selectedItems.includes(item.id))
-        this.selectedItems = []
-        useQuasar().notify({
-          color: 'positive',
-          message: 'Selected items deleted successfully'
-        })
-      } catch (err) {
-        useQuasar().notify({
-          color: 'negative',
-          message: 'Failed to delete selected items'
-        })
-      }
+      const selectedItems = this.selectedItems.filter(id => this.items.some(item => item.id === id))
+      // Uncomment the API call here
+      this.items = this.items.filter(item => !selectedItems.includes(item.id))
+      this.selectedItems = []
     },
 
     async deleteItem() {
-      try {
-        // API call here
-        this.items = this.items.filter(item => item.id!== this.itemToDelete.id)
-        this.deleteDialog = false
-        useQuasar().notify({
-          color: 'positive',
-          message: 'Item deleted successfully'
-        })
-      } catch (err) {
-        useQuasar().notify({
-          color: 'negative',
-          message: 'Failed to delete item'
-        })
-      }
+      // API call here
+      this.items = this.items.filter(item => item.id!== this.itemToDelete.id)
+      this.deleteDialog = false
     },
 
     async saveItem() {
-      try {
-        // API call here
-        if (this.editMode) {
-          const index = this.items.findIndex(item => item.id === this.editedItem.id)
-          this.items[index] = {...this.editedItem }
-        } else {
-          this.editedItem.id = Date.now()
-          this.items.push({...this.editedItem })
-        }
-        this.itemDialog = false
-        useQuasar().notify({
-          color: 'positive',
-          message: `Item ${this.editMode? 'updated' : 'added'} successfully`
-        })
-      } catch (err) {
-        useQuasar().notify({
-          color: 'negative',
-          message: `Failed to ${this.editMode? 'update' : 'add'} item`
-        })
+      // API call here
+      if (this.editMode) {
+        const index = this.items.findIndex(item => item.id === this.editedItem.id)
+        this.items[index] = {...this.editedItem }
+      } else {
+        const existingItem = this.items.find(item => this.items.sku === this.editedItem.sku)
+        if(existingItem) throw new Error('Item already exists')
+        this.editedItem.id = Date.now()
+        this.items.push({...this.editedItem })
       }
+      this.itemDialog = false
     },
   }
 })
