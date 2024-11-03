@@ -24,6 +24,7 @@ export default route(function (/* { store, ssrContext } */) {
           { path: '', component: () => import('pages/HomeView.vue') },
           { path: '/inventory', component: () => import('pages/InventoryView.vue') },
           { path: '/reports', component: () => import('pages/ReportsView.vue') },
+          { path: '/contacts', component: () => import('pages/ContactsView.vue') },
         ]
       },
       { path: '/:catchAll(.*)*', component: () => import('pages/ErrorNotFound.vue') },
@@ -37,7 +38,6 @@ export default route(function (/* { store, ssrContext } */) {
       { path: '/change-email', component: () => import('pages/ChangeEmailPage.vue') },
       { path: '/settings', component: () => import('pages/SettingsPage.vue') },
       { path: '/about', component: () => import('pages/AboutPage.vue') },
-      { path: '/contact', component: () => import('pages/ContactPage.vue') },
     ],
 
     // Leave this as is and make changes in quasar.conf.js instead!
