@@ -1,18 +1,40 @@
 <template>
   <q-page class="q-pa-md">
+    <div class="q-mb-md">
+      <q-btn color="primary" @click="addCategory"> Add Category </q-btn>
+    </div>
     <q-list>
       <q-expansion-item
+        class="category-header"
         v-for="category in categories"
         :key="category.id"
         :label="category.name"
         header-class="text-weight-bold"
         expand-icon-class="text-primary"
       >
+        <template v-slot:header-right>
+          <q-btn
+            icon="edit"
+            flat
+            round
+            dense
+            @click.stop="editCategory(category)"
+          >
+            <q-tooltip>Edit Contact</q-tooltip>
+          </q-btn>
+          <q-btn
+            icon="delete"
+            flat
+            round
+            dense
+            @click.stop="deleteCategory(category)"
+          />
+        </template>
         <q-list>
           <q-item
             v-for="contact in category.contacts"
             :key="contact.id"
-            class="q-mb-md"
+            class="q-mb-md contact-card"
           >
             <q-item-section avatar>
               <q-avatar>
@@ -25,10 +47,34 @@
               <q-item-label caption>{{ contact.phone }}</q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q Btn Icon="phone" color="primary" flat round @click="callContact(contact.phone)" />
-              <q-btn icon="email" color="secondary" flat round @click="emailContact(contact.email)" />
-              <q-btn Icon="edit" color="accent" Flat Round @click="editContact(category, contact)" />
-              <q-btn icon="delete" color="negative" flat round @click="deleteContact(category, contact)" />
+              <q-btn
+                icon="phone"
+                color="primary"
+                flat
+                round
+                @click="callContact(contact.phone)"
+              />
+              <q-btn
+                icon="email"
+                color="secondary"
+                flat
+                round
+                @click="emailContact(contact.email)"
+              />
+              <q-btn
+                icon="edit"
+                color="accent"
+                flat
+                round
+                @click="editContact(category, contact)"
+              />
+              <q-btn
+                icon="delete"
+                color="negative"
+                flat
+                round
+                @click="deleteContact(category, contact)"
+              />
             </q-item-section>
           </q-item>
           <q-separator />
@@ -42,26 +88,51 @@
         </q-list>
       </q-expansion-item>
     </q-list>
-
-    <!-- Modal for Adding/Editing Contacts -->
+    <q-dialog v-model="showCategoryModal">
+      <q-card style="width: 300px">
+        <q-card-section>
+          <div class="text-h6">{{ categoryModalTitle }}</div>
+        </q-card-section>
+        <q-card-section>
+          <q-form @submit="saveCategory">
+            <q-input
+              v-model="newCategory.name"
+              label="Category Name"
+              required
+            />
+            <div class="row justify-end q-mt-md">
+              <q-btn color="primary" type="submit">Save</q-btn>
+              <q-btn color="negative" flat @click="closeCategoryModal"
+                >Cancel</q-btn
+              >
+            </div>
+          </q-form>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
     <q-dialog v-model="showModal">
       <q-card style="width: 300px">
         <q-card-section>
           <div class="text-h6">{{ modalTitle }}</div>
         </q-card-section>
         <q-card-section>
-          <q-form @submit="saveContact">
-            <q-input
-              v-model="newContact.name"
-              label="Name"
-              required
-            />
+          <!-- <q-form @submit="saveContact">
+            <q-input v-model="newContact.name" label="Name" required />
             <q-input
               v-model="newContact.email"
               label="Email"
               type="email"
               required
-            />
+              :rules="[
+                (val) => !!val || 'Email is required',
+                (val) =>
+                  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) ||
+                  'Invalid email format',
+              ]"
+            /> -->
+          <q-form @submit="saveContact">
+            <q-input v-model="newContact.name" label="Name" required />
+            <q-input v-model="newContact.email" label="Email" type="email" />
             <q-input
               v-model="newContact.phone"
               label="Phone"
@@ -74,105 +145,164 @@
               type="url"
             />
             <div class="row justify-end q-mt-md">
-              <q-btn Color="primary" type="submit"> Save </q-btn>
-              <q-btn color="negative" flat @click="closeModal "> Cancel </q-btn >
+              <q-btn color="primary" type="submit"> Save </q-btn>
+              <q-btn color="negative" flat @click="closeModal"> Cancel </q-btn>
             </div>
-          </q-form >
-        </q-card-section >
+          </q-form>
+        </q-card-section>
       </q-card>
     </q-dialog>
   </q-page>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
-import { useQuasar } from 'quasar ';
+import { ref, reactive } from "vue";
+import { useQuasar } from "quasar";
 
 const $q = useQuasar();
+
+const showCategoryModal = ref(false);
+const categoryModalTitle = ref("");
+const newCategory = reactive({
+  id: null,
+  name: "",
+  contacts: [],
+});
+
+const addCategory = () => {
+  categoryModalTitle.value = "Add Category";
+  newCategory.id = null;
+  newCategory.name = "";
+  newCategory.contacts = [];
+  showCategoryModal.value = true;
+};
+
+const editCategory = (category) => {
+  categoryModalTitle.value = "Edit Category";
+  newCategory.id = category.id;
+  newCategory.name = category.name;
+  newCategory.contacts = category.contacts;
+  showCategoryModal.value = true;
+};
+
+const deleteCategory = (category) => {
+  $q.dialog({
+    title: "Delete Category",
+    message: `Delete category "${category.name}" and all its contacts?`,
+    ok: "Delete",
+    cancel: "Cancel",
+  }).onOk(() => {
+    categories.value = categories.value.filter((c) => c.id !== category.id);
+  });
+};
+
+const saveCategory = () => {
+  if (newCategory.id) {
+    // Update existing category
+    const index = categories.value.findIndex((c) => c.id === newCategory.id);
+    if (index !== -1) {
+      categories.value[index] = {
+        ...categories.value[index],
+        name: newCategory.name,
+      };
+    }
+  } else {
+    // Add new category
+    const newId = categories.value.length
+      ? Math.max(...categories.value.map((c) => c.id)) + 1
+      : 1;
+    categories.value.push({
+      id: newId,
+      name: newCategory.name,
+      contacts: [],
+    });
+  }
+  closeCategoryModal();
+};
 
 const categories = ref([
   {
     id: 1,
-    name: 'Ice Cream Delivery',
+    name: "Ice Cream Delivery",
     contacts: [
       {
         id: 1,
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+1234567890',
-        avatar: 'https://via.placeholder.com/150'
+        name: "John Doe",
+        email: "john.doe@example.com",
+        phone: "+1234567890",
+        avatar: "https://via.placeholder.com/150",
       },
       {
         id: 2,
-        name: 'Jane Smith',
-        email: 'jane.smith@example.com',
-        phone: '+0987654321',
-        avatar: 'https://via.placeholder.com/150'
-      }
-    ]
+        name: "Jane Smith",
+        email: "jane.smith@example.com",
+        phone: "+0987654321",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
   },
   {
     id: 2,
-    name: 'Grocery Delivery',
+    name: "Grocery Delivery",
     contacts: [
       {
         id: 3,
-        name: 'Alice Johnson',
-        email: 'alice.Johnson@example.com',
-        phone: '+1122334455',
-        avatar: 'https://via.placeholder.com/150'
-      }
-    ]
+        name: "Alice Johnson",
+        email: "alice.Johnson@example.com",
+        phone: "+1122334455",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
   },
   {
     id: 3,
-    name: 'Store Restock',
+    name: "Store Restock",
     contacts: [
       {
         id: 4,
-        name: 'Bob Brown',
-        email: 'bob.brown@example.com',
-        phone: '+99887654321',
-        avatar: 'https://via.placeholder.com/150'
-      }
-    ]
+        name: "Bob Brown",
+        email: "bob.brown@example.com",
+        phone: "+99887654321",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
   },
   {
     id: 4,
-    name: 'Family',
+    name: "Family",
     contacts: [
       {
         id: 5,
-        name: 'Sara Lee',
-        email: 'sara.lee@example.com',
-        phone: '+1234567890',
-        avatar: 'https://via.placeholder.com/150'
-      }
-    ]
+        name: "Sara Lee",
+        email: "sara.lee@example.com",
+        phone: "+1234567890",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
   },
   {
     id: 5,
-    name: 'Part ners',
+    name: "Partners",
     contacts: [
       {
         id: 6,
-        name: 'Tom Wilson',
-        email: 'tom.Wilson@example.com',
-        phone: '+0987654321',
-        avatar: 'https://via.placeholder.com/150'
-      }
-    ]
-  }
+        name: "Tom Wilson",
+        email: "tom.Wilson@example.com",
+        phone: "+0987654321",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
+  },
 ]);
 
 const showModal = ref(false);
-const modalTitle = ref('');
+const modalTitle = ref("");
 const newContact = reactive({
   id: null,
-  name: '',
-  email: '',
-  phone: '',
-  avatar: ''
+  name: "",
+  email: "",
+  phone: "",
+  avatar: "",
 });
 
 const currentCategory = ref(null);
@@ -180,39 +310,39 @@ const currentContact = ref(null);
 
 const callContact = (phone) => {
   $q.dialog({
-    title: 'Call',
+    title: "Call",
     message: `Call ${phone}?`,
-    ok: 'Call',
-    cancel: 'Cancel'
+    ok: "Call",
+    cancel: "Cancel",
   }).onOk(() => {
     window.location.href = `tel:${phone}`;
   });
 };
 
-const emailContact = (email ) => {
+const emailContact = (email) => {
   $q.dialog({
-    title: 'Email',
+    title: "Email",
     message: `Email ${email}?`,
-    ok: 'Email',
-    cancel: 'Cancel'
+    ok: "Email",
+    cancel: "Cancel",
   }).onOk(() => {
     window.location.href = `mailto:${email}`;
   });
 };
 
 const addContact = (category) => {
-  modalTitle.value = 'Add Contact';
+  modalTitle.value = "Add Contact";
   newContact.id = null;
-  newContact.name = '';
-  newContact.email = '';
-  newContact.phone = '';
-  newContact.avatar = '';
+  newContact.name = "";
+  newContact.email = "";
+  newContact.phone = "";
+  newContact.avatar = "";
   currentCategory.value = category;
   showModal.value = true;
 };
 
 const editContact = (category, contact) => {
-  modalTitle.value = 'Edit Contact';
+  modalTitle.value = "Edit Contact";
   newContact.id = contact.id;
   newContact.name = contact.name;
   newContact.email = contact.email;
@@ -225,65 +355,100 @@ const editContact = (category, contact) => {
 
 const deleteContact = (category, contact) => {
   $q.dialog({
-    title: 'Delete Contact',
+    title: "Delete Contact",
     message: `Delete ${contact.name}?`,
-    ok: 'Delete',
-    cancel: 'Cancel'
+    ok: "Delete",
+    cancel: "Cancel",
   }).onOk(() => {
-    category.contacts = category.contacts.filter(c => c.id !== contact.id);
+    category.contacts = category.contacts.filter((c) => c.id !== contact.id);
   });
 };
 
-const saveContact = () => {
-  if (newContact.id) {
-    // Update existing contact
-    const index = currentCategory.value.contacts.findIndex(c => c.id === newContact.id);
-    if (index !== -1) {
-      currentCategory.value.contacts[index] = { ...newContact };
+const saveContact = async () => {
+  try {
+    if (newContact.id) {
+      // Update existing contact
+      const index = currentCategory.value.contacts.findIndex(
+        (c) => c.id === newContact.id,
+      );
+      if (index !== -1) {
+        currentCategory.value.contacts[index] = { ...newContact };
+      }
+    } else {
+      // Add new contact
+      const newId = currentCategory.value.contacts.length
+        ? currentCategory.value.contacts[
+            currentCategory.value.contacts.length - 1
+          ].id + 1
+        : 1;
+      currentCategory.value.contacts.push({ ...newContact, id: newId });
     }
-  } else {
-    // Add new contact
-    const newId = currentCategory.value.contacts.length ? currentCategory.value.contacts[currentCategory.value.contacts.length - 1].id + 1 : 1;
-    currentCategory.value.contacts.push({ ...newContact, id: newId });
+    $q.notify({
+      type: "positive",
+      message: "Contact saved successfully",
+      position: "top",
+    });
+  } catch (error) {
+    $q.notify({
+      type: "negative",
+      message: "Error saving contact",
+      position: "top",
+    });
   }
   showModal.value = false;
 };
 
-const closeModal = () => {
-  showModal.value = false;
-};
+const closeModal = () => (showModal.value = false);
+const closeCategoryModal = () => (showCategoryModal.value = false);
 </script>
 
 <style scoped>
-.q Item {
-  Border: 1px solid #e0e0 e0;
-  Border-radius: 8px;
-  Padding: 12px;
- }
-
+.category-header {
+  font-size: 1.2rem;
+  padding: 16px;
+  background: #f5f5f5;
+}
+.contact-card {
+  margin: 12px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+.contact-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+.q-expansion-item :deep(.q-expansion-item__toggle-icon) {
+  margin-right: 8px;
+}
+.q-expansion-item :deep(.q-item__section--right) {
+  margin-left: auto;
+}
+.q-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+}
 .q-item:hover {
   background: #f5f5f5;
 }
-
 .q-item .q-item__section--avatar {
   margin-right: 16px;
 }
-
 .q-item .q-item__section--side {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
   display: flex;
   align-items: center;
 }
-
 .q-item .q-btn {
-  Margin-left: 8px;
+  margin-left: 8px;
 }
-
 .q-expansion-item__container {
-  Border: 1px solid #e0e0e0;
-  Border-radius: 8px;
-  Margin-bottom: 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
-
 .q-expansion-item__content {
   padding: 16px;
   background: #f9f9f9;
