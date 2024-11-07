@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
 import { debounce } from 'lodash'
 
 const mockData = [
@@ -102,7 +101,7 @@ export const useInventoryStore = defineStore('inventory', {
     items: [],
     searchQuery: '',
     categoryFilter: null,
-    viewMode: 'grid',
+    viewMode: 'list',
     itemDialog: false,
     deleteDialog: false,
     editedItem: {},
@@ -166,7 +165,7 @@ export const useInventoryStore = defineStore('inventory', {
     //     })
     //   }
     //   return sorted
-    // })
+    // }),
     filteredItems: (state) => {
       let result = [...state.items]
 
@@ -184,8 +183,7 @@ export const useInventoryStore = defineStore('inventory', {
       return result
     },
     sortedItems: (state) => {
-      let sorted = state.filteredItems
-
+      const sorted = state.filteredItems
       // if (state.sortBy && state.sortDirection) {
       //   sorted = sorted.sort((a, b) => {
       //     if (state.sortDirection === 'asc') {
@@ -211,23 +209,6 @@ export const useInventoryStore = defineStore('inventory', {
   },
 
   actions: {
-    async customSort(rows, sortBy, descending) {
-      return rows.sort((a, b) => {
-        const aValue = a[sortBy]
-        const bValue = b[sortBy]
-
-        if (typeof aValue === 'string') {
-          return descending
-            ? bValue.localeCompare(aValue)
-            : aValue.localeCompare(bValue)
-        }
-
-        return descending
-          ? bValue - aValue
-          : aValue - bValue
-      })
-    },
-
     async loadInventory() {
       this.loading = true
       this.error = null

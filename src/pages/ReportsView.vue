@@ -78,8 +78,8 @@ const generateInventoryReport = async () => {
 
 const generateSalesReport = async () => {
   // Call API to generate sales report
-  const response = await fetch('/api/sales-report')
-  const data = await response.json()
+  // const response = await fetch('/api/sales-report')
+  // const data = await response.json()
   reportData.value = data
   reportTitle.value = 'Sales Report'
   showReportDialog.value = true
@@ -87,8 +87,8 @@ const generateSalesReport = async () => {
 
 const generatePurchaseReport = async () => {
   // Call API to generate purchase report
-  const response = await fetch('/api/purchase-report')
-  const data = await response.json()
+  // const response = await fetch('/api/purchase-report')
+  // const data = await response.json()
   reportData.value = data
   reportTitle.value = 'Purchase Report'
   showReportDialog.value = true
@@ -101,13 +101,11 @@ const generatePurchaseReport = async () => {
   max-width: 250px;
 }
 
-/* Add some media queries to make the layout more responsive */
 @media (max-width: 768px) {
  .my-card {
     max-width: 100%;
   }
 }
-
 @media (max-width: 480px) {
  .q-dialog {
     width: 100%;

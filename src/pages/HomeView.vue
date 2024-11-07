@@ -25,9 +25,12 @@
           </q-card-section>
         </q-card>
       </div>
+
       <div class="col-12 col-md-6">
         <q-card class="section-card text-white">
-          <q-card-title class="text-h5 q-my-md q-mx-md" :style="{ color: $q.dark.isActive? 'white' : 'black' }">Recently Added Products</q-card-title>
+          <q-card-section class="card-title-section q-pa-xs" :style="{ color: $q.dark.isActive? 'white' : 'black' }">
+            <h5 class="q-my-xs q-mx-xs">Recently Added Products</h5>
+          </q-card-section>
           <q-card-section>
             <DashboardTable></DashboardTable>
           </q-card-section>

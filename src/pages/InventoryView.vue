@@ -8,7 +8,10 @@
     </div>
 
     <!-- Error State -->
-    <q-banner v-if="inventoryStore.error" class="bg-negative text-white q-mb-md">
+    <q-banner
+      v-if="inventoryStore.error"
+      class="bg-negative text-white q-mb-md"
+    >
       {{ inventoryStore.error }}
       <template v-slot:action>
         <q-btn flat color="white" label="Retry" @click="loadInventory" />
@@ -21,7 +24,6 @@
         <div class="col-12 col-sm-4">
           <q-select
             v-model="inventoryStore.sortBy"
-            @update"inventoryStore.setSortBy"
             :options="sortOptions"
             outlined
             dense
@@ -34,7 +36,10 @@
             spread
             no-caps
             toggle-color="primary"
-            :options="[{ label: 'Ascending', value: 'asc' }, { label: 'Descending', value: 'desc' }]"
+            :options="[
+              { label: 'Ascending', value: 'asc' },
+              { label: 'Descending', value: 'desc' },
+            ]"
             @update:model-value="inventoryStore.toggleSortDirection"
           />
         </div>
@@ -53,7 +58,9 @@
               spinner-color="primary"
               style="height: 200px"
             >
-              <div class="absolute-bottom text-subtitle2 text-center bg-transparent">
+              <div
+                class="absolute-bottom text-subtitle2 text-center bg-transparent"
+              >
                 {{ item.name }}
               </div>
             </q-img>
@@ -107,7 +114,7 @@
       row-key="id"
       :loading="loading"
       :pagination.sync="pagination"
-      :sort-method="inventoryStore.customSort"
+      :sort-method="customSort"
       flat
       bordered
       class="inventory-table"
@@ -155,31 +162,47 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
-import { useInventoryStore } from 'src/stores/inventoryStore'
-import InventoryHeaderActions from 'src/components/InventoryHeaderActions.vue';
-import DeleteDialog from 'src/components/DeleteDialog.vue';
-import ItemDialog from 'src/components/ItemDialog.vue';
+import { computed, onMounted } from "vue";
+import { useInventoryStore } from "src/stores/inventoryStore";
+import InventoryHeaderActions from "src/components/InventoryHeaderActions.vue";
+import DeleteDialog from "src/components/DeleteDialog.vue";
+import ItemDialog from "src/components/ItemDialog.vue";
 
 onMounted(() => {
-  inventoryStore.loadInventory()
-})
+  inventoryStore.loadInventory();
+});
 
-const inventoryStore = useInventoryStore()
-const loading = computed(() => inventoryStore.loading)
-const pagination = computed(() => inventoryStore.pagination)
-const sortOptions = computed(() => inventoryStore.sortOptions)
-const columns = computed(() => inventoryStore.columns)
-const items = computed(() => inventoryStore.items)
+const inventoryStore = useInventoryStore();
+const loading = computed(() => inventoryStore.loading);
+const pagination = computed(() => inventoryStore.pagination);
+const sortOptions = computed(() => inventoryStore.sortOptions);
+const columns = computed(() => inventoryStore.columns);
+const items = computed(() => inventoryStore.items);
 
-const formatPrice =  (price) => {
-  return `$${price.toFixed(2)}`
-}
+const formatPrice = (price) => {
+  return `$${price.toFixed(2)}`;
+};
 const getStockColor = (quantity) => {
-  return quantity > 10 ? 'positive' : 'negative'
-}
+  return quantity > 10 ? "positive" : "negative";
+};
 
-const confirmDelete = (item) => inventoryStore.confirmDelete(item)
+const customSort = (rows, sortBy, descending) => {
+  return rows.sort((a, b) => {
+    const aValue = a[sortBy]
+    const bValue = b[sortBy]
+
+    if (typeof aValue === 'string') {
+      return descending
+        ? bValue.localeCompare(aValue)
+        : aValue.localeCompare(bValue)
+    }
+
+    return descending
+      ? bValue - aValue
+      : aValue - bValue
+  })
+}
+const confirmDelete = (item) => inventoryStore.confirmDelete(item);
 </script>
 
 <style lang="scss" scoped>
@@ -188,7 +211,7 @@ const confirmDelete = (item) => inventoryStore.confirmDelete(item)
   transition: all 0.3s ease;
   &:hover {
     transform: translateY(-5px);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
   }
 }
 .inventory-table {
