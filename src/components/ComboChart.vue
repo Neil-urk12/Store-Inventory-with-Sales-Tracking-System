@@ -1,12 +1,13 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
-import { Chart, registerables } from 'chart.js';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { Chart, registerables } from 'chart.js'
 
-Chart.register(...registerables);
+Chart.register(...registerables)
 
-const chartCanvas = ref(null);
-let comboChart = null;
-const selectedTimeframe = ref('weekly');
+const chartCanvas = ref(null)
+let comboChart = null
+const selectedTimeframe = ref('weekly')
+// const chartData = ref(null)
 
 const dailyData = {
   labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -26,7 +27,7 @@ const dailyData = {
       backgroundColor: '#FF6384',
     }
   ]
-};
+}
 
 const weeklyData = {
   labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
@@ -46,7 +47,7 @@ const weeklyData = {
       backgroundColor: '#FF6384',
     }
   ]
-};
+}
 
 const monthlyData = {
   labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -66,7 +67,7 @@ const monthlyData = {
       backgroundColor: '#FF6384',
     }
   ]
-};
+}
 
 const yearlyData = {
   labels: ['2020', '2021', '2022', '2023'],
@@ -104,7 +105,7 @@ const options = {
       beginAtZero: true
     }
   }
-};
+}
 
 const updateChart = () => {
   if (comboChart) {
@@ -126,31 +127,32 @@ const updateChart = () => {
   }
 }
 
-
-onMounted(() => {
+onMounted( async () => {
+  await new Promise(resolve => setTimeout(resolve, 500))
   comboChart = new Chart(chartCanvas.value, {
     type: 'bar',
     data: weeklyData,
     options: options
   })
+  // chartData.value = comboChart.data
+  updateChart()
 })
 
 onBeforeUnmount(() => {
-  if (comboChart)
-    comboChart.destroy()
+  if (comboChart) comboChart.destroy()
 })
 </script>
 
 <template>
-    <div class="chart-container" :style="{ color: $q.dark.isActive? 'white' : 'black' }">
-        <select v-model="selectedTimeframe" @change="updateChart" class="timeframe-select bg-secondary text-black">
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-        </select>
-        <canvas ref="chartCanvas"></canvas>
-    </div>
+  <div class="chart-container" :style="{ color: $q.dark.isActive? 'white' : 'black' }">
+    <select v-model="selectedTimeframe" @change="updateChart" class="timeframe-select bg-secondary text-black">
+      <option value="daily">Daily</option>
+      <option value="weekly">Weekly</option>
+      <option value="monthly">Monthly</option>
+      <option value="yearly">Yearly</option>
+    </select>
+    <canvas ref="chartCanvas"></canvas>
+  </div>
 </template>
 
 <style scoped>
