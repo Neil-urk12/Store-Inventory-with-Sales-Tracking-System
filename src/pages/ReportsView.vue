@@ -43,6 +43,8 @@ const chartData = {
 
 const createComboChart = (canvasId, title) => {
   const ctx = document.getElementById(canvasId)
+  const currentTextColor = $q.dark.isActive ? '#ffffff' : '#000000'
+
   return new Chart(ctx, {
     type: 'bar',
     data: {
@@ -66,35 +68,36 @@ const createComboChart = (canvasId, title) => {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           position: 'top',
-          labels:  {
-            color: textColor.value
+          labels: {
+            color: currentTextColor
           }
         },
         title: {
           display: true,
           text: title,
-          color: textColor.value
+          color: currentTextColor
         }
       },
       scales: {
         y: {
           beginAtZero: true,
           ticks: {
-            color: textColor.value
+            color: currentTextColor
           },
           grid: {
-            color: textColor.value + '20'
+            color: currentTextColor + '20'
           }
         },
         x: {
           ticks: {
-            color: textColor.value
+            color: currentTextColor
           },
           grid: {
-            color: textColor.value + '20'
+            color: currentTextColor + '20'
           }
         }
       }
@@ -102,42 +105,47 @@ const createComboChart = (canvasId, title) => {
   })
 }
 
-const updateChartsTheme = () => {
-  if (salesTrendChart.value && profitTrendChart.value) {
-    [salesTrendChart.value, profitTrendChart.value].forEach(chart => {
-      chart.options.plugins.legend.labels.color = textColor.value
-      chart.options.plugins.title.color = textColor.value
-      chart.options.scales.x.ticks.color = textColor.value
-      chart.options.scales.y.ticks.color = textColor.value
-      chart.options.scales.x.grid.color = textColor.value + '20'
-      chart.options.scales.y.grid.color = textColor.value + '20'
-      chart.update()
-    })
-  }
-}
+// const updateChartsTheme = () => {
+//   if (salesTrendChart.value && profitTrendChart.value) {
+//     [salesTrendChart.value, profitTrendChart.value].forEach(chart => {
+//       chart.options.plugins.legend.labels.color = textColor.value
+//       chart.options.plugins.title.color = textColor.value
+//       chart.options.scales.x.ticks.color = textColor.value
+//       chart.options.scales.y.ticks.color = textColor.value
+//       chart.options.scales.x.grid.color = textColor.value + '20'
+//       chart.options.scales.y.grid.color = textColor.value + '20'
+//       chart.update()
+//     })
+//   }
+// }
 
 const qSelectRef = ref(null)
 const qSelectRef2 = ref(null)
 
-watch(() => $q.dark.isActive, async () => {
-  updateChartsTheme()
-  updateCharts()
+const isUpdating = ref(false)
+let updateTimeout = null
 
-  await nextTick();
-  if(qSelectRef.value){
-    qSelectRef.value.update()
-    qSelectRef.value.updateInput()
-    qSelectRef.value.updatePopup()
-    qSelectRef.value.updatePopupPosition()
-    qSelectRef.value.updatePopupPosition()
-  }
-  if(qSelectRef2.value){
-    qSelectRef2.value.update()
-    qSelectRef2.value.updateInput()
-    qSelectRef2.value.updatePopup()
-    qSelectRef2.value.updatePopupPosition()
-    qSelectRef2.value.updatePopupPosition()
-  }
+watch(() => $q.dark.isActive, async () => {
+  if (updateTimeout)
+    clearTimeout(updateTimeout)
+
+  if (isUpdating.value) return
+  isUpdating.value = true
+
+  await nextTick()
+
+  if (salesTrendChart.value)
+    salesTrendChart.value.destroy()
+
+  if (profitTrendChart.value)
+    profitTrendChart.value.destroy()
+
+  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance')
+  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis')
+
+  updateTimeout = setTimeout(() => {
+    isUpdating.value = false
+  }, 100)
 })
 
 const updateCharts = () => {
@@ -191,9 +199,37 @@ onMounted(() => {
       </div>
       <div class="col-12 col-md-6">
         <q-card class="chart-card bg-transparent">
-          <q-card-section class="chart-container">
-            <canvas id="salesTrendChart"></canvas>
-            <canvas id="profitTrendChart"></canvas>
+          <q-card-section class="chart-section">
+            <div class="chart-wrapper">
+              <div class="row q-mb-md items-center">
+                <q-btn color="primary" label="Rerender Sales Chart" @click="rerenderSalesChart" class="q-mr-md"/>
+                <q-btn-dropdown color="secondary" :label="'Sales: ' + salesTimeframe" class="q-mr-md">
+                  <q-list>
+                    <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateSalesTimeframe(option.value)">
+                      <q-item-section>{{ option.label }}</q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-btn-dropdown>
+              </div>
+              <div class="chart-container">
+                <canvas id="salesTrendChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-wrapper">
+              <div class="row q-mb-md items-center">
+                <q-btn color="primary" label="Rerender Profit Chart" @click="rerenderProfitChart" class="q-mr-md"/>
+                <q-btn-dropdown color="secondary" :label="'Profit: ' + profitTimeframe" class="q-mr-md">
+                  <q-list>
+                    <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateProfitTimeframe(option.value)">
+                      <q-item-section>{{ option.label }}</q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-btn-dropdown>
+              </div>
+              <div class="chart-container">
+                <canvas id="profitTrendChart"></canvas>
+              </div>
+            </div>
           </q-card-section>
         </q-card>
       </div>
@@ -234,7 +270,8 @@ onMounted(() => {
 }
 .chart-container {
   position: relative;
-  height: 350px;
+  height: 250px;
+  width: 100%;
 }
 :deep(.q-table) {
   color: var(--q-primary-text-color);

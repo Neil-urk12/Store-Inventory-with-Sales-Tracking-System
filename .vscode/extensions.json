@@ -2,7 +2,8 @@
   "recommendations": [
     "editorconfig.editorconfig",
     "vue.volar",
-    "wayou.vscode-todo-highlight"
+    "wayou.vscode-todo-highlight",
+    "anikghosh.ollama-copilot"
   ],
   "unwantedRecommendations": [
     "octref.vetur",
