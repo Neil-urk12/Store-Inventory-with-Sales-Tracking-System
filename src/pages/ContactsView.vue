@@ -116,20 +116,6 @@
           <div class="text-h6">{{ modalTitle }}</div>
         </q-card-section>
         <q-card-section>
-          <!-- <q-form @submit="saveContact">
-            <q-input v-model="newContact.name" label="Name" required />
-            <q-input
-              v-model="newContact.email"
-              label="Email"
-              type="email"
-              required
-              :rules="[
-                (val) => !!val || 'Email is required',
-                (val) =>
-                  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) ||
-                  'Invalid email format',
-              ]"
-            /> -->
           <q-form @submit="saveContact">
             <q-input v-model="newContact.name" label="Name" required />
             <q-input v-model="newContact.email" label="Email" type="email" />
