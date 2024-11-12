@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
+// import { update } from 'lodash'
 
 Chart.register(...registerables)
 
@@ -105,19 +106,129 @@ const createComboChart = (canvasId, title) => {
   })
 }
 
-// const updateChartsTheme = () => {
-//   if (salesTrendChart.value && profitTrendChart.value) {
-//     [salesTrendChart.value, profitTrendChart.value].forEach(chart => {
-//       chart.options.plugins.legend.labels.color = textColor.value
-//       chart.options.plugins.title.color = textColor.value
-//       chart.options.scales.x.ticks.color = textColor.value
-//       chart.options.scales.y.ticks.color = textColor.value
-//       chart.options.scales.x.grid.color = textColor.value + '20'
-//       chart.options.scales.y.grid.color = textColor.value + '20'
-//       chart.update()
-//     })
-//   }
-// }
+const showResults = ref({
+  columns : [
+    {
+      name: 'name',
+      required: true,
+      label: 'Dessert (100g serving)',
+      align: 'left',
+      field: row => row.name,
+      format: val => `${val}`,
+      sortable: true
+    },
+    { name: 'calories', align: 'center', label: 'Calories', field: 'calories', sortable: true },
+    { name: 'fat', label: 'Fat (g)', field: 'fat', sortable: true },
+    { name: 'carbs', label: 'Carbs (g)', field: 'carbs' },
+    { name: 'protein', label: 'Protein (g)', field: 'protein' },
+    { name: 'sodium', label: 'Sodium (mg)', field: 'sodium' },
+    { name: 'calcium', label: 'Calcium (%)', field: 'calcium', sortable: true, sort: (a, b) => parseInt(a, 10) - parseInt(b, 10) },
+    { name: 'iron', label: 'Iron (%)', field: 'iron', sortable: true, sort: (a, b) => parseInt(a, 10) - parseInt(b, 10) }
+  ],
+  rows : [
+    {
+      name: 'Frozen Yogurt',
+      calories: 159,
+      fat: 6.0,
+      carbs: 24,
+      protein: 4.0,
+      sodium: 87,
+      calcium: '14%',
+      iron: '1%'
+    },
+    {
+      name: 'Ice cream sandwich',
+      calories: 237,
+      fat: 9.0,
+      carbs: 37,
+      protein: 4.3,
+      sodium: 129,
+      calcium: '8%',
+      iron: '1%'
+    },
+    {
+      name: 'Eclair',
+      calories: 262,
+      fat: 16.0,
+      carbs: 23,
+      protein: 6.0,
+      sodium: 337,
+      calcium: '6%',
+      iron: '7%'
+    },
+    {
+      name: 'Cupcake',
+      calories: 305,
+      fat: 3.7,
+      carbs: 67,
+      protein: 4.3,
+      sodium: 413,
+      calcium: '3%',
+      iron: '8%'
+    },
+    {
+      name: 'Gingerbread',
+      calories: 356,
+      fat: 16.0,
+      carbs: 49,
+      protein: 3.9,
+      sodium: 327,
+      calcium: '7%',
+      iron: '16%'
+    },
+    {
+      name: 'Jelly bean',
+      calories: 375,
+      fat: 0.0,
+      carbs: 94,
+      protein: 0.0,
+      sodium: 50,
+      calcium: '0%',
+      iron: '0%'
+    },
+    {
+      name: 'Lollipop',
+      calories: 392,
+      fat: 0.2,
+      carbs: 98,
+      protein: 0,
+      sodium: 38,
+      calcium: '0%',
+      iron: '2%'
+    },
+    {
+      name: 'Honeycomb',
+      calories: 408,
+      fat: 3.2,
+      carbs: 87,
+      protein: 6.5,
+      sodium: 562,
+      calcium: '0%',
+      iron: '45%'
+    },
+    {
+      name: 'Donut',
+      calories: 452,
+      fat: 25.0,
+      carbs: 51,
+      protein: 4.9,
+      sodium: 326,
+      calcium: '2%',
+      iron: '22%'
+    },
+    {
+      name: 'KitKat',
+      calories: 518,
+      fat: 26.0,
+      carbs: 65,
+      protein: 7,
+      sodium: 54,
+      calcium: '12%',
+      iron: '6%'
+    }
+  ]
+})
+
 
 const qSelectRef = ref(null)
 const qSelectRef2 = ref(null)
@@ -126,20 +237,12 @@ const isUpdating = ref(false)
 let updateTimeout = null
 
 watch(() => $q.dark.isActive, async () => {
-  if (updateTimeout)
-    clearTimeout(updateTimeout)
-
+  if (updateTimeout) clearTimeout(updateTimeout)
   if (isUpdating.value) return
   isUpdating.value = true
-
   await nextTick()
-
-  if (salesTrendChart.value)
-    salesTrendChart.value.destroy()
-
-  if (profitTrendChart.value)
-    profitTrendChart.value.destroy()
-
+  if (salesTrendChart.value) salesTrendChart.value.destroy()
+  if (profitTrendChart.value) profitTrendChart.value.destroy()
   salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance')
   profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis')
 
@@ -155,15 +258,29 @@ const updateCharts = () => {
     salesTrendChart.value.data.labels = currentData.labels
     salesTrendChart.value.data.datasets[0].data = currentData.sales
     salesTrendChart.value.data.datasets[1].data = currentData.expenses
-
     profitTrendChart.value.data.labels = currentData.labels
     profitTrendChart.value.data.datasets[0].data = currentData.sales
     profitTrendChart.value.data.datasets[1].data = currentData.expenses
-
     salesTrendChart.value.update()
     profitTrendChart.value.update()
   }
 }
+
+const exportReport = () => {
+
+}
+
+const generateFinancialReport = () => {
+
+}
+
+const generateSalesReport = () => {
+
+}
+
+const category = ref([
+
+])
 
 onMounted(() => {
   salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance')
@@ -178,7 +295,7 @@ onMounted(() => {
         <q-card class="report-card bg-transparent">
           <q-card-section>
             <div class="section-containers full-width row wrap justify-evenly items-center content-start">
-              <div class="sales">
+              <div class="sales ">
                 <div class="text-h6" :style="textColor">Sales Reports</div>
                 <q-select ref="qSelectRef2" :dark="$q.dark.isActive" v-model="selectedTimeframe" :options="timeframeOptions" label="Time Range" outlined dense class="q-mb-md" @update:model-value="updateCharts" />
                 <q-btn color="primary" label="Generate Sales Report" @click="generateSalesReport" class="q-mt-sm" />
@@ -203,7 +320,7 @@ onMounted(() => {
             <div class="chart-wrapper">
               <div class="row q-mb-md items-center">
                 <q-btn color="primary" label="Rerender Sales Chart" @click="rerenderSalesChart" class="q-mr-md"/>
-                <q-btn-dropdown color="secondary" :label="'Sales: ' + salesTimeframe" class="q-mr-md">
+                <q-btn-dropdown flat color="primary" :label="'Sales: ' + salesTimeframe" class="q-mr-md" :dark="$q.dark.isActive">
                   <q-list>
                     <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateSalesTimeframe(option.value)">
                       <q-item-section>{{ option.label }}</q-item-section>
@@ -218,7 +335,7 @@ onMounted(() => {
             <div class="chart-wrapper">
               <div class="row q-mb-md items-center">
                 <q-btn color="primary" label="Rerender Profit Chart" @click="rerenderProfitChart" class="q-mr-md"/>
-                <q-btn-dropdown color="secondary" :label="'Profit: ' + profitTimeframe" class="q-mr-md">
+                <q-btn-dropdown flat bg- color="primary" :label="'Profit: ' + profitTimeframe" class="q-mr-md">
                   <q-list>
                     <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateProfitTimeframe(option.value)">
                       <q-item-section>{{ option.label }}</q-item-section>
@@ -236,8 +353,8 @@ onMounted(() => {
     </div>
     <q-table
       v-if="showResults"
-      :rows="reportData"
-      :columns="columns"
+      :rows="showResults.rows"
+      :columns="showResults.columns"
       row-key="id"
       class="q-mt-md"
     >

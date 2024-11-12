@@ -1,5 +1,4 @@
 <template>
-  <!-- Header Actions -->
   <div class="row q-col-gutter-md q-mb-md items-center">
     <div class="col-12 col-sm-6">
       <div class="text-h6">Inventory Management</div>
@@ -13,15 +12,13 @@
       />
     </div>
   </div>
-
-  <!-- Search and Filter Section -->
   <div class="row q-col-gutter-md q-mb-md">
     <div class="col-12 col-sm-6">
       <q-input
         v-model="inventoryStore.searchQuery"
         outlined
         dense
-        placeholder="Search inventory..."
+        placeholder="Search inventory...."
         clearable
         @clear="inventoryStore.handleSearch"
         @update:model-value="inventoryStore.handleSearch">

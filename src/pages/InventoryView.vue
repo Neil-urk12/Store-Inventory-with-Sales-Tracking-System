@@ -105,8 +105,6 @@
         </div>
       </div>
     </template>
-
-    <!-- List View -->
     <q-table
       v-else
       :rows="items"
@@ -128,7 +126,6 @@
           />
         </q-td>
       </template>
-
       <template v-slot:body-cell-quantity="props">
         <q-td :props="props">
           <q-badge :color="getStockColor(props.row.quantity)">
@@ -136,7 +133,6 @@
           </q-badge>
         </q-td>
       </template>
-
       <template v-slot:body-cell-actions="props">
         <q-td :props="props">
           <q-btn
@@ -162,29 +158,29 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from "vue";
-import { useInventoryStore } from "src/stores/inventoryStore";
-import InventoryHeaderActions from "src/components/InventoryHeaderActions.vue";
-import DeleteDialog from "src/components/DeleteDialog.vue";
-import ItemDialog from "src/components/ItemDialog.vue";
+import { computed, onMounted } from "vue"
+import { useInventoryStore } from "src/stores/inventoryStore"
+import InventoryHeaderActions from "src/components/InventoryHeaderActions.vue"
+import DeleteDialog from "src/components/DeleteDialog.vue"
+import ItemDialog from "src/components/ItemDialog.vue"
 
 onMounted(() => {
-  inventoryStore.loadInventory();
-});
+  inventoryStore.loadInventory()
+})
 
 const inventoryStore = useInventoryStore();
-const loading = computed(() => inventoryStore.loading);
-const pagination = computed(() => inventoryStore.pagination);
-const sortOptions = computed(() => inventoryStore.sortOptions);
-const columns = computed(() => inventoryStore.columns);
-const items = computed(() => inventoryStore.items);
+const loading = computed(() => inventoryStore.loading)
+const pagination = computed(() => inventoryStore.pagination)
+const sortOptions = computed(() => inventoryStore.sortOptions)
+const columns = computed(() => inventoryStore.columns)
+const items = computed(() => inventoryStore.sortedItems)
 
 const formatPrice = (price) => {
-  return `$${price.toFixed(2)}`;
-};
+  return `$${price.toFixed(2)}`
+}
 const getStockColor = (quantity) => {
-  return quantity > 10 ? "positive" : "negative";
-};
+  return quantity > 10 ? "positive" : "negative"
+}
 
 const customSort = (rows, sortBy, descending) => {
   return rows.sort((a, b) => {
