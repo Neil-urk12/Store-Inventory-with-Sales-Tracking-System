@@ -7,7 +7,6 @@ Chart.register(...registerables)
 const chartCanvas = ref(null)
 let comboChart = null
 const selectedTimeframe = ref('weekly')
-// const chartData = ref(null)
 
 const dailyData = {
   labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -127,14 +126,12 @@ const updateChart = () => {
   }
 }
 
-onMounted( async () => {
-  await new Promise(resolve => setTimeout(resolve, 500))
+onMounted(() => {
   comboChart = new Chart(chartCanvas.value, {
     type: 'bar',
     data: weeklyData,
     options: options
   })
-  // chartData.value = comboChart.data
   updateChart()
 })
 

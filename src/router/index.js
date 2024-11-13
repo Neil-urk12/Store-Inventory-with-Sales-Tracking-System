@@ -1,6 +1,5 @@
 import { route } from 'quasar/wrappers'
 import { createRouter, createMemoryHistory, createWebHistory, createWebHashHistory } from 'vue-router'
-// import routes from './routes'
 
 /*
  * If not building with SSR mode, you can
@@ -25,6 +24,7 @@ export default route(function (/* { store, ssrContext } */) {
           { path: '/inventory', component: () => import('pages/InventoryView.vue') },
           { path: '/reports', component: () => import('pages/ReportsView.vue') },
           { path: '/contacts', component: () => import('pages/ContactsView.vue') },
+          { path: '/profile', component: () => import('pages/ProfileView.vue') },
         ]
       },
       { path: '/:catchAll(.*)*', component: () => import('pages/ErrorNotFound.vue') },
@@ -33,13 +33,13 @@ export default route(function (/* { store, ssrContext } */) {
       { path: '/forgot-password', component: () => import('pages/ForgotPasswordPage.vue') },
       { path: '/reset-password', component: () => import('pages/ResetPasswordPage.vue') },
       { path: '/dashboard', component: () => import('pages/DashboardPage.vue') },
-      { path: '/profile', component: () => import('pages/ProfilePage.vue') },
       { path: '/change-password', component: () => import('pages/ChangePasswordPage.vue') },
       { path: '/change-email', component: () => import('pages/ChangeEmailPage.vue') },
       { path: '/settings', component: () => import('pages/SettingsPage.vue') },
       { path: '/about', component: () => import('pages/AboutPage.vue') },
     ],
 
+    // Leave this as is and make changes in quasar.conf.js instead!
     // Leave this as is and make changes in quasar.conf.js instead!
     // quasar.conf.js -> build -> vueRouterMode
     // quasar.conf.js -> build -> publicPath
