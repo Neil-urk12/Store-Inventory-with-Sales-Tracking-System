@@ -97,6 +97,8 @@ const mockData = [
 export const useInventoryStore = defineStore('inventory', {
   state: () => ({
     loading: false,
+    lowStocks: 0,
+    outOfStocks: 0,
     error: null,
     items: [],
     searchQuery: '',
@@ -139,36 +141,8 @@ export const useInventoryStore = defineStore('inventory', {
   }),
 
   getters: {
-    // filteredItems: computed(() => {
-    //   let result = [...items.value]
-    //   if (searchQuery.value) {
-    //     const query = searchQuery.value.toLowerCase()
-    //     result = result.filter((item) =>
-    //       item.name.toLowerCase().includes(query) || item.sku.toLowerCase().includes(query)
-    //     )
-    //   }
-    //   if (categoryFilter.value) {
-    //     result = result.filter((item) => item.category === categoryFilter.value)
-    //   }
-    //   return result
-    // }),
-    // sortedItems: computed(() => {
-    //   let sorted = [...filteredItems.value]
-    //   if (sortBy.value && sortOptions.value.some((option) => option.value === sortBy.value)) {
-    //     sorted.sort((a, b) => {
-    //       const aValue = a[sortBy.value]
-    //       const bValue = b[sortBy.value]
-    //       if (typeof aValue === 'string') {
-    //         return sortDirection.value === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
-    //       }
-    //       return sortDirection.value === 'asc' ? aValue - bValue : bValue - aValue
-    //     })
-    //   }
-    //   return sorted
-    // }),
     filteredItems: (state) => {
       let result = [...state.items]
-
       if (state.searchQuery) {
         const query = state.searchQuery.toLowerCase()
         result = result.filter(item =>
@@ -176,35 +150,28 @@ export const useInventoryStore = defineStore('inventory', {
           item.sku.toLowerCase().includes(query)
         )
       }
-
-      if (state.categoryFilter)
-        result = result.filter(item => item.category === state.categoryFilter)
-
+      if (state.categoryFilter) result = result.filter(item => item.category === state.categoryFilter)
       return result
     },
     sortedItems: (state) => {
       const sorted = state.filteredItems
-      // if (state.sortBy && state.sortDirection) {
-      //   sorted = sorted.sort((a, b) => {
-      //     if (state.sortDirection === 'asc') {
-      //       return a[state.sortBy] < b[state.sortBy]? -1 : 1
-      //     } else {
-      //       return a[state.sortBy] > b[state.sortBy]? -1 : 1
-      //     }
-      //   })
-      // }
       if(state.sortBy && state.sortOptions.some(option => option.value === state.sortBy))  {
         sorted.sort((a, b) => {
           const aValue = a[state.sortBy]
           const bValue = b[state.sortBy]
-
-          if (typeof aValue === 'string') {
+          if (typeof aValue === 'string')
             return state.sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
-          }
           return state.sortDirection === 'asc'? aValue - bValue: bValue - aValue
         })
       }
       return sorted
+    },
+    stockData: (state) => {
+      return state.items.map(item => ({
+        name: item.name,
+        'current stock': item.quantity,
+        'dead stock': 0 // Placeholder - needs actual dead stock data
+      }))
     }
   },
 
@@ -224,47 +191,35 @@ export const useInventoryStore = defineStore('inventory', {
         this.loading = false
       }
     },
-
-    // sortedItems() {
-    //   const { sortBy, sortDirection, items } = this
-    //   this.items = items.sort((a, b) => {
-    //     if (a[sortBy] < b[sortBy]) {
-    //       return sortDirection === 'asc'? -1 : 1
-    //     }
-    //     if (a[sortBy] > b[sortBy]) {
-    //       return sortDirection === 'asc'? 1 : -1
-    //     }
-    //     return 0
-    //   })
-    // },
+    sortInventory(column, order) {
+      this.sortBy = column;
+      this.sortDirection = order;
+      this.handleSortForGrid();
+    },
     toggleSortDirection() {
-      // this.sortDirection = this.sortDirection === 'asc'? 'desc' : 'asc'
-      // this.sortedItems()
-      this.items = this.sortedItems
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+      this.handleSortForGrid();
     },
-    setSortBy() {
-      this.items = this.sortedItems
+    setSortBy(sortBy) {
+      this.sortBy = sortBy;
+      this.handleSortForGrid();
     },
-
     debouncedSearch: debounce(function (query) {
       this.handleSearch(query)
     }, 300),
-
     handleSearch(query) {
+      this.searchQuery = query
       this.debouncedSearch(query)
     },
-
     handleFilters() {
       this.pagination.page = 1
     },
-
     handleSortForGrid() {
       this.pagination.page = 1
       this.items = this.sortedItems
       this.pagination.sortBy = this.sortBy
       this.pagination.descending = this.sortDirection === 'desc'
     },
-
     openItemDialog(item = null) {
       this.editMode =!!item
       this.editedItem = item ? {...item } : {
@@ -277,7 +232,6 @@ export const useInventoryStore = defineStore('inventory', {
       }
       this.itemDialog = true
     },
-
     resetForm() {
       this.editedItem = {
         name: '',
@@ -288,25 +242,21 @@ export const useInventoryStore = defineStore('inventory', {
         image: ''
       }
     },
-
     confirmDelete(item) {
       this.itemToDelete = item
       this.deleteDialog = true
     },
-
     async deleteSelected() {
       const selectedItems = this.selectedItems.filter(id => this.items.some(item => item.id === id))
       // Uncomment the API call here
       this.items = this.items.filter(item => !selectedItems.includes(item.id))
       this.selectedItems = []
     },
-
     async deleteItem() {
       // API call here
       this.items = this.items.filter(item => item.id!== this.itemToDelete.id)
       this.deleteDialog = false
     },
-
     async saveItem() {
       // API call here
       if (this.editMode) {

@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
-// import { update } from 'lodash'
+import { useInventoryStore } from '../stores/inventoryStore' // Assuming inventory data is here
 
 Chart.register(...registerables)
 
@@ -11,6 +11,13 @@ const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 const salesTrendChart = ref(null)
 const profitTrendChart = ref(null)
 const selectedTimeframe = ref('weekly')
+const inventoryStore = useInventoryStore()
+const stockModal = ref(false)
+const stockColumns = [
+  { name: 'name', label: 'Product Name', field: 'name', align: 'left', sortable: true },
+  { name: 'current stock', label: 'Current Stock', field: 'current stock', align: 'left', sortable: true },
+  { name: 'dead stock', label: 'Dead Stock', field: 'dead stock', align: 'left', sortable: true }
+]
 
 const timeframeOptions = [
   { label: 'Daily', value: 'daily' },
@@ -282,6 +289,21 @@ const category = ref([
 
 ])
 
+const sortStockData = (column, order) => {
+  inventoryStore.sortInventory(column, order)
+}
+
+const viewStockLevels = () => {
+  if (inventoryStore.stockData.length === 0) {
+    $q.notify({
+      type: 'negative',
+      message: 'No stock data available.'
+    })
+    return
+  }
+  stockModal.value = true
+}
+
 onMounted(() => {
   salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance')
   profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis')
@@ -364,6 +386,55 @@ onMounted(() => {
         <q-btn color="primary" icon="download" label="Export" @click="exportReport" />
       </template>
     </q-table>
+
+
+    <q-dialog v-model="stockModal">
+      <q-card>
+        <q-card-section class="row items-center">
+          <div class="text-h6">Stock Levels</div>
+          <q-space />
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
+
+        <q-card-section>
+          <q-table
+            :rows="inventoryStore.stockData"
+            :columns="stockColumns"
+            row-key="name"
+            :filter="filter"
+            :pagination.sync="pagination"
+            :loading="loading"
+            class="my-table"
+          >
+            <template v-slot:header="props">
+              <q-tr :props="props">
+                <q-th v-for="col in props.cols" :key="col.name" :props="props">
+                  <div class="text-weight-bold text-grey-8">
+                    <q-btn
+                      flat
+                      dense
+                      size="sm"
+                      :color="col.name === inventoryStore.sortBy ? (inventoryStore.sortDirection === 'asc' ? 'primary' : 'negative') : ''"
+                      @click="sortStockData(col.name, col.name === inventoryStore.sortBy ? (inventoryStore.sortDirection === 'asc' ? 'desc' : 'asc') : 'asc')"
+                    >
+                      {{ col.label }}
+                      <q-icon :name="col.name === inventoryStore.sortBy ? (inventoryStore.sortDirection === 'asc' ? 'arrow_drop_up' : 'arrow_drop_down') : ''" />
+                    </q-btn>
+                  </div>
+                </q-th>
+              </q-tr>
+            </template>
+            <template v-slot:body="props">
+              <q-tr :props="props">
+                <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                  {{ props.row[col.name] }}
+                </q-td>
+              </q-tr>
+            </template>
+          </q-table>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 

@@ -1,38 +1,39 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useInventoryStore } from '../stores/inventoryStore'
 
-const inStock = ref(50);
-const lowStock = ref(20);
-const noStock = ref(30);
+onMounted(() => {
+  inventoryStore.loadInventory()
+})
 
-const totalStock = computed(
-    () => inStock.value + lowStock.value + noStock.value,
-);
+const inventoryStore = useInventoryStore()
+const lowStockThreshold = 8
 
-const inStockWidth = computed(
-    () => `${(inStock.value / totalStock.value) * 100}%`,
-);
-const lowStockWidth = computed(
-    () => `${(lowStock.value / totalStock.value) * 100}%`,
-);
-const noStockWidth = computed(
-    () => `${(noStock.value / totalStock.value) * 100}%`,
-);
+const totalStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + item.quantity, 0))
+
+const inStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, item.quantity), 0))
+const lowStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(item.quantity, lowStockThreshold)), 0))
+const noStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(0, item.quantity)), 0))
+
+
+const inStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(inStock.value / totalStock.value) * 100}%`)
+const lowStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(lowStock.value / totalStock.value) * 100}%`)
+const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock.value / totalStock.value) * 100}%`)
 </script>
 
 <template>
   <div class="stock-bars bg-accent">
     <div class="stock-flex">
-        <div class="bar green" :style="{ width: inStockWidth }">
+        <div class="bar green" :style="{ width: inStockWidth, minWidth: '10%' }">
             {{ inStock }}
         </div>
         <div
             class="bar yellow"
-            :style="{ width: lowStockWidth }"
+            :style="{ width: lowStockWidth, minWidth: '10%' }"
         >
             {{ lowStock }}
         </div>
-        <div class="bar red" :style="{ width: noStockWidth }">
+        <div class="bar red" :style="{ width: noStockWidth, minWidth: '10%' }">
             {{ noStock }}
         </div>
     </div>
