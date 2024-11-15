@@ -29,38 +29,142 @@ const editCategory = (category) => {
 };
 
 const deleteCategory = (category) => {
-  $q.dialog({
-    title: "Delete Category",
-    message: `Delete category "${category.name}" and all its contacts?`,
-    ok: "Delete",
-    cancel: "Cancel",
-  }).onOk(() => {
-    categories.value = categories.value.filter((c) => c.id !== category.id);
-  });
-};
-
-const saveCategory = () => {
-  if (newCategory.id) {
-    // Update existing category
-    const index = categories.value.findIndex((c) => c.id === newCategory.id);
-    if (index !== -1) {
-      categories.value[index] = {
-        ...categories.value[index],
-        name: newCategory.name,
-      };
-    }
+  if (category.contacts.length > 0) {
+    $q.dialog({
+      title: 'Delete Category',
+      message: `This category contains ${category.contacts.length} contact${category.contacts.length === 1 ? '' : 's'}. Are you sure you want to delete "${category.name}" and all its contacts?`,
+      ok: {
+        label: 'Delete',
+        color: 'negative'
+      },
+      cancel: {
+        label: 'Cancel',
+        flat: true
+      },
+      persistent: true
+    }).onOk(() => {
+      try {
+        categories.value = categories.value.filter(c => c.id !== category.id);
+        $q.notify({
+          type: 'positive',
+          message: 'Category deleted successfully',
+          position: 'top',
+          timeout: 2000
+        });
+      } catch (error) {
+        console.error('Error deleting category:', error);
+        $q.notify({
+          type: 'negative',
+          message: 'Error deleting category',
+          position: 'top',
+          timeout: 2000
+        });
+      }
+    });
   } else {
-    // Add new category
-    const newId = categories.value.length
-      ? Math.max(...categories.value.map((c) => c.id)) + 1
-      : 1;
-    categories.value.push({
-      id: newId,
-      name: newCategory.name,
-      contacts: [],
+    $q.dialog({
+      title: 'Delete Category',
+      message: `Delete category "${category.name}"?`,
+      ok: {
+        label: 'Delete',
+        color: 'negative'
+      },
+      cancel: {
+        label: 'Cancel',
+        flat: true
+      }
+    }).onOk(() => {
+      try {
+        categories.value = categories.value.filter(c => c.id !== category.id);
+        $q.notify({
+          type: 'positive',
+          message: 'Category deleted successfully',
+          position: 'top',
+          timeout: 2000
+        });
+      } catch (error) {
+        console.error('Error deleting category:', error);
+        $q.notify({
+          type: 'negative',
+          message: 'Error deleting category',
+          position: 'top',
+          timeout: 2000
+        });
+      }
     });
   }
-  closeCategoryModal();
+};
+
+const saveCategory = async () => {
+  try {
+    if (!newCategory.name.trim()) {
+      $q.notify({
+        type: 'negative',
+        message: 'Category name cannot be empty',
+        position: 'top',
+        timeout: 2000
+      });
+      return;
+    }
+
+    // Check for duplicate category names
+    const isDuplicate = categories.value.some(
+      c => c.name.toLowerCase() === newCategory.name.toLowerCase() &&
+      c.id !== newCategory.id
+    );
+
+    if (isDuplicate) {
+      $q.notify({
+        type: 'negative',
+        message: 'Category name already exists',
+        position: 'top',
+        timeout: 2000
+      });
+      return;
+    }
+
+    if (newCategory.id) {
+      // Update existing category
+      const index = categories.value.findIndex(c => c.id === newCategory.id);
+      if (index !== -1) {
+        categories.value[index] = {
+          ...categories.value[index],
+          name: newCategory.name.trim()
+        };
+        $q.notify({
+          type: 'positive',
+          message: 'Category updated successfully',
+          position: 'top',
+          timeout: 2000
+        });
+      }
+    } else {
+      // Add new category
+      const newId = categories.value.length
+        ? Math.max(...categories.value.map(c => c.id)) + 1
+        : 1;
+      categories.value.push({
+        id: newId,
+        name: newCategory.name.trim(),
+        contacts: []
+      });
+      $q.notify({
+        type: 'positive',
+        message: 'Category added successfully',
+        position: 'top',
+        timeout: 2000
+      });
+    }
+    closeCategoryModal();
+  } catch (error) {
+    console.error('Error saving category:', error);
+    $q.notify({
+      type: 'negative',
+      message: 'Error saving category',
+      position: 'top',
+      timeout: 2000
+    });
+  }
 };
 
 const categories = ref([
@@ -252,32 +356,38 @@ const closeCategoryModal = () => (showCategoryModal.value = false);
     </div>
     <q-list>
       <q-expansion-item
-        class="category-header bg-transparent"
+        class="category-header bg-transparent q-mb-sm"
         v-for="category in categories"
         :key="category.id"
         dense
         dark="$isDark.active"
-        :label="category.name"
-        header-class="text-weight-bold"
         expand-icon-class="text-primary"
       >
-        <template v-slot:header-right>
-          <q-btn
-            icon="edit"
-            flat
-            round
-            dense
-            @click.stop="editCategory(category)"
-          >
-            <q-tooltip>Edit Contact</q-tooltip>
-          </q-btn>
-          <q-btn
-            icon="delete"
-            flat
-            round
-            dense
-            @click.stop="deleteCategory(category)"
-          />
+        <template v-slot:header>
+          <div class="row items-center full-width">
+            <div class="text-h6 text-weight-medium">{{ category.name }}</div>
+            <q-space />
+            <q-btn
+              icon="edit"
+              color="primary"
+              flat
+              round
+              dense
+              @click.stop="editCategory(category)"
+            >
+              <q-tooltip>Edit Category</q-tooltip>
+            </q-btn>
+            <q-btn
+              icon="delete"
+              color="negative"
+              flat
+              round
+              dense
+              @click.stop="deleteCategory(category)"
+            >
+              <q-tooltip>Delete Category</q-tooltip>
+            </q-btn>
+          </div>
         </template>
         <q-list>
           <q-item
