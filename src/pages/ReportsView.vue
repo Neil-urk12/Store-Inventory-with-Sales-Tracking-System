@@ -3,7 +3,6 @@ import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
 import { useInventoryStore } from '../stores/inventoryStore'
-import { debounce } from 'lodash'
 
 Chart.register(...registerables)
 
@@ -11,8 +10,6 @@ const $q = useQuasar()
 const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 const salesTrendChart = ref(null)
 const profitTrendChart = ref(null)
-const selectedTimeframe = ref('weekly')
-const profitTimeframe = ref('weekly')
 const inventoryStore = useInventoryStore()
 const stockModal = ref(false)
 const filter = ref('')
@@ -22,6 +19,94 @@ const pagination = ref({
   page: 1,
   rowsPerPage: 5,
 })
+
+const selectedTimeframe = computed(() => inventoryStore.selectedTimeframe)
+const profitTimeframe = computed(() => inventoryStore.profitTimeframe)
+
+const timeframeOptions = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Yearly', value: 'yearly' }
+]
+
+const createComboChart = (canvasId, title, timeframe) => {
+  const canvas = document.getElementById(canvasId)
+  if (!canvas) return null
+
+  const ctx = canvas.getContext('2d')
+  const chartData = inventoryStore.getChartData(timeframe)
+  const chartOptions = inventoryStore.getChartOptions(textColor.value)
+
+  return new Chart(ctx, {
+    type: 'bar',
+    data: chartData,
+    options: chartOptions
+  })
+}
+
+const updateSalesTimeframe = (value) => {
+  inventoryStore.updateSalesTimeframe(value)
+}
+
+const updateProfitTimeframe = (value) => {
+  inventoryStore.updateProfitTimeframe(value)
+}
+
+const isRenderingSales = ref(false)
+const isRenderingProfit = ref(false)
+
+const rerenderSalesChart = async () => {
+  if (isRenderingSales.value) return
+  isRenderingSales.value = true
+
+  try {
+    if (salesTrendChart.value) {
+      salesTrendChart.value.destroy()
+    }
+    await nextTick()
+    salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Trend', selectedTimeframe.value)
+  } finally {
+    isRenderingSales.value = false
+  }
+}
+
+const rerenderProfitChart = async () => {
+  if (isRenderingProfit.value) return
+  isRenderingProfit.value = true
+
+  try {
+    if (profitTrendChart.value) {
+      profitTrendChart.value.destroy()
+    }
+    await nextTick()
+    profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Trend', profitTimeframe.value)
+  } finally {
+    isRenderingProfit.value = false
+  }
+}
+
+watch(selectedTimeframe, rerenderSalesChart)
+watch(profitTimeframe, rerenderProfitChart)
+watch(textColor, () => {
+  rerenderSalesChart()
+  rerenderProfitChart()
+})
+
+onMounted(() => {
+  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Trend', selectedTimeframe.value)
+  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Trend', profitTimeframe.value)
+})
+
+onUnmounted(() => {
+  if (salesTrendChart.value) {
+    salesTrendChart.value.destroy()
+  }
+  if (profitTrendChart.value) {
+    profitTrendChart.value.destroy()
+  }
+})
+
 const stockColumns = [
   {
     name: 'name',
@@ -42,213 +127,6 @@ const stockColumns = [
     sortable: true
   }
 ]
-
-const timeframeOptions = [
-  { label: 'Daily', value: 'daily' },
-  { label: 'Weekly', value: 'weekly' },
-  { label: 'Monthly', value: 'monthly' },
-  { label: 'Yearly', value: 'yearly' }
-]
-
-const chartData = {
-  daily: {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [
-      {
-        label: 'Sales',
-        data: [30, 40, 50, 60, 70, 80, 90],
-        type: 'line',
-        borderColor: '#42A5F5',
-        fill: false,
-        tension: 0.1
-      },
-      {
-        label: 'Expenses',
-        data: [20, 30, 40, 50, 60, 70, 80],
-        type: 'bar',
-        backgroundColor: '#FF6384'
-      }
-    ]
-  },
-  weekly: {
-    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-    datasets: [
-      {
-        label: 'Sales',
-        data: [150, 200, 250, 300],
-        type: 'line',
-        borderColor: '#42A5F5',
-        fill: false,
-        tension: 0.1
-      },
-      {
-        label: 'Expenses',
-        data: [100, 150, 200, 250],
-        type: 'bar',
-        backgroundColor: '#FF6384'
-      }
-    ]
-  },
-  monthly: {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    datasets: [
-      {
-        label: 'Sales',
-        data: [700, 800, 900, 1000, 1100, 1200],
-        type: 'line',
-        borderColor: '#42A5F5',
-        fill: false,
-        tension: 0.1
-      },
-      {
-        label: 'Expenses',
-        data: [500, 600, 700, 800, 900, 1000],
-        type: 'bar',
-        backgroundColor: '#FF6384'
-      }
-    ]
-  },
-  yearly: {
-    labels: ['2020', '2021', '2022', '2023'],
-    datasets: [
-      {
-        label: 'Sales',
-        data: [5000, 6000, 7000, 8000],
-        type: 'line',
-        borderColor: '#42A5F5',
-        fill: false,
-        tension: 0.1
-      },
-      {
-        label: 'Expenses',
-        data: [4000, 5000, 6000, 7000],
-        type: 'bar',
-        backgroundColor: '#FF6384'
-      }
-    ]
-  }
-}
-
-const createComboChart = (canvasId, title, initialTimeframe) => {
-  const ctx = document.getElementById(canvasId)
-  const currentTextColor = $q.dark.isActive ? '#ffffff' : '#000000'
-
-  return new Chart(ctx, {
-    type: 'bar',
-    data: chartData[initialTimeframe],
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'top',
-          labels: {
-            color: currentTextColor
-          }
-        },
-        title: {
-          display: true,
-          text: title,
-          color: currentTextColor
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            color: currentTextColor
-          },
-          grid: {
-            color: currentTextColor + '20'
-          }
-        },
-        x: {
-          ticks: {
-            color: currentTextColor
-          },
-          grid: {
-            color: currentTextColor + '20'
-          }
-        }
-      }
-    }
-  })
-}
-
-const updateSalesTimeframe = async (value) => {
-  if (value === selectedTimeframe.value) return
-  selectedTimeframe.value = value
-  await rerenderSalesChart()
-}
-
-const updateProfitTimeframe = async (value) => {
-  if (value === profitTimeframe.value) return
-  profitTimeframe.value = value
-  await rerenderProfitChart()
-}
-
-const isRenderingSales = ref(false)
-const isRenderingProfit = ref(false)
-
-const rerenderSalesChart = debounce(async () => {
-  if (isRenderingSales.value) return
-  isRenderingSales.value = true
-
-  try {
-    if (salesTrendChart.value) {
-      salesTrendChart.value.destroy()
-      salesTrendChart.value = null
-    }
-    await nextTick()
-    salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance', selectedTimeframe.value)
-  } finally {
-    isRenderingSales.value = false
-  }
-}, 300)
-
-const rerenderProfitChart = debounce(async () => {
-  if (isRenderingProfit.value) return
-  isRenderingProfit.value = true
-
-  try {
-    if (profitTrendChart.value) {
-      profitTrendChart.value.destroy()
-      profitTrendChart.value = null
-    }
-    await nextTick()
-    profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis', profitTimeframe.value)
-  } finally {
-    isRenderingProfit.value = false
-  }
-}, 300)
-
-onMounted(() => {
-  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance', selectedTimeframe.value)
-  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis', profitTimeframe.value)
-})
-
-onUnmounted(() => {
-  if (salesTrendChart.value) salesTrendChart.value.destroy()
-  if (profitTrendChart.value) profitTrendChart.value.destroy()
-})
-
-const isUpdating = ref(false)
-let updateTimeout = null
-
-watch(() => $q.dark.isActive, async () => {
-  if (updateTimeout) clearTimeout(updateTimeout)
-  if (isUpdating.value) return
-  isUpdating.value = true
-  await nextTick()
-  if (salesTrendChart.value) salesTrendChart.value.destroy()
-  if (profitTrendChart.value) profitTrendChart.value.destroy()
-  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance', selectedTimeframe.value)
-  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis', profitTimeframe.value)
-
-  updateTimeout = setTimeout(() => {
-    isUpdating.value = false
-  }, 100)
-})
 
 const category = ref(null)
 const categoryFilter = ref(null)
@@ -358,6 +236,26 @@ const generateSalesReport = async () => {
     })
   }
 }
+
+const exportStockData = () => {
+  const stockData = inventoryStore.stockData.map(item => ({
+    'Product Name': item.name,
+    'Current Stock': item['current stock'],
+    'Dead Stock': item['dead stock'],
+    'Last Updated': item.lastUpdated
+  }));
+  inventoryStore.exportToCSV(stockData, 'stock-levels-report');
+};
+
+const exportSalesReport = () => {
+  const salesData = filteredSalesData.value.map(item => ({
+    'Product Name': item.productName,
+    'Quantity Sold': item.quantitySold,
+    'Revenue': item.revenue,
+    'Sale Date': item.date
+  }));
+  inventoryStore.exportToCSV(salesData, 'sales-report');
+};
 </script>
 
 <template>
@@ -488,6 +386,13 @@ const generateSalesReport = async () => {
             clearable
             @update:model-value="handleCategoryFilter"
           />
+          <q-btn
+            color="primary"
+            icon="file_download"
+            label="Export CSV"
+            @click="exportStockData"
+            class="q-ml-sm"
+          />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
 
@@ -533,7 +438,7 @@ const generateSalesReport = async () => {
       </q-card>
     </q-dialog>
     <q-dialog v-model="salesReportDialog">
-      <q-card class="column no-wrap">
+      <q-card style="width: 900px; max-width: 90vw;">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Sales Report</div>
           <q-space />
@@ -548,6 +453,13 @@ const generateSalesReport = async () => {
             map-options
             clearable
             @update:model-value="updateSalesReportTimeframe"
+          />
+          <q-btn
+            color="primary"
+            icon="file_download"
+            label="Export CSV"
+            @click="exportSalesReport"
+            class="q-mr-sm"
           />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>

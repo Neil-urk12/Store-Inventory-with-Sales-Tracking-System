@@ -191,7 +191,87 @@ export const useInventoryStore = defineStore('inventory', {
       { id: 1, product: 'Gaming Laptop', totalSold: 12, revenue: 24000 },
       { id: 2, product: 'Wireless Mouse', totalSold: 45, revenue: 2250 },
       { id: 3, product: 'USB-C Cable', totalSold: 100, revenue: 1500 }
-    ]
+    ],
+    selectedTimeframe: 'weekly',
+    profitTimeframe: 'weekly',
+    chartData: {
+      daily: {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        datasets: [
+          {
+            label: 'Sales',
+            data: [30, 40, 50, 60, 70, 80, 90],
+            type: 'line',
+            borderColor: '#42A5F5',
+            fill: false,
+            tension: 0.1
+          },
+          {
+            label: 'Expenses',
+            data: [20, 30, 40, 50, 60, 70, 80],
+            type: 'bar',
+            backgroundColor: '#FF6384'
+          }
+        ]
+      },
+      weekly: {
+        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+        datasets: [
+          {
+            label: 'Sales',
+            data: [150, 200, 250, 300],
+            type: 'line',
+            borderColor: '#42A5F5',
+            fill: false,
+            tension: 0.1
+          },
+          {
+            label: 'Expenses',
+            data: [100, 150, 200, 250],
+            type: 'bar',
+            backgroundColor: '#FF6384'
+          }
+        ]
+      },
+      monthly: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [
+          {
+            label: 'Sales',
+            data: [700, 800, 900, 1000, 1100, 1200],
+            type: 'line',
+            borderColor: '#42A5F5',
+            fill: false,
+            tension: 0.1
+          },
+          {
+            label: 'Expenses',
+            data: [600, 700, 800, 900, 1000, 1100],
+            type: 'bar',
+            backgroundColor: '#FF6384'
+          }
+        ]
+      },
+      yearly: {
+        labels: ['2020', '2021', '2022', '2023'],
+        datasets: [
+          {
+            label: 'Sales',
+            data: [8000, 9000, 10000, 11000],
+            type: 'line',
+            borderColor: '#42A5F5',
+            fill: false,
+            tension: 0.1
+          },
+          {
+            label: 'Expenses',
+            data: [7000, 8000, 9000, 10000],
+            type: 'bar',
+            backgroundColor: '#FF6384'
+          }
+        ]
+      }
+    }
   }),
 
   getters: {
@@ -421,6 +501,84 @@ export const useInventoryStore = defineStore('inventory', {
       } finally {
         this.loading = false
       }
+    },
+    updateSalesTimeframe(value) {
+      this.selectedTimeframe = value;
+    },
+
+    updateProfitTimeframe(value) {
+      this.profitTimeframe = value;
+    },
+
+    getChartData(timeframe) {
+      return this.chartData[timeframe];
+    },
+
+    getChartOptions(textColor) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: textColor
+            },
+            grid: {
+              color: textColor,
+              drawBorder: false
+            }
+          },
+          x: {
+            ticks: {
+              color: textColor
+            },
+            grid: {
+              color: textColor,
+              drawBorder: false
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: textColor
+            }
+          }
+        }
+      };
+    },
+    exportToCSV(data, filename) {
+      // Convert data to CSV format
+      const headers = Object.keys(data[0]);
+      const csvContent = [
+        headers.join(','), // Header row
+        ...data.map(row => 
+          headers.map(header => {
+            let cell = row[header]
+            // Handle special cases (objects, arrays, etc.)
+            if (typeof cell === 'object' && cell !== null) {
+              cell = JSON.stringify(cell)
+            }
+            // Escape quotes and wrap in quotes if contains comma
+            cell = String(cell).replace(/"/g, '""')
+            return cell.includes(',') ? `"${cell}"` : cell
+          }).join(',')
+        )
+      ].join('\n');
+
+      // Create and trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${filename}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     },
   }
 })
