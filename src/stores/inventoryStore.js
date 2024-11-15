@@ -106,12 +106,12 @@ export const useInventoryStore = defineStore('inventory', {
     items: mockData,
     searchQuery: '',
     categoryFilter: null,
-    viewMode: 'list',
     itemDialog: false,
     deleteDialog: false,
     editedItem: {},
     itemToDelete: null,
     editMode: false,
+    viewMode: 'list',
     pagination: {
       rowsPerPage: 10,
       sortBy: 'name',
@@ -208,17 +208,31 @@ export const useInventoryStore = defineStore('inventory', {
       return result
     },
     sortedItems: (state) => {
-      const sorted = state.filteredItems
+      const items = [...state.filteredItems]  // Create a new array to avoid mutating the original
       if(state.sortBy && state.sortOptions.some(option => option.value === state.sortBy))  {
-        sorted.sort((a, b) => {
+        items.sort((a, b) => {
           const aValue = a[state.sortBy]
           const bValue = b[state.sortBy]
-          if (typeof aValue === 'string')
-            return state.sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
-          return state.sortDirection === 'asc'? aValue - bValue: bValue - aValue
+
+          // Handle null or undefined values
+          if (aValue == null) return state.sortDirection === 'asc' ? 1 : -1
+          if (bValue == null) return state.sortDirection === 'asc' ? -1 : 1
+
+          // Handle different data types
+          if (typeof aValue === 'string') {
+            return state.sortDirection === 'asc'
+              ? aValue.localeCompare(bValue)
+              : bValue.localeCompare(aValue)
+          }
+
+          const numA = Number(aValue)
+          const numB = Number(bValue)
+          return state.sortDirection === 'asc'
+            ? numA - numB
+            : numB - numA
         })
       }
-      return sorted
+      return items
     },
     stockData: (state) => {
       return state.items.map(item => ({
