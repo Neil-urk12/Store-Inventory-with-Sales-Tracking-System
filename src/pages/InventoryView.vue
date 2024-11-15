@@ -1,13 +1,9 @@
 <template>
   <div class="q-pa-md">
     <InventoryHeaderActions></InventoryHeaderActions>
-
-    <!-- Loading State -->
     <div v-if="loading" class="row justify-center q-pa-md">
       <q-spinner-dots color="primary" size="40px" />
     </div>
-
-    <!-- Error State -->
     <q-banner
       v-if="inventoryStore.error"
       class="bg-negative text-white q-mb-md"
@@ -17,7 +13,6 @@
         <q-btn flat color="white" label="Retry" @click="loadInventory" />
       </template>
     </q-banner>
-
     <Suspense>
       <template #default>
         <InventoryGridView v-if="inventoryStore.viewMode === 'grid'" />
@@ -29,29 +24,23 @@
         </div>
       </template>
     </Suspense>
-
     <ItemDialog></ItemDialog>
     <DeleteDialog></DeleteDialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from "vue"
+import { computed } from "vue"
 import { useInventoryStore } from "src/stores/inventoryStore"
-import { ref, defineAsyncComponent } from "vue"
-import InventoryHeaderActions from "src/components/InventoryHeaderActions.vue"
-import DeleteDialog from "src/components/DeleteDialog.vue"
-import ItemDialog from "src/components/ItemDialog.vue"
-
+import { defineAsyncComponent } from "vue"
+const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/InventoryHeaderActions.vue'))
+const DeleteDialog = defineAsyncComponent(() => import('src/components/DeleteDialog.vue'))
+const ItemDialog = defineAsyncComponent(() => import('src/components/ItemDialog.vue'))
 const InventoryGridView = defineAsyncComponent(() => import('src/components/InventoryGridView.vue'))
 const InventoryListView = defineAsyncComponent(() => import('src/components/InventoryListView.vue'))
-
 const inventoryStore = useInventoryStore();
 const loading = computed(() => inventoryStore.loading)
-
-const loadInventory = () => {
-  inventoryStore.loadInventory()
-}
+const loadInventory = () => inventoryStore.loadInventory()
 </script>
 
 <style lang="scss" scoped>
