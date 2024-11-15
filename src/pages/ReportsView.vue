@@ -45,13 +45,11 @@ const createComboChart = (canvasId, title, timeframe) => {
   })
 }
 
-const updateSalesTimeframe = (value) => {
-  inventoryStore.updateSalesTimeframe(value)
-}
+const updateSalesTimeframe = (value) => inventoryStore.updateSalesTimeframe(value)
 
-const updateProfitTimeframe = (value) => {
-  inventoryStore.updateProfitTimeframe(value)
-}
+
+const updateProfitTimeframe = (value) => inventoryStore.updateProfitTimeframe(value)
+
 
 const isRenderingSales = ref(false)
 const isRenderingProfit = ref(false)
@@ -61,9 +59,7 @@ const rerenderSalesChart = async () => {
   isRenderingSales.value = true
 
   try {
-    if (salesTrendChart.value) {
-      salesTrendChart.value.destroy()
-    }
+    if (salesTrendChart.value) salesTrendChart.value.destroy()
     await nextTick()
     salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Trend', selectedTimeframe.value)
   } finally {
@@ -76,9 +72,7 @@ const rerenderProfitChart = async () => {
   isRenderingProfit.value = true
 
   try {
-    if (profitTrendChart.value) {
-      profitTrendChart.value.destroy()
-    }
+    if (profitTrendChart.value) profitTrendChart.value.destroy()
     await nextTick()
     profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Trend', profitTimeframe.value)
   } finally {
@@ -86,8 +80,6 @@ const rerenderProfitChart = async () => {
   }
 }
 
-watch(selectedTimeframe, rerenderSalesChart)
-watch(profitTimeframe, rerenderProfitChart)
 watch(textColor, () => {
   rerenderSalesChart()
   rerenderProfitChart()
@@ -99,12 +91,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (salesTrendChart.value) {
+  if (salesTrendChart.value)
     salesTrendChart.value.destroy()
-  }
-  if (profitTrendChart.value) {
+
+  if (profitTrendChart.value)
     profitTrendChart.value.destroy()
-  }
 })
 
 const stockColumns = [
@@ -148,10 +139,7 @@ const filteredStockData = computed(() => {
 })
 
 const handleCategoryFilter = () => categoryFilter.value = category.value
-
-
 const sortStockData = (column, order) => inventoryStore.sortInventory(column, order)
-
 
 const viewStockLevels = () => {
   if (inventoryStore.stockData.length === 0) {
@@ -222,7 +210,7 @@ const filteredSalesData = computed(() => {
   return result
 })
 
-const updateSalesReportTimeframe = (value) =>salesReportTimeframeFilter.value = value
+const updateSalesReportTimeframe = (value) => salesReportTimeframeFilter.value = value
 
 const generateSalesReport = async () => {
   try {
@@ -243,9 +231,9 @@ const exportStockData = () => {
     'Current Stock': item['current stock'],
     'Dead Stock': item['dead stock'],
     'Last Updated': item.lastUpdated
-  }));
+  }))
   inventoryStore.exportToCSV(stockData, 'stock-levels-report');
-};
+}
 
 const exportSalesReport = () => {
   const salesData = filteredSalesData.value.map(item => ({
@@ -253,9 +241,9 @@ const exportSalesReport = () => {
     'Quantity Sold': item.quantitySold,
     'Revenue': item.revenue,
     'Sale Date': item.date
-  }));
+  }))
   inventoryStore.exportToCSV(salesData, 'sales-report');
-};
+}
 </script>
 
 <template>
