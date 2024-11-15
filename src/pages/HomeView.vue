@@ -1,3 +1,12 @@
+<script setup>
+import { defineAsyncComponent } from 'vue'
+const ComboChart = defineAsyncComponent(() => import('../components/ComboChart.vue'))
+const StockBars = defineAsyncComponent(() => import('../components/StockBars.vue'))
+const DailyPnl = defineAsyncComponent(() => import('../components/DailyPnl.vue'))
+const DoughnutChart = defineAsyncComponent(() => import('../components/DoughnutChart.vue'))
+const DashboardTable = defineAsyncComponent(() => import('../components/DashboardTable.vue'))
+</script>
+
 <template>
   <q-page class="q-pa-md">
     <div class="row q-col-gutter-md">
@@ -47,11 +56,3 @@
     </div>
   </q-page>
 </template>
-<script setup>
-import { defineAsyncComponent } from 'vue'
-const ComboChart = defineAsyncComponent(() => import('../components/ComboChart.vue'))
-const StockBars = defineAsyncComponent(() => import('../components/StockBars.vue'))
-const DailyPnl = defineAsyncComponent(() => import('../components/DailyPnl.vue'))
-const DoughnutChart = defineAsyncComponent(() => import('../components/DoughnutChart.vue'))
-const DashboardTable = defineAsyncComponent(() => import('../components/DashboardTable.vue'))
-</script>

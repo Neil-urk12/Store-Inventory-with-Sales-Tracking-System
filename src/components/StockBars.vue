@@ -22,7 +22,7 @@ const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock
 </script>
 
 <template>
-  <div class="stock-bars bg-accent fit column justify-center">
+  <div class="stock-bars bg-accent fit column justify-center q-mb-md">
     <div class="stock-flex fit row no-wrap items-start content-start text-center text-black">
         <div class="bar green bg-green" :style="{ width: inStockWidth, minWidth: '10%' }">
             {{ inStock }}

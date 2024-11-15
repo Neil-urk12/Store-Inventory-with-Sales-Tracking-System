@@ -5,36 +5,14 @@ const dailyExpense = ref(500);
 </script>
 
 <template>
-  <div class="dailyPNLcontainer">
-    <div class="profitBox bg-accent">
-        <p>Today's Profit : +{{ dailyProfit }}</p>
-        <p>Today's Loss : -{{ dailyExpense }}</p>
+  <div class="dailyPNLcontainer fit column justify-center">
+    <div class="profitBox bg-accent q-mb-none fit row justify-evenly items-center q-py-md">
+        <p class="q-ma-none">Today's Profit : +{{ dailyProfit }}</p>
+        <p class="q-ma-none">Today's Loss : -{{ dailyExpense }}</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-*{
-  margin: 0;
-}
-p{
-  margin: 0;
-}
-.dailyPNLcontainer {
-  color:#fff;
-  width: 100%;
-  margin: 1rem auto;
-  display: flex;
-  flex-direction: column;
-}
-.profitBox {
-  display: flex;
-  justify-content: space-evenly;
-  align-items: center;
-  flex-direction: row;
-  padding: 1rem 2rem;
-  width: 100%;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-}
+.profitBox {border-radius: 12px}
 </style>

@@ -232,9 +232,6 @@ onUnmounted(() => {
   if (profitTrendChart.value) profitTrendChart.value.destroy()
 })
 
-const qSelectRef = ref(null)
-const qSelectRef2 = ref(null)
-
 const isUpdating = ref(false)
 let updateTimeout = null
 
@@ -272,13 +269,11 @@ const filteredStockData = computed(() => {
   return result
 })
 
-const handleCategoryFilter = () => {
-  categoryFilter.value = category.value
-}
+const handleCategoryFilter = () => categoryFilter.value = category.value
 
-const sortStockData = (column, order) => {
-  inventoryStore.sortInventory(column, order)
-}
+
+const sortStockData = (column, order) => inventoryStore.sortInventory(column, order)
+
 
 const viewStockLevels = () => {
   if (inventoryStore.stockData.length === 0) {
@@ -349,9 +344,7 @@ const filteredSalesData = computed(() => {
   return result
 })
 
-const updateSalesReportTimeframe = (value) => {
-  salesReportTimeframeFilter.value = value
-}
+const updateSalesReportTimeframe = (value) =>salesReportTimeframeFilter.value = value
 
 const generateSalesReport = async () => {
   try {
