@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
-import { useInventoryStore } from '../stores/inventoryStore' // Assuming inventory data is here
+import { useInventoryStore } from '../stores/inventoryStore'
+import { debounce } from 'lodash'
 
 Chart.register(...registerables)
 
@@ -11,12 +12,29 @@ const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 const salesTrendChart = ref(null)
 const profitTrendChart = ref(null)
 const selectedTimeframe = ref('weekly')
+const profitTimeframe = ref('weekly')
 const inventoryStore = useInventoryStore()
 const stockModal = ref(false)
 const stockColumns = [
-  { name: 'name', label: 'Product Name', field: 'name', align: 'left', sortable: true },
+  {
+    name: 'name',
+    label: 'Product Name',
+    field: 'name',
+    align: 'left',
+    sortable: true,
+    style: 'position: sticky; left: 0; z-index: 2;',
+    classes: $q.dark.isActive ? 'bg-dark sticky-column' : 'bg-grey-2 sticky-column'
+  },
   { name: 'current stock', label: 'Current Stock', field: 'current stock', align: 'left', sortable: true },
-  { name: 'dead stock', label: 'Dead Stock', field: 'dead stock', align: 'left', sortable: true }
+  { name: 'dead stock', label: 'Dead Stock', field: 'dead stock', align: 'left', sortable: true },
+  {
+    name: 'lastUpdated',
+    label: 'Last Updated',
+    field: row => new Date().toLocaleDateString(),
+    align: 'left',
+    sortable: true,
+    format: val => new Date(val).toLocaleDateString()
+  }
 ]
 
 const timeframeOptions = [
@@ -29,51 +47,89 @@ const timeframeOptions = [
 const chartData = {
   daily: {
     labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    sales: [30, 40, 50, 60, 70, 80, 90],
-    expenses: [20, 30, 40, 50, 60, 70, 80]
+    datasets: [
+      {
+        label: 'Sales',
+        data: [30, 40, 50, 60, 70, 80, 90],
+        type: 'line',
+        borderColor: '#42A5F5',
+        fill: false,
+        tension: 0.1
+      },
+      {
+        label: 'Expenses',
+        data: [20, 30, 40, 50, 60, 70, 80],
+        type: 'bar',
+        backgroundColor: '#FF6384'
+      }
+    ]
   },
   weekly: {
     labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-    sales: [150, 200, 250, 300],
-    expenses: [100, 150, 200, 250]
+    datasets: [
+      {
+        label: 'Sales',
+        data: [150, 200, 250, 300],
+        type: 'line',
+        borderColor: '#42A5F5',
+        fill: false,
+        tension: 0.1
+      },
+      {
+        label: 'Expenses',
+        data: [100, 150, 200, 250],
+        type: 'bar',
+        backgroundColor: '#FF6384'
+      }
+    ]
   },
   monthly: {
     labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    sales: [700, 800, 900, 1000, 1100, 1200],
-    expenses: [500, 600, 700, 800, 900, 1000]
+    datasets: [
+      {
+        label: 'Sales',
+        data: [700, 800, 900, 1000, 1100, 1200],
+        type: 'line',
+        borderColor: '#42A5F5',
+        fill: false,
+        tension: 0.1
+      },
+      {
+        label: 'Expenses',
+        data: [500, 600, 700, 800, 900, 1000],
+        type: 'bar',
+        backgroundColor: '#FF6384'
+      }
+    ]
   },
   yearly: {
     labels: ['2020', '2021', '2022', '2023'],
-    sales: [5000, 6000, 7000, 8000],
-    expenses: [4000, 5000, 6000, 7000]
+    datasets: [
+      {
+        label: 'Sales',
+        data: [5000, 6000, 7000, 8000],
+        type: 'line',
+        borderColor: '#42A5F5',
+        fill: false,
+        tension: 0.1
+      },
+      {
+        label: 'Expenses',
+        data: [4000, 5000, 6000, 7000],
+        type: 'bar',
+        backgroundColor: '#FF6384'
+      }
+    ]
   }
 }
 
-const createComboChart = (canvasId, title) => {
+const createComboChart = (canvasId, title, initialTimeframe) => {
   const ctx = document.getElementById(canvasId)
   const currentTextColor = $q.dark.isActive ? '#ffffff' : '#000000'
 
   return new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels: chartData.weekly.labels,
-      datasets: [
-        {
-          label: 'Sales',
-          data: chartData.weekly.sales,
-          type: 'line',
-          borderColor: '#42A5F5',
-          fill: false,
-          tension: 0.1
-        },
-        {
-          label: 'Expenses',
-          data: chartData.weekly.expenses,
-          type: 'bar',
-          backgroundColor: '#FF6384'
-        }
-      ]
-    },
+    data: chartData[initialTimeframe],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -113,129 +169,62 @@ const createComboChart = (canvasId, title) => {
   })
 }
 
-const showResults = ref({
-  columns : [
-    {
-      name: 'name',
-      required: true,
-      label: 'Dessert (100g serving)',
-      align: 'left',
-      field: row => row.name,
-      format: val => `${val}`,
-      sortable: true
-    },
-    { name: 'calories', align: 'center', label: 'Calories', field: 'calories', sortable: true },
-    { name: 'fat', label: 'Fat (g)', field: 'fat', sortable: true },
-    { name: 'carbs', label: 'Carbs (g)', field: 'carbs' },
-    { name: 'protein', label: 'Protein (g)', field: 'protein' },
-    { name: 'sodium', label: 'Sodium (mg)', field: 'sodium' },
-    { name: 'calcium', label: 'Calcium (%)', field: 'calcium', sortable: true, sort: (a, b) => parseInt(a, 10) - parseInt(b, 10) },
-    { name: 'iron', label: 'Iron (%)', field: 'iron', sortable: true, sort: (a, b) => parseInt(a, 10) - parseInt(b, 10) }
-  ],
-  rows : [
-    {
-      name: 'Frozen Yogurt',
-      calories: 159,
-      fat: 6.0,
-      carbs: 24,
-      protein: 4.0,
-      sodium: 87,
-      calcium: '14%',
-      iron: '1%'
-    },
-    {
-      name: 'Ice cream sandwich',
-      calories: 237,
-      fat: 9.0,
-      carbs: 37,
-      protein: 4.3,
-      sodium: 129,
-      calcium: '8%',
-      iron: '1%'
-    },
-    {
-      name: 'Eclair',
-      calories: 262,
-      fat: 16.0,
-      carbs: 23,
-      protein: 6.0,
-      sodium: 337,
-      calcium: '6%',
-      iron: '7%'
-    },
-    {
-      name: 'Cupcake',
-      calories: 305,
-      fat: 3.7,
-      carbs: 67,
-      protein: 4.3,
-      sodium: 413,
-      calcium: '3%',
-      iron: '8%'
-    },
-    {
-      name: 'Gingerbread',
-      calories: 356,
-      fat: 16.0,
-      carbs: 49,
-      protein: 3.9,
-      sodium: 327,
-      calcium: '7%',
-      iron: '16%'
-    },
-    {
-      name: 'Jelly bean',
-      calories: 375,
-      fat: 0.0,
-      carbs: 94,
-      protein: 0.0,
-      sodium: 50,
-      calcium: '0%',
-      iron: '0%'
-    },
-    {
-      name: 'Lollipop',
-      calories: 392,
-      fat: 0.2,
-      carbs: 98,
-      protein: 0,
-      sodium: 38,
-      calcium: '0%',
-      iron: '2%'
-    },
-    {
-      name: 'Honeycomb',
-      calories: 408,
-      fat: 3.2,
-      carbs: 87,
-      protein: 6.5,
-      sodium: 562,
-      calcium: '0%',
-      iron: '45%'
-    },
-    {
-      name: 'Donut',
-      calories: 452,
-      fat: 25.0,
-      carbs: 51,
-      protein: 4.9,
-      sodium: 326,
-      calcium: '2%',
-      iron: '22%'
-    },
-    {
-      name: 'KitKat',
-      calories: 518,
-      fat: 26.0,
-      carbs: 65,
-      protein: 7,
-      sodium: 54,
-      calcium: '12%',
-      iron: '6%'
+const updateSalesTimeframe = async (value) => {
+  if (value === selectedTimeframe.value) return
+  selectedTimeframe.value = value
+  await rerenderSalesChart()
+}
+
+const updateProfitTimeframe = async (value) => {
+  if (value === profitTimeframe.value) return
+  profitTimeframe.value = value
+  await rerenderProfitChart()
+}
+
+const isRenderingSales = ref(false)
+const isRenderingProfit = ref(false)
+
+const rerenderSalesChart = debounce(async () => {
+  if (isRenderingSales.value) return
+  isRenderingSales.value = true
+
+  try {
+    if (salesTrendChart.value) {
+      salesTrendChart.value.destroy()
+      salesTrendChart.value = null
     }
-  ]
+    await nextTick()
+    salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance', selectedTimeframe.value)
+  } finally {
+    isRenderingSales.value = false
+  }
+}, 300)
+
+const rerenderProfitChart = debounce(async () => {
+  if (isRenderingProfit.value) return
+  isRenderingProfit.value = true
+
+  try {
+    if (profitTrendChart.value) {
+      profitTrendChart.value.destroy()
+      profitTrendChart.value = null
+    }
+    await nextTick()
+    profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis', profitTimeframe.value)
+  } finally {
+    isRenderingProfit.value = false
+  }
+}, 300)
+
+onMounted(() => {
+  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance', selectedTimeframe.value)
+  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis', profitTimeframe.value)
 })
 
+onUnmounted(() => {
+  if (salesTrendChart.value) salesTrendChart.value.destroy()
+  if (profitTrendChart.value) profitTrendChart.value.destroy()
+})
 
 const qSelectRef = ref(null)
 const qSelectRef2 = ref(null)
@@ -250,44 +239,36 @@ watch(() => $q.dark.isActive, async () => {
   await nextTick()
   if (salesTrendChart.value) salesTrendChart.value.destroy()
   if (profitTrendChart.value) profitTrendChart.value.destroy()
-  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance')
-  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis')
+  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance', selectedTimeframe.value)
+  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis', profitTimeframe.value)
 
   updateTimeout = setTimeout(() => {
     isUpdating.value = false
   }, 100)
 })
 
-const updateCharts = () => {
-  const currentData = chartData[selectedTimeframe.value]
+const category = ref(null)
+const categoryFilter = ref(null)
+const categories = [
+  { label: 'Electronics', value: 'electronics' },
+  { label: 'Clothing', value: 'clothing' },
+  { label: 'Books', value: 'books' }
+]
 
-  if (salesTrendChart.value && profitTrendChart.value) {
-    salesTrendChart.value.data.labels = currentData.labels
-    salesTrendChart.value.data.datasets[0].data = currentData.sales
-    salesTrendChart.value.data.datasets[1].data = currentData.expenses
-    profitTrendChart.value.data.labels = currentData.labels
-    profitTrendChart.value.data.datasets[0].data = currentData.sales
-    profitTrendChart.value.data.datasets[1].data = currentData.expenses
-    salesTrendChart.value.update()
-    profitTrendChart.value.update()
+const filteredStockData = computed(() => {
+  let result = [...inventoryStore.stockData]
+  if (categoryFilter.value) {
+    result = result.filter(item => {
+      const stockItem = inventoryStore.items.find(i => i.name === item.name)
+      return stockItem && stockItem.category === categoryFilter.value
+    })
   }
+  return result
+})
+
+const handleCategoryFilter = () => {
+  categoryFilter.value = category.value
 }
-
-const exportReport = () => {
-
-}
-
-const generateFinancialReport = () => {
-
-}
-
-const generateSalesReport = () => {
-
-}
-
-const category = ref([
-
-])
 
 const sortStockData = (column, order) => {
   inventoryStore.sortInventory(column, order)
@@ -304,10 +285,80 @@ const viewStockLevels = () => {
   stockModal.value = true
 }
 
-onMounted(() => {
-  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Performance')
-  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Analysis')
+const salesReportDialog = ref(false)
+const salesReportColumns = [
+  {
+    name: 'productName',
+    label: 'Product Name',
+    field: 'productName',
+    align: 'left',
+    sortable: true,
+    style: 'position: sticky; left: 0; z-index: 2;',
+    classes: $q.dark.isActive ? 'bg-dark sticky-column' : 'bg-grey-2 sticky-column'
+  },
+  { name: 'quantitySold', label: 'Quantity Sold', field: 'quantitySold', align: 'right', sortable: true },
+  { name: 'revenue', label: 'Revenue', field: 'revenue', align: 'right', sortable: true },
+  {
+    name: 'date',
+    label: 'Sale Date',
+    field: 'date',
+    align: 'left',
+    sortable: true,
+    format: val => new Date(val).toLocaleDateString()
+  }
+]
+const rawSalesData = ref([])
+const salesReportTimeframe = ref(null)
+const salesReportTimeframeFilter = ref(null)
+const salesReportTimeframeOptions = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Yearly', value: 'yearly' }
+]
+
+const filteredSalesData = computed(() => {
+  let result = [...rawSalesData.value]
+  if (salesReportTimeframeFilter.value) {
+    const currentDate = new Date()
+    result = result.filter(item => {
+      const saleDate = new Date(item.date)
+      switch (salesReportTimeframeFilter.value) {
+        case 'daily':
+          return saleDate.toDateString() === currentDate.toDateString()
+        case 'weekly':
+          const weekAgo = new Date(currentDate)
+          weekAgo.setDate(currentDate.getDate() - 7)
+          return saleDate >= weekAgo
+        case 'monthly':
+          return saleDate.getMonth() === currentDate.getMonth() &&
+                 saleDate.getFullYear() === currentDate.getFullYear()
+        case 'yearly':
+          return saleDate.getFullYear() === currentDate.getFullYear()
+        default:
+          return true
+      }
+    })
+  }
+  return result
 })
+
+const updateSalesReportTimeframe = (value) => {
+  salesReportTimeframeFilter.value = value
+}
+
+const generateSalesReport = async () => {
+  try {
+    rawSalesData.value = await inventoryStore.generateSalesReport()
+    salesReportDialog.value = true
+  } catch (error) {
+    $q.notify({
+      color: 'negative',
+      message: 'Failed to generate sales report',
+      icon: 'error'
+    })
+  }
+}
 </script>
 
 <template>
@@ -319,12 +370,10 @@ onMounted(() => {
             <div class="section-containers full-width row wrap justify-evenly items-center content-start">
               <div class="sales ">
                 <div class="text-h6" :style="textColor">Sales Reports</div>
-                <q-select ref="qSelectRef2" :dark="$q.dark.isActive" v-model="selectedTimeframe" :options="timeframeOptions" label="Time Range" outlined dense class="q-mb-md" @update:model-value="updateCharts" />
                 <q-btn color="primary" label="Generate Sales Report" @click="generateSalesReport" class="q-mt-sm" />
               </div>
               <div class="financial">
-                <div class="text-h6" :style="textColor">Financial Analysis</div>
-                <q-select ref="qSelectRef" :dark="$q.dark.isActive" v-model="category" :options="categoryOptions" label="Category" />
+                <div class="text-h6" :style="textColor">Stock Reports</div>
                 <q-btn color="primary" label="View Stock Levels" @click="viewStockLevels" class="q-mt-sm" />
               </div>
               <div class="financial-analysis full-width column items-center">
@@ -340,9 +389,31 @@ onMounted(() => {
         <q-card class="chart-card bg-transparent">
           <q-card-section class="chart-section">
             <div class="chart-wrapper">
-              <div class="row q-mb-md items-center">
-                <q-btn color="primary" label="Rerender Sales Chart" @click="rerenderSalesChart" class="q-mr-md"/>
-                <q-btn-dropdown flat color="primary" :label="'Sales: ' + salesTimeframe" class="q-mr-md" :dark="$q.dark.isActive">
+              <div class="row q-ma-none items-center">
+                <q-btn
+                  round
+                  color="primary"
+                  :loading="isRenderingSales"
+                  :disable="isRenderingSales"
+                  @click="rerenderSalesChart"
+                  class="q-mr-md"
+                  icon="refresh"
+                >
+                  <q-tooltip anchor="center right" self="center left">
+                    Refresh Chart
+                  </q-tooltip>
+                  <template v-slot:loading>
+                    <q-spinner-dots />
+                  </template>
+                </q-btn>
+                <q-btn-dropdown
+                  flat
+                  color="primary"
+                  :label="'Sales: ' + selectedTimeframe"
+                  class="q-mr-md"
+                  :dark="$q.dark.isActive"
+                  :disable="isRenderingSales"
+                >
                   <q-list>
                     <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateSalesTimeframe(option.value)">
                       <q-item-section>{{ option.label }}</q-item-section>
@@ -351,13 +422,37 @@ onMounted(() => {
                 </q-btn-dropdown>
               </div>
               <div class="chart-container">
+                <div v-if="isRenderingSales" class="absolute-center">
+                  <q-spinner-dots size="40px" />
+                </div>
                 <canvas id="salesTrendChart"></canvas>
               </div>
             </div>
             <div class="chart-wrapper">
-              <div class="row q-mb-md items-center">
-                <q-btn color="primary" label="Rerender Profit Chart" @click="rerenderProfitChart" class="q-mr-md"/>
-                <q-btn-dropdown flat bg- color="primary" :label="'Profit: ' + profitTimeframe" class="q-mr-md">
+              <div class="row q-ma-none items-center">
+                <q-btn
+                  round
+                  color="primary"
+                  :loading="isRenderingProfit"
+                  :disable="isRenderingProfit"
+                  @click="rerenderProfitChart"
+                  class="q-mr-md"
+                  icon="refresh"
+                >
+                  <q-tooltip anchor="center right" self="center left">
+                    Refresh Chart
+                  </q-tooltip>
+                  <template v-slot:loading>
+                    <q-spinner-dots />
+                  </template>
+                </q-btn>
+                <q-btn-dropdown
+                  flat
+                  color="primary"
+                  :label="'Profit: ' + profitTimeframe"
+                  class="q-mr-md"
+                  :disable="isRenderingProfit"
+                >
                   <q-list>
                     <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateProfitTimeframe(option.value)">
                       <q-item-section>{{ option.label }}</q-item-section>
@@ -366,6 +461,9 @@ onMounted(() => {
                 </q-btn-dropdown>
               </div>
               <div class="chart-container">
+                <div v-if="isRenderingProfit" class="absolute-center">
+                  <q-spinner-dots size="40px" />
+                </div>
                 <canvas id="profitTrendChart"></canvas>
               </div>
             </div>
@@ -373,35 +471,34 @@ onMounted(() => {
         </q-card>
       </div>
     </div>
-    <q-table
-      v-if="showResults"
-      :rows="showResults.rows"
-      :columns="showResults.columns"
-      row-key="id"
-      class="q-mt-md"
-    >
-      <template v-slot:top>
-        <div class="q-table__title">{{ reportTitle }}</div>
-        <q-space />
-        <q-btn color="primary" icon="download" label="Export" @click="exportReport" />
-      </template>
-    </q-table>
-
-
     <q-dialog v-model="stockModal">
       <q-card>
         <q-card-section class="row items-center">
           <div class="text-h6">Stock Levels</div>
           <q-space />
-          <q-btn flat round dense icon="close" v-close-popup />
+          <q-select
+            v-model="category"
+            :options="categories"
+            label="Category"
+            outlined
+            dense
+            class="q-mx-md"
+            style="min-width: 200px"
+            emit-value
+            map-options
+            clearable
+            @update:model-value="handleCategoryFilter"
+          />
+          <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
 
         <q-card-section>
           <q-table
-            :rows="inventoryStore.stockData"
+            :rows="filteredStockData"
             :columns="stockColumns"
             row-key="name"
             :filter="filter"
+            no-data-label="I didn't find anything for you"
             :pagination.sync="pagination"
             :loading="loading"
             class="my-table"
@@ -435,6 +532,71 @@ onMounted(() => {
         </q-card-section>
       </q-card>
     </q-dialog>
+    <q-dialog v-model="salesReportDialog">
+      <q-card class="column no-wrap">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Sales Report</div>
+          <q-space />
+          <q-select
+            v-model="salesReportTimeframe"
+            :options="salesReportTimeframeOptions"
+            label="Time Range"
+            outlined
+            dense
+            class="q-mx-md"
+            emit-value
+            map-options
+            clearable
+            @update:model-value="updateSalesReportTimeframe"
+          />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section class="col q-pa-md">
+          <q-table
+            :rows="filteredSalesData"
+            :columns="salesReportColumns"
+            no-data-label="I didn't find anything for you"
+            row-key="productName"
+            :pagination="{ rowsPerPage: 10 }"
+            flat
+            class="fit"
+            :rows-per-page-options="[5, 10, 15, 20]"
+            virtual-scroll
+          >
+            <template v-slot:header="props">
+              <q-tr :props="props">
+                <q-th
+                  v-for="col in props.cols"
+                  :key="col.name"
+                  :props="props"
+                  class="text-weight-bold"
+                >
+                  {{ col.label }}
+                </q-th>
+              </q-tr>
+            </template>
+
+            <template v-slot:body="props">
+              <q-tr :props="props">
+                <q-td
+                  v-for="col in props.cols"
+                  :key="col.name"
+                  :props="props"
+                >
+                  <template v-if="col.name === 'price' || col.name === 'total'">
+                    {{ inventoryStore.formatCurrency(props.row[col.name]) }}
+                  </template>
+                  <template v-else>
+                    {{ props.row[col.name] }}
+                  </template>
+                </q-td>
+              </q-tr>
+            </template>
+          </q-table>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -458,8 +620,7 @@ onMounted(() => {
 }
 .chart-container {
   position: relative;
-  height: 250px;
-  width: 100%;
+  min-height: 300px;
 }
 :deep(.q-table) {
   color: var(--q-primary-text-color);
@@ -468,5 +629,23 @@ onMounted(() => {
   .chart-container {
     height: 250px;
   }
+}
+
+.sticky-column {
+  transition: background-color 0.3s ease;
+}
+
+:deep(.q-table__grid-content) {
+  overflow-x: auto !important;
+}
+
+/* Add box shadow for better visual separation */
+:deep(.sticky-column) {
+  box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode specific styles */
+.body--dark :deep(.sticky-column) {
+  box-shadow: 4px 0 6px -2px rgba(255, 255, 255, 0.1);
 }
 </style>

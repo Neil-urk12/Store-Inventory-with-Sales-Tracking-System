@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia'
 import { debounce } from 'lodash'
+import { date } from 'quasar'
+
+const { formatDate, addToDate } = date
 
 const mockData = [
   {
@@ -100,7 +103,7 @@ export const useInventoryStore = defineStore('inventory', {
     lowStocks: 0,
     outOfStocks: 0,
     error: null,
-    items: [],
+    items: mockData,
     searchQuery: '',
     categoryFilter: null,
     viewMode: 'list',
@@ -138,13 +141,29 @@ export const useInventoryStore = defineStore('inventory', {
       { name: 'actions', label: 'Actions', field: 'actions', align: 'right' }
     ],
     selectedItems: [],
-
+    dateRange: {
+      from: formatDate(new Date(), 'YYYY-MM-DD'),
+      to: formatDate(new Date(), 'YYYY-MM-DD')
+    },
     salesData: [
-      { id: 1, product: 'Gaming Laptop', quantity: 12, revenue: 24000, date: '2024-01-15', category: 'electronics' },
-      { id: 2, product: 'Wireless Mouse', quantity: 45, revenue: 2250, date: '2024-01-15', category: 'electronics' },
-      { id: 3, product: 'USB-C Cable', quantity: 100, revenue: 1500, date: '2024-01-16', category: 'accessories' },
-      { id: 4, product: 'Mechanical Keyboard', quantity: 20, revenue: 3000, date: '2024-01-16', category: 'electronics' },
-      { id: 5, product: 'Monitor Stand', quantity: 15, revenue: 750, date: '2024-01-17', category: 'accessories' }
+      {
+        productId: 1,
+        productName: 'Apple iPhone 13',
+        quantitySold: 50,
+        revenue: 49999.50
+      },
+      {
+        productId: 2,
+        productName: 'Samsung Galaxy S22',
+        quantitySold: 30,
+        revenue: 26999.70
+      },
+      {
+        productId: 3,
+        productName: 'Nike Air Max 270',
+        quantitySold: 75,
+        revenue: 9749.25
+      }
     ],
 
     inventoryData: [
@@ -313,6 +332,80 @@ export const useInventoryStore = defineStore('inventory', {
         this.items.push({...this.editedItem })
       }
       this.itemDialog = false
+    },
+    async generateSalesReport() {
+      try {
+        // In a real application, this would fetch from an API
+        // For now, return the mock data
+        return [
+          {
+            productName: 'Product A',
+            quantitySold: 50,
+            revenue: 5000,
+            date: new Date(2024, 0, 15) // January 15, 2024
+          },
+          {
+            productName: 'Product B',
+            quantitySold: 30,
+            revenue: 3000,
+            date: new Date(2024, 0, 14) // January 14, 2024
+          },
+          {
+            productName: 'Product C',
+            quantitySold: 20,
+            revenue: 2000,
+            date: new Date(2024, 0, 10) // January 10, 2024
+          },
+          {
+            productName: 'Product D',
+            quantitySold: 40,
+            revenue: 4000,
+            date: new Date() // Today
+          }
+        ]
+      } catch (error) {
+        console.error('Error generating sales report:', error)
+        throw error
+      }
+    },
+    formatDate(dateStr) {
+      if (!dateStr) return ''
+      return formatDate(new Date(dateStr), 'MM/DD/YY HH:mm:ss')
+    },
+
+    setDateRange(range) {
+      this.dateRange = {
+        from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
+        to: formatDate(new Date(range.to), 'YYYY-MM-DD')
+      }
+    },
+
+    async generateFinancialReport() {
+      try {
+        this.loading = true
+        // Mock financial data generation based on date range
+        const startDate = new Date(this.dateRange.from)
+        const endDate = new Date(this.dateRange.to)
+
+        // Mock data for demonstration
+        const report = {
+          totalRevenue: this.getTotalRevenue,
+          netProfit: this.getNetProfit,
+          period: `${this.formatDate(this.dateRange.from)} - ${this.formatDate(this.dateRange.to)}`,
+          summary: {
+            sales: Math.floor(Math.random() * 1000),
+            expenses: Math.floor(Math.random() * 500),
+            profit: Math.floor(Math.random() * 500)
+          }
+        }
+
+        return report
+      } catch (error) {
+        console.error('Error generating financial report:', error)
+        throw error
+      } finally {
+        this.loading = false
+      }
     },
   }
 })
