@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { debounce } from 'lodash'
 import { date } from 'quasar'
 
-const { formatDate, addToDate } = date
+const { formatDate } = date
 
 const mockData = [
   {
@@ -224,7 +224,8 @@ export const useInventoryStore = defineStore('inventory', {
       return state.items.map(item => ({
         name: item.name,
         'current stock': item.quantity,
-        'dead stock': 0 // Placeholder - needs actual dead stock data
+        'dead stock': 0, // Placeholder - needs actual dead stock data
+        lastUpdated: formatDate(new Date(), 'MM/DD/YYYY') // Adding current date as lastUpdated
       }))
     },
     getTotalRevenue: (state) => {
@@ -342,25 +343,25 @@ export const useInventoryStore = defineStore('inventory', {
             productName: 'Product A',
             quantitySold: 50,
             revenue: 5000,
-            date: new Date(2024, 0, 15) // January 15, 2024
+            date: date.formatDate(new Date(2024, 0, 15), 'MM/DD/YY HH:mm:ss') // January 15, 2024
           },
           {
             productName: 'Product B',
             quantitySold: 30,
             revenue: 3000,
-            date: new Date(2024, 0, 14) // January 14, 2024
+            date: date.formatDate(new Date(2024, 0, 14), 'MM/DD/YY HH:mm:ss') // January 14, 2024
           },
           {
             productName: 'Product C',
             quantitySold: 20,
             revenue: 2000,
-            date: new Date(2024, 0, 10) // January 10, 2024
+            date: date.formatDate(new Date(2024, 0, 10), 'MM/DD/YY HH:mm:ss') // January 10, 2024
           },
           {
             productName: 'Product D',
             quantitySold: 40,
             revenue: 4000,
-            date: new Date() // Today
+            date: date.formatDate(new Date(), 'MM/DD/YY HH:mm:ss')
           }
         ]
       } catch (error) {

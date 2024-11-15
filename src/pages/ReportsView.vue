@@ -15,6 +15,13 @@ const selectedTimeframe = ref('weekly')
 const profitTimeframe = ref('weekly')
 const inventoryStore = useInventoryStore()
 const stockModal = ref(false)
+const filter = ref('')
+const pagination = ref({
+  sortBy: 'name',
+  descending: false,
+  page: 1,
+  rowsPerPage: 5,
+})
 const stockColumns = [
   {
     name: 'name',
@@ -30,10 +37,9 @@ const stockColumns = [
   {
     name: 'lastUpdated',
     label: 'Last Updated',
-    field: row => new Date().toLocaleDateString(),
+    field: 'lastUpdated',
     align: 'left',
-    sortable: true,
-    format: val => new Date(val).toLocaleDateString()
+    sortable: true
   }
 ]
 
@@ -304,7 +310,7 @@ const salesReportColumns = [
     field: 'date',
     align: 'left',
     sortable: true,
-    format: val => new Date(val).toLocaleDateString()
+    format: val => date.formatDate(new Date(), 'MM/DD/YYYY')
   }
 ]
 const rawSalesData = ref([])
@@ -499,8 +505,9 @@ const generateSalesReport = async () => {
             row-key="name"
             :filter="filter"
             no-data-label="I didn't find anything for you"
-            :pagination.sync="pagination"
-            :loading="loading"
+            v-model:pagination="pagination"
+            :loading="inventoryStore.loading"
+            :rows-per-page-options="[5, 10, 15, 20]"
             class="my-table"
           >
             <template v-slot:header="props">
