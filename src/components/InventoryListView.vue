@@ -24,11 +24,104 @@
           />
         </q-td>
       </template>
+      <template v-slot:body-cell-name="props">
+        <q-td :props="props">
+          <q-popup-edit
+            v-model="props.row.name"
+            v-slot="scope"
+            buttons
+            @save-handler="updateField(props.row, 'name', scope.value)"
+          >
+            <q-input
+              v-model="scope.value"
+              dense
+              autofocus
+            />
+          </q-popup-edit>
+          {{ props.row.name }}
+        </q-td>
+      </template>
+      <template v-slot:body-cell-sku="props">
+        <q-td :props="props">
+          <q-popup-edit
+            v-model="props.row.sku"
+            v-slot="scope"
+            buttons
+            @save-handler="updateField(props.row, 'sku', scope.value)"
+          >
+            <q-input
+              v-model="scope.value"
+              dense
+              autofocus
+            />
+          </q-popup-edit>
+          {{ props.row.sku }}
+        </q-td>
+      </template>
+      <template v-slot:body-cell-category="props">
+        <q-td :props="props">
+          <q-popup-edit
+            v-model="props.row.category"
+            v-slot="scope"
+            buttons
+            @save-handler="updateField(props.row, 'category', scope.value)"
+          >
+            <q-select
+              v-model="scope.value"
+              :options="categoryOptions"
+              dense
+              autofocus
+              emit-value
+              map-options
+            />
+          </q-popup-edit>
+          {{ props.row.category }}
+        </q-td>
+      </template>
       <template v-slot:body-cell-quantity="props">
         <q-td :props="props">
+          <q-popup-edit
+            v-model="props.row.quantity"
+            v-slot="scope"
+            buttons
+            @save-handler="updateField(props.row, 'quantity', Number(scope.value))"
+          >
+            <q-input
+              v-model.number="scope.value"
+              type="number"
+              dense
+              autofocus
+              :rules="[
+                val => val >= 0 || 'Quantity cannot be negative'
+              ]"
+            />
+          </q-popup-edit>
           <q-badge :color="getStockColor(props.row.quantity)">
             {{ props.row.quantity }}
           </q-badge>
+        </q-td>
+      </template>
+      <template v-slot:body-cell-price="props">
+        <q-td :props="props">
+          <q-popup-edit
+            v-model="props.row.price"
+            v-slot="scope"
+            buttons
+            @save-handler="updateField(props.row, 'price', Number(scope.value))"
+          >
+            <q-input
+              v-model.number="scope.value"
+              type="number"
+              dense
+              autofocus
+              prefix="$"
+              :step="0.01"
+              :rules="[
+                val => val >= 0 || 'Price cannot be negative'
+              ]"
+            />
+          </q-popup-edit>
+          {{ formatPrice(props.row.price) }}
         </q-td>
       </template>
       <template v-slot:body-cell-actions="props">
@@ -56,11 +149,28 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { computed, ref } from 'vue'
+import { useQuasar } from 'quasar'
 
+const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const loading = ref(false)
 
 const items = computed(() => inventoryStore.sortedItems)
+
+const categoryOptions = [
+  'Electronics',
+  'Clothing',
+  'Books',
+  'Food',
+  'Toys',
+  'Sports',
+  'Home',
+  'Other'
+]
+
+const formatPrice = (price) => {
+  return `$${Number(price).toFixed(2)}`
+}
 
 const columns = [
   {
@@ -91,6 +201,33 @@ const pagination = ref({
   page: 1,
   rowsPerPage: 10
 })
+
+async function updateField(item, field, value) {
+  try {
+    if (value === item[field]) return
+
+    loading.value = true
+    const updatedItem = { ...item, [field]: value }
+    await inventoryStore.updateItem(updatedItem)
+
+    $q.notify({
+      type: 'positive',
+      message: `Successfully updated ${field}`,
+      position: 'top',
+      timeout: 2000
+    })
+  } catch (error) {
+    console.error('Error updating item:', error)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to update ${field}: ${error.message}`,
+      position: 'top',
+      timeout: 3000
+    })
+  } finally {
+    loading.value = false
+  }
+}
 
 function getStockColor(quantity) {
   if (quantity <= 0) return 'negative'
@@ -124,8 +261,8 @@ function customSort(rows, sortBy, descending) {
   :deep(.q-table) {
     td[style*="position: sticky"],
     th[style*="position: sticky"] {
-      background: lightblue;
-      color: black;
+      background: #f5c353;
+      color: #0b1937;
       max-width: 200px;
       white-space: normal;
     }

@@ -553,7 +553,7 @@ export const useInventoryStore = defineStore('inventory', {
       const headers = Object.keys(data[0]);
       const csvContent = [
         headers.join(','), // Header row
-        ...data.map(row => 
+        ...data.map(row =>
           headers.map(header => {
             let cell = row[header]
             // Handle special cases (objects, arrays, etc.)
@@ -571,14 +571,27 @@ export const useInventoryStore = defineStore('inventory', {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-      
+
       link.setAttribute('href', url);
       link.setAttribute('download', `${filename}.csv`);
       link.style.visibility = 'hidden';
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    },
+    async updateItem(item) {
+      try {
+        const itemRef = doc(db, 'inventory', item.id)
+        await updateDoc(itemRef, item)
+
+        const index = this.items.findIndex(i => i.id === item.id)
+        if (index !== -1)
+          this.items[index] = { ...this.items[index], ...item }
+      } catch (error) {
+        console.error('Error updating item:', error)
+        throw error
+      }
     },
   }
 })
