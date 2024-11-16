@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { debounce } from 'lodash'
 import { date } from 'quasar'
+import { doc, updateDoc, addDoc, collection, query, orderBy, getDocs, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase/firebaseconfig'
 
 const { formatDate } = date
 
@@ -165,7 +167,13 @@ export const useInventoryStore = defineStore('inventory', {
         revenue: 9749.25
       }
     ],
-
+    selectedTimeframe: 'daily',
+    profitTimeframe: 'daily',
+    cashFlowTransactions: {
+      Cash: [],
+      GCash: [],
+      Growsari: []
+    },
     inventoryData: [
       { id: 1, product: 'Gaming Laptop', currentStock: 8, minStock: 5, maxStock: 20, lastRestocked: '2024-01-10', category: 'electronics' },
       { id: 2, product: 'Wireless Mouse', currentStock: 35, minStock: 20, maxStock: 100, lastRestocked: '2024-01-12', category: 'electronics' },
@@ -192,8 +200,6 @@ export const useInventoryStore = defineStore('inventory', {
       { id: 2, product: 'Wireless Mouse', totalSold: 45, revenue: 2250 },
       { id: 3, product: 'USB-C Cable', totalSold: 100, revenue: 1500 }
     ],
-    selectedTimeframe: 'weekly',
-    profitTimeframe: 'weekly',
     chartData: {
       daily: {
         labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -271,6 +277,11 @@ export const useInventoryStore = defineStore('inventory', {
           }
         ]
       }
+    },
+    cashFlowTransactions: {
+      Cash: [],
+      GCash: [],
+      Growsari: []
     }
   }),
 
@@ -593,5 +604,67 @@ export const useInventoryStore = defineStore('inventory', {
         throw error
       }
     },
+    async addCashFlowTransaction(paymentMethod, transaction) {
+      try {
+        const docRef = await addDoc(collection(db, `cashFlow_${paymentMethod}`), {
+          ...transaction,
+          date: serverTimestamp()
+        })
+
+        this.cashFlowTransactions[paymentMethod].push({
+          ...transaction,
+          id: docRef.id,
+          date: new Date()
+        })
+
+        return true
+      } catch (error) {
+        console.error('Error adding transaction:', error)
+        return false
+      }
+    },
+
+    async fetchCashFlowTransactions(paymentMethod) {
+      try {
+        const q = query(
+          collection(db, `cashFlow_${paymentMethod}`),
+          orderBy('date', 'desc')
+        )
+
+        const querySnapshot = await getDocs(q)
+        this.cashFlowTransactions[paymentMethod] = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date?.toDate() || new Date()
+        }))
+
+        return true
+      } catch (error) {
+        console.error('Error fetching transactions:', error)
+        return false
+      }
+    },
+
+    getBalance(paymentMethod) {
+      if (!this.cashFlowTransactions[paymentMethod]) {
+        return 0
+      }
+      return this.cashFlowTransactions[paymentMethod].reduce((total, transaction) => {
+        return total + (transaction.type === 'in' ? transaction.value : -transaction.value)
+      }, 0)
+    },
+
+    formatCurrency(value) {
+      if (!value && value !== 0) {
+        return new Intl.NumberFormat('en-PH', {
+          style: 'currency',
+          currency: 'PHP'
+        }).format(0)
+      }
+      return new Intl.NumberFormat('en-PH', {
+        style: 'currency',
+        currency: 'PHP'
+      }).format(value)
+    }
   }
 })
