@@ -3,101 +3,9 @@ import { debounce } from 'lodash'
 import { date } from 'quasar'
 import { doc, updateDoc, addDoc, collection, query, orderBy, getDocs, serverTimestamp, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase/firebaseconfig'
+import { mockItems, mockSalesData, mockInventoryData, mockFinancialData, mockLowStockAlerts, mockTopSellingProducts } from '../data/mockdata'
 
 const { formatDate } = date
-
-const mockData = [
-  {
-    id: 1,
-    name: 'Apple iPhone 13',
-    sku: 'IPH13',
-    category: 'electronics',
-    quantity: 10,
-    price: 999.99,
-    image: 'https://picsum.photos/200/300'
-  },
-  {
-    id: 2,
-    name: 'Samsung Galaxy S22',
-    sku: 'SGS22',
-    category: 'electronics',
-    quantity: 5,
-    price: 899.99,
-    image: 'https://picsum.photos/200/301'
-  },
-  {
-    id: 3,
-    name: 'Nike Air Max 270',
-    sku: 'NAM270',
-    category: 'clothing',
-    quantity: 20,
-    price: 129.99,
-    image: 'https://picsum.photos/200/302'
-  },
-  {
-    id: 4,
-    name: 'Adidas Superstar',
-    sku: 'ADSUP',
-    category: 'clothing',
-    quantity: 15,
-    price: 99.99,
-    image: 'https://picsum.photos/200/303'
-  },
-  {
-    id: 5,
-    name: 'Harry Potter and the Philosopher\'s Stone',
-    sku: 'HP1',
-    category: 'books',
-    quantity: 30,
-    price: 19.99,
-    image: 'https://picsum.photos/200/304'
-  },
-  {
-    id: 6,
-    name: 'The Lord of the Rings',
-    sku: 'LOTR',
-    category: 'books',
-    quantity: 25,
-    price: 29.99,
-    image: 'https://picsum.photos/200/305'
-  },
-  {
-    id: 7,
-    name: 'Apple MacBook Air',
-    sku: 'MBA',
-    category: 'electronics',
-    quantity: 8,
-    price: 1499.99,
-    image: 'https://picsum.photos/200/306'
-  },
-  {
-    id: 8,
-    name: 'Dell Inspiron 15',
-    sku: 'DIN15',
-    category: 'electronics',
-    quantity: 12,
-    price: 699.99,
-    image: 'https://picsum.photos/200/307'
-  },
-  {
-    id: 9,
-    name: 'Nike Air Force 1',
-    sku: 'NAF1',
-    category: 'clothing',
-    quantity: 18,
-    price: 89.99,
-    image: 'https://picsum.photos/200/308'
-  },
-  {
-    id: 10,
-    name: 'Adidas Yeezy Boost 350',
-    sku: 'ADYB350',
-    category: 'clothing',
-    quantity: 10,
-    price: 299.99,
-    image: 'https://picsum.photos/200/309'
-  }
-]
 
 export const useInventoryStore = defineStore('inventory', {
   state: () => ({
@@ -105,7 +13,7 @@ export const useInventoryStore = defineStore('inventory', {
     lowStocks: 0,
     outOfStocks: 0,
     error: null,
-    items: mockData,
+    items: mockItems,
     searchQuery: '',
     categoryFilter: null,
     itemDialog: false,
@@ -147,26 +55,7 @@ export const useInventoryStore = defineStore('inventory', {
       from: formatDate(new Date(), 'YYYY-MM-DD'),
       to: formatDate(new Date(), 'YYYY-MM-DD')
     },
-    salesData: [
-      {
-        productId: 1,
-        productName: 'Apple iPhone 13',
-        quantitySold: 50,
-        revenue: 49999.50
-      },
-      {
-        productId: 2,
-        productName: 'Samsung Galaxy S22',
-        quantitySold: 30,
-        revenue: 26999.70
-      },
-      {
-        productId: 3,
-        productName: 'Nike Air Max 270',
-        quantitySold: 75,
-        revenue: 9749.25
-      }
-    ],
+    salesData: mockSalesData,
     selectedTimeframe: 'daily',
     profitTimeframe: 'daily',
     cashFlowTransactions: {
@@ -174,32 +63,10 @@ export const useInventoryStore = defineStore('inventory', {
       GCash: [],
       Growsari: []
     },
-    inventoryData: [
-      { id: 1, product: 'Gaming Laptop', currentStock: 8, minStock: 5, maxStock: 20, lastRestocked: '2024-01-10', category: 'electronics' },
-      { id: 2, product: 'Wireless Mouse', currentStock: 35, minStock: 20, maxStock: 100, lastRestocked: '2024-01-12', category: 'electronics' },
-      { id: 3, product: 'USB-C Cable', currentStock: 150, minStock: 50, maxStock: 300, lastRestocked: '2024-01-14', category: 'accessories' },
-      { id: 4, product: 'Mechanical Keyboard', currentStock: 15, minStock: 10, maxStock: 50, lastRestocked: '2024-01-15', category: 'electronics' },
-      { id: 5, product: 'Monitor Stand', currentStock: 25, minStock: 15, maxStock: 60, lastRestocked: '2024-01-16', category: 'accessories' }
-    ],
-
-    financialData: [
-      { id: 1, category: 'Revenue', amount: 31500, date: '2024-01-15', type: 'income' },
-      { id: 2, category: 'Cost of Goods', amount: -18900, date: '2024-01-15', type: 'expense' },
-      { id: 3, category: 'Operating Expenses', amount: -5250, date: '2024-01-15', type: 'expense' },
-      { id: 4, category: 'Tax', amount: -1470, date: '2024-01-15', type: 'expense' },
-      { id: 5, category: 'Net Profit', amount: 5880, date: '2024-01-15', type: 'summary' }
-    ],
-
-    lowStockAlerts: [
-      { id: 1, product: 'Gaming Laptop', currentStock: 8, minStock: 5, status: 'warning' },
-      { id: 2, product: 'Mechanical Keyboard', currentStock: 15, minStock: 10, status: 'warning' }
-    ],
-
-    topSellingProducts: [
-      { id: 1, product: 'Gaming Laptop', totalSold: 12, revenue: 24000 },
-      { id: 2, product: 'Wireless Mouse', totalSold: 45, revenue: 2250 },
-      { id: 3, product: 'USB-C Cable', totalSold: 100, revenue: 1500 }
-    ],
+    inventoryData: mockInventoryData,
+    financialData: mockFinancialData,
+    lowStockAlerts: mockLowStockAlerts,
+    topSellingProducts: mockTopSellingProducts,
     chartData: {
       daily: {
         labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -352,7 +219,7 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         // const response = await fetch('/api/inventory')
         // this.items = await response.json()
-        this.items = mockData
+        this.items = mockItems
       } catch (err) {
         this.error = 'Failed to load inventory. Please try again.'
         console.error('Error loading inventory:', err)
@@ -670,11 +537,11 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         const docRef = doc(db, `cashFlow_${paymentMethod}`, transactionId)
         await deleteDoc(docRef)
-        
+
         // Update local state
         this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
           .filter(t => t.id !== transactionId)
-        
+
         return true
       } catch (error) {
         console.error('Error deleting transaction:', error)
@@ -689,11 +556,11 @@ export const useInventoryStore = defineStore('inventory', {
           ...updatedData,
           date: serverTimestamp()
         })
-        
+
         // Update local state
         this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
           .map(t => t.id === transactionId ? { ...t, ...updatedData, date: new Date() } : t)
-        
+
         return true
       } catch (error) {
         console.error('Error updating transaction:', error)
@@ -710,14 +577,11 @@ export const useInventoryStore = defineStore('inventory', {
         acc[item.category] += item.quantity * item.price
         return acc
       }, {})
-
-      // Convert to Chart.js format
-      const labels = Object.keys(categoryData).map(category => 
+      const labels = Object.keys(categoryData).map(category =>
         category.charAt(0).toUpperCase() + category.slice(1)
       )
       const data = Object.values(categoryData)
 
-      // Generate colors for each category
       const colors = [
         '#FF6384', // Red
         '#36A2EB', // Blue
