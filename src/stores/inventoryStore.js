@@ -700,5 +700,78 @@ export const useInventoryStore = defineStore('inventory', {
         return false
       }
     },
+    getCategoryChartData() {
+      // Group items by category and calculate total sales
+      const categoryData = this.items.reduce((acc, item) => {
+        if (!acc[item.category]) {
+          acc[item.category] = 0
+        }
+        // Assuming each item's sales contribution is quantity * price
+        acc[item.category] += item.quantity * item.price
+        return acc
+      }, {})
+
+      // Convert to Chart.js format
+      const labels = Object.keys(categoryData).map(category => 
+        category.charAt(0).toUpperCase() + category.slice(1)
+      )
+      const data = Object.values(categoryData)
+
+      // Generate colors for each category
+      const colors = [
+        '#FF6384', // Red
+        '#36A2EB', // Blue
+        '#FFCE56', // Yellow
+        '#4BC0C0', // Teal
+        '#9966FF', // Purple
+        '#FF9F40'  // Orange
+      ]
+
+      return {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: colors.slice(0, labels.length),
+          hoverBackgroundColor: colors.slice(0, labels.length)
+        }]
+      }
+    },
+
+    getCategoryChartOptions(textColor) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              color: textColor,
+              font: {
+                size: 12
+              }
+            }
+          },
+          title: {
+            display: true,
+            text: 'Sales by Category',
+            color: textColor,
+            font: {
+              size: 16
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const label = context.label || ''
+                const value = context.raw || 0
+                const total = context.dataset.data.reduce((a, b) => a + b, 0)
+                const percentage = ((value / total) * 100).toFixed(1)
+                return `${label}: ${this.formatCurrency(value)} (${percentage}%)`
+              }
+            }
+          }
+        }
+      }
+    },
   }
 })

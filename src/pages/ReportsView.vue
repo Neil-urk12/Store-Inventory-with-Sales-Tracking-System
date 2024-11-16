@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, watch, nextTick, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, onMounted, computed, watch, onUnmounted, defineAsyncComponent } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
 import { useInventoryStore } from '../stores/inventoryStore'
@@ -12,7 +12,7 @@ Chart.register(...registerables)
 const $q = useQuasar()
 const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 const salesTrendChart = ref(null)
-const profitTrendChart = ref(null)
+const categoryChart = ref(null)
 const inventoryStore = useInventoryStore()
 const stockModal = ref(false)
 const salesReportDialog = ref(false)
@@ -20,7 +20,6 @@ const cashFlowDialog = ref(false)
 const selectedPaymentMethod = ref('')
 
 const selectedTimeframe = computed(() => inventoryStore.selectedTimeframe)
-const profitTimeframe = computed(() => inventoryStore.profitTimeframe)
 
 const timeframeOptions = [
   { label: 'Daily', value: 'daily' },
@@ -35,50 +34,64 @@ const paymentMethods = [
   { label: 'Growsari', value: 'Growsari', icon: 'store', color: 'orange' }
 ]
 
-const createComboChart = (canvasId, title, timeframe) => {
-  const canvas = document.getElementById(canvasId)
-  if (!canvas) return null
+const updateSalesTimeframe = (value) => inventoryStore.updateSalesTimeframe(value)
 
-  const ctx = canvas.getContext('2d')
-  const chartData = inventoryStore.getChartData(timeframe)
-  const chartOptions = inventoryStore.getChartOptions(textColor.value)
+const isRenderingSales = ref(false)
+const isRenderingCategory = ref(false)
 
-  return new Chart(ctx, {
+const renderSalesChart = async () => {
+  if (salesTrendChart.value) {
+    salesTrendChart.value.destroy()
+  }
+
+  const ctx = document.getElementById('salesTrendChart')
+  if (!ctx) return
+
+  const textColor = $q.dark.isActive ? '#ffffff' : '#000000'
+
+  salesTrendChart.value = new Chart(ctx, {
     type: 'bar',
-    data: chartData,
-    options: chartOptions
+    data: inventoryStore.getChartData(selectedTimeframe.value),
+    options: inventoryStore.getChartOptions(textColor)
   })
 }
 
-const updateSalesTimeframe = (value) => inventoryStore.updateSalesTimeframe(value)
-const updateProfitTimeframe = (value) => inventoryStore.updateProfitTimeframe(value)
+const renderCategoryChart = async () => {
+  if (categoryChart.value) {
+    categoryChart.value.destroy()
+  }
 
-const isRenderingSales = ref(false)
-const isRenderingProfit = ref(false)
+  const ctx = document.getElementById('categoryChart')
+  if (!ctx) return
+
+  const textColor = $q.dark.isActive ? '#ffffff' : '#000000'
+
+  categoryChart.value = new Chart(ctx, {
+    type: 'pie',
+    data: inventoryStore.getCategoryChartData(),
+    options: inventoryStore.getCategoryChartOptions(textColor)
+  })
+}
 
 const rerenderSalesChart = async () => {
   if (isRenderingSales.value) return
   isRenderingSales.value = true
 
   try {
-    if (salesTrendChart.value) salesTrendChart.value.destroy()
-    await nextTick()
-    salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Trend', selectedTimeframe.value)
+    await renderSalesChart()
   } finally {
     isRenderingSales.value = false
   }
 }
 
-const rerenderProfitChart = async () => {
-  if (isRenderingProfit.value) return
-  isRenderingProfit.value = true
+const rerenderCategoryChart = async () => {
+  if (isRenderingCategory.value) return
+  isRenderingCategory.value = true
 
   try {
-    if (profitTrendChart.value) profitTrendChart.value.destroy()
-    await nextTick()
-    profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Trend', profitTimeframe.value)
+    await renderCategoryChart()
   } finally {
-    isRenderingProfit.value = false
+    isRenderingCategory.value = false
   }
 }
 
@@ -87,22 +100,19 @@ const openCashFlow = (method) => {
   cashFlowDialog.value = true
 }
 
-watch(textColor, () => {
-  rerenderSalesChart()
-  rerenderProfitChart()
+watch(() => $q.dark.isActive, async () => {
+  await renderSalesChart()
+  await renderCategoryChart()
 })
 
-onMounted(() => {
-  salesTrendChart.value = createComboChart('salesTrendChart', 'Sales Trend', selectedTimeframe.value)
-  profitTrendChart.value = createComboChart('profitTrendChart', 'Profit Trend', profitTimeframe.value)
+onMounted(async () => {
+  await renderSalesChart()
+  await renderCategoryChart()
 })
 
 onUnmounted(() => {
-  if (salesTrendChart.value)
-    salesTrendChart.value.destroy()
-
-  if (profitTrendChart.value)
-    profitTrendChart.value.destroy()
+  if (salesTrendChart.value) salesTrendChart.value.destroy()
+  if (categoryChart.value) categoryChart.value.destroy()
 })
 
 const viewStockLevels = () => {
@@ -123,9 +133,6 @@ const viewStockLevels = () => {
       <div class="col-12 col-md-6 col-lg-4">
         <q-card class="report-card bg-transparent">
           <q-card-section>
-            <div class="text-h6">Reports</div>
-          </q-card-section>
-          <q-card-section>
             <div class="section-containers full-width row wrap justify-evenly items-center content-start">
               <div class="sales">
                 <div class="text-h6" :style="textColor">Sales Reports</div>
@@ -140,6 +147,34 @@ const viewStockLevels = () => {
                 <q-btn-group spread>
                   <q-btn v-for="method in paymentMethods" :key="method.value" :color="method.color" :icon="method.icon" @click="openCashFlow(method.value)" class="q-mt-sm" />
                 </q-btn-group>
+              </div>
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <div class="chart-wrapper">
+              <div class="row q-ma-none items-center">
+                <q-btn
+                  round
+                  color="primary"
+                  :loading="isRenderingCategory"
+                  :disable="isRenderingCategory"
+                  @click="rerenderCategoryChart"
+                  class="q-mr-md"
+                  icon="refresh"
+                >
+                  <q-tooltip anchor="center right" self="center left">
+                    Refresh Chart
+                  </q-tooltip>
+                  <template v-slot:loading>
+                    <q-spinner-dots />
+                  </template>
+                </q-btn>
+              </div>
+              <div class="chart-container">
+                <div v-if="isRenderingCategory" class="absolute-center">
+                  <q-spinner-dots size="40px" />
+                </div>
+                <canvas id="categoryChart"></canvas>
               </div>
             </div>
           </q-card-section>
@@ -186,46 +221,6 @@ const viewStockLevels = () => {
                   <q-spinner-dots size="40px" />
                 </div>
                 <canvas id="salesTrendChart"></canvas>
-              </div>
-            </div>
-            <div class="chart-wrapper">
-              <div class="row q-ma-none items-center">
-                <q-btn
-                  round
-                  color="primary"
-                  :loading="isRenderingProfit"
-                  :disable="isRenderingProfit"
-                  @click="rerenderProfitChart"
-                  class="q-mr-md"
-                  icon="refresh"
-                >
-                  <q-tooltip anchor="center right" self="center left">
-                    Refresh Chart
-                  </q-tooltip>
-                  <template v-slot:loading>
-                    <q-spinner-dots />
-                  </template>
-                </q-btn>
-                <q-btn-dropdown
-                  flat
-                  color="primary"
-                  :label="'Profit: ' + profitTimeframe"
-                  class="q-mr-md"
-                  :dark="$q.dark.isActive"
-                  :disable="isRenderingProfit"
-                >
-                  <q-list>
-                    <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateProfitTimeframe(option.value)">
-                      <q-item-section>{{ option.label }}</q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-btn-dropdown>
-              </div>
-              <div class="chart-container">
-                <div v-if="isRenderingProfit" class="absolute-center">
-                  <q-spinner-dots size="40px" />
-                </div>
-                <canvas id="profitTrendChart"></canvas>
               </div>
             </div>
           </q-card-section>
