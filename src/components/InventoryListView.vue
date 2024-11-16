@@ -96,7 +96,7 @@
               ]"
             />
           </q-popup-edit>
-          <q-badge :color="getStockColor(props.row.quantity)">
+          <q-badge :color="getStockColor(props.row.quantity)" class="text-black text-weight-medium stock-badge">
             {{ props.row.quantity }}
           </q-badge>
         </q-td>
@@ -267,6 +267,10 @@ function customSort(rows, sortBy, descending) {
       white-space: normal;
     }
   }
+}
+.stock-badge {
+  font-size: 14px;
+  padding: 6px 10px;
 }
 @media (max-width: 599px) {
   .q-table {
