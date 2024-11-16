@@ -78,6 +78,32 @@
                     {{ props.row.type.toUpperCase() }}
                   </q-badge>
                 </template>
+                <template v-else-if="col.name === 'actions'">
+                  <div class="row items-center justify-end">
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="primary"
+                      icon="edit"
+                      @click="editTransaction(props.row)"
+                      :disable="loading"
+                    >
+                      <q-tooltip>Edit Transaction</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="negative"
+                      icon="delete"
+                      @click="confirmDelete(props.row)"
+                      :disable="loading"
+                    >
+                      <q-tooltip>Delete Transaction</q-tooltip>
+                    </q-btn>
+                  </div>
+                </template>
                 <template v-else>
                   {{ col.format ? col.format(props.row[col.name]) : props.row[col.name] }}
                 </template>
@@ -98,16 +124,13 @@
   <q-dialog v-model="showAddDialog" persistent>
     <q-card style="min-width: 350px">
       <q-card-section>
-        <div class="text-h6">Add Transaction</div>
+        <div class="text-h6">{{ editMode ? 'Edit' : 'Add' }} Transaction</div>
       </q-card-section>
 
       <q-card-section class="q-pt-none">
         <q-select
           v-model="newTransaction.type"
-          :options="[
-            { label: 'Money In', value: 'in' },
-            { label: 'Money Out', value: 'out' }
-          ]"
+          :options="transactionTypes"
           label="Type"
           option-label="label"
           option-value="value"
@@ -117,8 +140,13 @@
           class="q-mb-md"
           :disable="loading"
         >
-          <template #option="{ opt }">
-            <q-item v-bind="opt">
+          <template #option="{ opt, selected, toggleOption }">
+            <q-item
+              clickable
+              v-close-popup
+              :active="selected"
+              @click="toggleOption(opt)"
+            >
               <q-item-section>
                 <q-badge
                   :color="opt.value === 'in' ? 'positive' : 'negative'"
@@ -128,6 +156,14 @@
                 </q-badge>
               </q-item-section>
             </q-item>
+          </template>
+          <template #selected>
+            <q-badge
+              :color="newTransaction.type === 'in' ? 'positive' : 'negative'"
+              text-color="white"
+            >
+              {{ transactionTypes.find(t => t.value === newTransaction.type)?.label }}
+            </q-badge>
           </template>
         </q-select>
 
@@ -159,18 +195,32 @@
         <q-btn flat label="Cancel" v-close-popup :disable="loading" />
         <q-btn
           flat
-          label="Add"
-          @click="addTransaction"
+          :label="editMode ? 'Save' : 'Add'"
+          @click="editMode ? updateTransaction() : addTransaction()"
           :loading="loading"
           :disable="loading || !newTransaction.value || !newTransaction.description"
         />
       </q-card-actions>
     </q-card>
   </q-dialog>
+
+  <q-dialog v-model="showDeleteDialog" persistent>
+    <q-card>
+      <q-card-section class="row items-center">
+        <q-avatar icon="warning" color="negative" text-color="white" />
+        <span class="q-ml-sm">Are you sure you want to delete this transaction?</span>
+      </q-card-section>
+
+      <q-card-actions align="right">
+        <q-btn flat label="Cancel" color="primary" v-close-popup :disable="loading" />
+        <q-btn flat label="Delete" color="negative" @click="deleteTransaction" :loading="loading" :disable="loading" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useQuasar, date } from 'quasar'
 import { useInventoryStore } from '../stores/inventoryStore'
 
@@ -229,6 +279,12 @@ const columns = [
     label: 'Description',
     field: 'description',
     sortable: true
+  },
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: 'actions',
+    align: 'right'
   }
 ]
 
@@ -240,6 +296,11 @@ const totalBalance = computed(() => {
   return inventoryStore.getBalance(props.selectedPaymentMethod) || 0
 })
 
+const transactionTypes = [
+  { label: 'Money In', value: 'in' },
+  { label: 'Money Out', value: 'out' }
+]
+
 const newTransaction = ref({
   type: 'in',
   value: 0,
@@ -248,6 +309,99 @@ const newTransaction = ref({
 
 const showAddDialog = ref(false)
 const loading = ref(false)
+
+const editMode = ref(false)
+const showDeleteDialog = ref(false)
+const selectedTransaction = ref(null)
+
+const resetTransaction = () => {
+  newTransaction.value = {
+    type: 'in',
+    value: 0,
+    description: ''
+  }
+  editMode.value = false
+  selectedTransaction.value = null
+}
+
+const editTransaction = (transaction) => {
+  editMode.value = true
+  selectedTransaction.value = transaction
+  newTransaction.value = {
+    type: transaction.type,
+    value: transaction.value,
+    description: transaction.description
+  }
+  showAddDialog.value = true
+}
+
+const updateTransaction = async () => {
+  if (!selectedTransaction.value) return
+
+  loading.value = true
+  try {
+    const success = await inventoryStore.updateCashFlowTransaction(
+      props.selectedPaymentMethod,
+      selectedTransaction.value.id,
+      newTransaction.value
+    )
+
+    if (success) {
+      $q.notify({
+        color: 'positive',
+        message: 'Transaction updated successfully'
+      })
+      showAddDialog.value = false
+      resetTransaction()
+    } else {
+      throw new Error('Failed to update transaction')
+    }
+  } catch (error) {
+    console.error('Error updating transaction:', error)
+    $q.notify({
+      color: 'negative',
+      message: 'Failed to update transaction'
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const confirmDelete = (transaction) => {
+  selectedTransaction.value = transaction
+  showDeleteDialog.value = true
+}
+
+const deleteTransaction = async () => {
+  if (!selectedTransaction.value) return
+
+  loading.value = true
+  try {
+    const success = await inventoryStore.deleteCashFlowTransaction(
+      props.selectedPaymentMethod,
+      selectedTransaction.value.id
+    )
+
+    if (success) {
+      $q.notify({
+        color: 'positive',
+        message: 'Transaction deleted successfully'
+      })
+      showDeleteDialog.value = false
+      selectedTransaction.value = null
+    } else {
+      throw new Error('Failed to delete transaction')
+    }
+  } catch (error) {
+    console.error('Error deleting transaction:', error)
+    $q.notify({
+      color: 'negative',
+      message: 'Failed to delete transaction'
+    })
+  } finally {
+    loading.value = false
+  }
+}
 
 const addTransaction = async () => {
   if (!newTransaction.value.value || !newTransaction.value.description) {
@@ -324,6 +478,10 @@ watch(() => props.selectedPaymentMethod, () => {
 
 onMounted(() => {
   if (props.modelValue && props.selectedPaymentMethod) fetchTransactions()
+})
+
+onUnmounted(() => {
+  resetTransaction()
 })
 </script>
 

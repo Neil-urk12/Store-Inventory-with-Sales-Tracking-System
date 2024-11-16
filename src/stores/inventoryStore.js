@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { debounce } from 'lodash'
 import { date } from 'quasar'
-import { doc, updateDoc, addDoc, collection, query, orderBy, getDocs, serverTimestamp } from 'firebase/firestore'
+import { doc, updateDoc, addDoc, collection, query, orderBy, getDocs, serverTimestamp, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase/firebaseconfig'
 
 const { formatDate } = date
@@ -665,6 +665,40 @@ export const useInventoryStore = defineStore('inventory', {
         style: 'currency',
         currency: 'PHP'
       }).format(value)
-    }
+    },
+    async deleteCashFlowTransaction(paymentMethod, transactionId) {
+      try {
+        const docRef = doc(db, `cashFlow_${paymentMethod}`, transactionId)
+        await deleteDoc(docRef)
+        
+        // Update local state
+        this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
+          .filter(t => t.id !== transactionId)
+        
+        return true
+      } catch (error) {
+        console.error('Error deleting transaction:', error)
+        return false
+      }
+    },
+
+    async updateCashFlowTransaction(paymentMethod, transactionId, updatedData) {
+      try {
+        const docRef = doc(db, `cashFlow_${paymentMethod}`, transactionId)
+        await updateDoc(docRef, {
+          ...updatedData,
+          date: serverTimestamp()
+        })
+        
+        // Update local state
+        this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
+          .map(t => t.id === transactionId ? { ...t, ...updatedData, date: new Date() } : t)
+        
+        return true
+      } catch (error) {
+        console.error('Error updating transaction:', error)
+        return false
+      }
+    },
   }
 })
