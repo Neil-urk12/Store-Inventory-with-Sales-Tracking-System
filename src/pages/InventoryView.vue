@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md">
     <InventoryHeaderActions></InventoryHeaderActions>
-    <div v-if="loading" class="row justify-center q-pa-md">
+    <div v-if="inventoryStore.loading" class="row justify-center q-pa-md">
       <q-spinner-dots color="primary" size="40px" />
     </div>
     <q-banner
@@ -39,7 +39,6 @@ const ItemDialog = defineAsyncComponent(() => import('src/components/inventory/I
 const InventoryGridView = defineAsyncComponent(() => import('src/components/inventory/InventoryGridView.vue'))
 const InventoryListView = defineAsyncComponent(() => import('src/components/inventory/InventoryListView.vue'))
 const inventoryStore = useInventoryStore();
-const loading = computed(() => inventoryStore.loading)
 const loadInventory = () => inventoryStore.loadInventory()
 
 onMounted(async () => {
