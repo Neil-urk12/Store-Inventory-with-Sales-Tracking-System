@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
-import { useInventoryStore } from '../stores/inventoryStore'
+import { useInventoryStore } from 'src/stores/inventoryStore'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()

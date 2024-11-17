@@ -222,7 +222,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useQuasar, date } from 'quasar'
-import { useInventoryStore } from '../stores/inventoryStore'
+import { useInventoryStore } from 'src/stores/inventoryStore'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()

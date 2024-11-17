@@ -3,9 +3,9 @@ import { ref, onMounted, computed, watch, onUnmounted, defineAsyncComponent } fr
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
 import { useInventoryStore } from '../stores/inventoryStore'
-const SalesReportDialog = defineAsyncComponent(() => import('../components/SalesReportDialog.vue'))
-const StockLevelsDialog = defineAsyncComponent(() => import('../components/StockLevelsDialog.vue'))
-const CashFlowDialog = defineAsyncComponent(() => import('../components/CashFlowDialog.vue'))
+const SalesReportDialog = defineAsyncComponent(() => import('../components/reports/SalesReportDialog.vue'))
+const StockLevelsDialog = defineAsyncComponent(() => import('../components/reports/StockLevelsDialog.vue'))
+const CashFlowDialog = defineAsyncComponent(() => import('../components/reports/CashFlowDialog.vue'))
 
 Chart.register(...registerables)
 
