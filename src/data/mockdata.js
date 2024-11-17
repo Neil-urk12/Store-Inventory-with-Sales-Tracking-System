@@ -193,3 +193,79 @@ export const mockTopSellingProducts = mockItems
     revenue: (Math.floor(Math.random() * 100) + 1) * item.price
   }))
   .sort((a, b) => b.revenue - a.revenue)
+
+// Mock data for contacts
+export const mockCategories = [
+  {
+    id: 1,
+    name: "Ice Cream Delivery",
+    contacts: [
+      {
+        id: 1,
+        name: "John Doe",
+        email: "john.doe@example.com",
+        phone: "+1234567890",
+        avatar: "https://via.placeholder.com/150",
+      },
+      {
+        id: 2,
+        name: "Jane Smith",
+        email: "jane.smith@example.com",
+        phone: "+0987654321",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
+  },
+  {
+    id: 2,
+    name: "Grocery Delivery",
+    contacts: [
+      {
+        id: 3,
+        name: "Alice Johnson",
+        email: "alice.Johnson@example.com",
+        phone: "+1122334455",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
+  },
+  {
+    id: 3,
+    name: "Store Restock",
+    contacts: [
+      {
+        id: 4,
+        name: "Bob Brown",
+        email: "bob.brown@example.com",
+        phone: "+99887654321",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
+  },
+  {
+    id: 4,
+    name: "Family",
+    contacts: [
+      {
+        id: 5,
+        name: "Sara Lee",
+        email: "sara.lee@example.com",
+        phone: "+1234567890",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
+  },
+  {
+    id: 5,
+    name: "Partners",
+    contacts: [
+      {
+        id: 6,
+        name: "Tom Wilson",
+        email: "tom.Wilson@example.com",
+        phone: "+0987654321",
+        avatar: "https://via.placeholder.com/150",
+      },
+    ],
+  },
+];
