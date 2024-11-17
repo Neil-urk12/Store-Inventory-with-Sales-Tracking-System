@@ -33,11 +33,11 @@
 import { computed, onMounted } from "vue"
 import { useInventoryStore } from "src/stores/inventoryStore"
 import { defineAsyncComponent } from "vue"
-const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/InventoryHeaderActions.vue'))
-const DeleteDialog = defineAsyncComponent(() => import('src/components/DeleteDialog.vue'))
-const ItemDialog = defineAsyncComponent(() => import('src/components/ItemDialog.vue'))
-const InventoryGridView = defineAsyncComponent(() => import('src/components/InventoryGridView.vue'))
-const InventoryListView = defineAsyncComponent(() => import('src/components/InventoryListView.vue'))
+const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/inventory/InventoryHeaderActions.vue'))
+const DeleteDialog = defineAsyncComponent(() => import('src/components/inventory/DeleteDialog.vue'))
+const ItemDialog = defineAsyncComponent(() => import('src/components/inventory/ItemDialog.vue'))
+const InventoryGridView = defineAsyncComponent(() => import('src/components/inventory/InventoryGridView.vue'))
+const InventoryListView = defineAsyncComponent(() => import('src/components/inventory/InventoryListView.vue'))
 const inventoryStore = useInventoryStore();
 const loading = computed(() => inventoryStore.loading)
 const loadInventory = () => inventoryStore.loadInventory()
