@@ -43,7 +43,7 @@
     <q-page-container>
       <RouterView/>
     </q-page-container>
-    <q-footer reveal bordered class="bg-primary text-white" v-show="isAtBottomOfPage">
+    <!-- <q-footer reveal bordered class="bg-primary text-white" v-show="isAtBottomOfPage">
       <q-toolbar>
         <q-toolbar-title class="row justify-center">
           <div class="col-12 col-md-6 text-center">
@@ -54,70 +54,29 @@
           </div>
         </q-toolbar-title>
       </q-toolbar>
-    </q-footer>
+    </q-footer> -->
   </q-layout>
 </template>
 
 <script setup>
-import { useScroll } from '@vueuse/core'
-import { ref, watch } from 'vue'
-import EssentialLink from 'components/EssentialLink.vue'
-import ColorToggle from 'components/ColorToggle.vue'
-import SocialMediaLinks from 'src/components/SocialMediaLinks.vue'
-
-const isAtBottomOfPage = ref(false);
-const { y } = useScroll(document)
-const copyrightYear = new Date().getFullYear();
-watch(y, (newValue) => {
-  const isAtBottom = newValue + window.innerHeight >= document.documentElement.scrollHeight;
-  isAtBottomOfPage.value = isAtBottom;
-});
+import { defineAsyncComponent, ref } from 'vue'
+const EssentialLink = defineAsyncComponent(() => import('src/components/layout/EssentialLink.vue'))
+const ColorToggle = defineAsyncComponent(() => import('src/components/layout/ColorToggle.vue'))
 
 defineOptions({
   name: 'MainLayout'
 })
 
 const linksList = [
-  {
-    title: 'Dashboard',
-    icon: 'dashboard',
-    link: '/'
-  },
-  {
-    title: 'Inventory',
-    icon: 'inventory',
-    link: '/inventory'
-  },
-  {
-    title: 'Reports',
-    icon: 'analytics',
-    link: '/reports'
-  },
-  {
-    title: 'Contacts',
-    icon: 'contacts',
-    link: '/contacts'
-  },
-  {
-    title: 'Profile',
-    icon: 'person',
-    link: '/profile'
-  },
-  {
-    title: 'Facebook',
-    icon: 'public',
-    link: 'https://facebook.quasar.dev'
-  },
-  {
-    title: 'Quasar Awesome',
-    icon: 'favorite',
-    link: 'https://awesome.quasar.dev'
-  }
+  { title: 'Dashboard', icon: 'dashboard', link: '/' },
+  { title: 'Inventory', icon: 'inventory', link: '/inventory' },
+  { title: 'Reports', icon: 'analytics', link: '/reports' },
+  { title: 'Contacts', icon: 'contacts', link: '/contacts' },
+  { title: 'Profile', icon: 'person', link: '/profile' },
+  { title: 'Facebook', icon: 'public', link: 'https://facebook.quasar.dev' },
 ]
 
 const leftDrawerOpen = ref(false)
 
-function toggleLeftDrawer () {
-  leftDrawerOpen.value = !leftDrawerOpen.value
-}
+const toggleLeftDrawer = () => leftDrawerOpen.value = !leftDrawerOpen.value
 </script>
