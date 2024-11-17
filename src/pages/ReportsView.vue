@@ -100,12 +100,17 @@ const openCashFlow = (method) => {
   cashFlowDialog.value = true
 }
 
+watch(() => inventoryStore.items, async () => {
+  await renderCategoryChart()
+}, { deep: true })
+
 watch(() => $q.dark.isActive, async () => {
   await renderSalesChart()
   await renderCategoryChart()
 })
 
 onMounted(async () => {
+  await inventoryStore.loadInventory()
   await renderSalesChart()
   await renderCategoryChart()
 })

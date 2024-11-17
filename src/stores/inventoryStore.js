@@ -2,14 +2,14 @@ import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
 // Remove after full implementation of database
 import { mockItems, mockSalesData, mockInventoryData, mockFinancialData, mockLowStockAlerts, mockTopSellingProducts } from '../data/mockdata'
-import { 
-  collection, 
-  getDocs, 
-  query, 
-  doc, 
-  writeBatch, 
+import {
+  collection,
+  getDocs,
+  query,
+  doc,
+  writeBatch,
   serverTimestamp,
-  orderBy 
+  orderBy
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -227,6 +227,41 @@ export const useInventoryStore = defineStore('inventory', {
     },
     getNetProfit(state) {
       return state.financialData.find(item => item.category === 'Net Profit')?.amount || 0
+    },
+    getDailyProfit() {
+      const today = new Date().toISOString().split('T')[0]
+      return (this.salesData || [])
+        .filter(sale => sale?.date?.startsWith(today))
+        .reduce((total, sale) => total + ((sale?.price || 0) * (sale?.quantity || 0)), 0)
+    },
+
+    getDailyExpense() {
+      const today = new Date().toISOString().split('T')[0]
+      const cashTransactions = this.cashFlowTransactions?.Cash || []
+      return cashTransactions
+        .filter(t => t?.date?.startsWith(today) && t?.type === 'expense')
+        .reduce((total, t) => total + (t?.amount || 0), 0)
+    },
+
+    getCategoryStocks() {
+      const categoryStocks = {}
+      this.items.forEach(item => {
+        if (!categoryStocks[item.category]) {
+          categoryStocks[item.category] = 0
+        }
+        categoryStocks[item.category] += item.quantity
+      })
+      return Object.values(categoryStocks)
+    },
+
+    getCategories() {
+      return [...new Set(this.items.map(item => item.category))]
+    },
+
+    getRecentlyAddedProducts() {
+      return [...this.items]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 5)
     }
   },
 
@@ -253,16 +288,75 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     async loadInventory() {
-      this.loading = true;
-      this.error = null;
-
       try {
-        this.items = await db.getAllItems();
+        console.log('Loading inventory...')
+        // Load from IndexedDB first
+        const localItems = await db.items.toArray()
+
+        // Ensure items have the required properties
+        const processedItems = localItems.map(item => ({
+          ...item,
+          category: item.category || 'Uncategorized',
+          quantity: Number(item.quantity) || 0,
+          createdAt: item.createdAt || new Date().toISOString()
+        }))
+
+        this.items = processedItems
+        console.log('Processed local items:', processedItems)
+
+        // If online, sync with Firestore
+        if (useNetworkStatus().isOnline) {
+          const firestoreRef = collection(fireDb, 'items')
+          const q = query(firestoreRef, orderBy('createdAt', 'desc'))
+          const querySnapshot = await getDocs(q)
+          const firestoreItems = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            category: doc.data().category || 'Uncategorized',
+            quantity: Number(doc.data().quantity) || 0,
+            createdAt: doc.data().createdAt || new Date().toISOString()
+          }))
+          console.log('Processed Firestore items:', firestoreItems)
+
+          // Only merge if Firestore has items
+          if (firestoreItems.length > 0) {
+            // Merge items, preferring Firestore data but keeping local items not in Firestore
+            const mergedItems = [...processedItems]
+            firestoreItems.forEach(firestoreItem => {
+              const localIndex = mergedItems.findIndex(item => item.id === firestoreItem.id)
+              if (localIndex !== -1) {
+                mergedItems[localIndex] = firestoreItem
+              } else {
+                mergedItems.push(firestoreItem)
+              }
+            })
+            this.items = mergedItems
+            console.log('Merged items:', mergedItems)
+          } else {
+            console.log('No Firestore items found, keeping local data')
+          }
+        }
+
+        // If no items at all, use mock data
+        if (!this.items.length) {
+          console.log('No items found, using mock data')
+          this.items = mockItems.map(item => ({
+            ...item,
+            category: item.category || 'Uncategorized',
+            quantity: Number(item.quantity) || 0,
+            createdAt: item.createdAt || new Date().toISOString()
+          }))
+        }
       } catch (error) {
-        this.error = 'Failed to load inventory. Please try again.';
-        console.error('Error loading inventory:', error);
-      } finally {
-        this.loading = false;
+        console.error('Error loading inventory:', error)
+        // Fallback to mock data if both sources fail
+        this.items = mockItems.map(item => ({
+          ...item,
+          category: item.category || 'Uncategorized',
+          quantity: Number(item.quantity) || 0,
+          createdAt: item.createdAt || new Date().toISOString()
+        }))
+        console.log('Using processed mock data:', this.items)
       }
     },
 

@@ -1,98 +1,115 @@
 <template>
   <q-table
+    title="Recently Added Products"
     :rows="products"
     :columns="columns"
     row-key="id"
     :loading="loading"
     :pagination="pagination"
     :rows-per-page-options="[5, 10, 15]"
+    class="my-sticky-header-table"
   >
     <template v-slot:body="props">
       <q-tr :props="props">
         <q-td key="image" :props="props">
-          <q-img :src="props.row.image" :alt="props.row.name" style="width: 50px" />
+          <q-img
+            :src="props.row.image"
+            :alt="props.row.name"
+            style="width: 50px; height: 50px; object-fit: cover"
+            @error="(err) => props.row.image = '/images/no-image.png'"
+          />
         </q-td>
         <q-td key="name" :props="props">{{ props.row.name }}</q-td>
         <q-td key="quantity" :props="props">{{ props.row.quantity }}</q-td>
         <q-td key="price" :props="props">{{ props.row.price }}</q-td>
+        <q-td key="createdAt" :props="props">
+          {{ new Date(props.row.createdAt).toLocaleDateString() }}
+        </q-td>
       </q-tr>
     </template>
   </q-table>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-const loading = ref(false)
+import { ref, computed, onMounted } from 'vue'
+import { useInventoryStore } from 'src/stores/inventoryStore'
+
+const inventoryStore = useInventoryStore()
+const loading = ref(true)
+
+onMounted(async () => {
+  await inventoryStore.loadInventory()
+  loading.value = false
+})
+
 const pagination = ref({
-  sortBy: 'name',
-  descending: false,
+  sortBy: 'createdAt',
+  descending: true,
   page: 1,
   rowsPerPage: 5,
 })
 
-const columns = computed(() => [
+const columns = [
   {
     name: 'image',
     label: 'Image',
     field: 'image',
     align: 'left',
-    format: (val) => `<img src="${val}" width="50" height="50" />`,
   },
   {
     name: 'name',
     label: 'Name',
     field: 'name',
     align: 'left',
+    sortable: true,
   },
   {
     name: 'quantity',
     label: 'Quantity',
     field: 'quantity',
     align: 'left',
+    sortable: true,
   },
   {
     name: 'price',
     label: 'Price',
-    field: 'price',
-    align: 'left',
+    field: row => inventoryStore.formatCurrency(row.price),
+    sortable: true,
   },
-])
+  {
+    name: 'createdAt',
+    label: 'Added Date',
+    field: 'createdAt',
+    format: val => new Date(val).toLocaleDateString(),
+    sortable: true,
+  }
+]
 
-const products = computed(() => [
-  {
-    id: 1,
-    image: 'public/images/a.png',
-    name: 'Product 1',
-    quantity: 10,
-    price: 19.99,
-  },
-  {
-    id: 2,
-    image: 'public/images/b.png',
-    name: 'Product 2',
-    quantity: 20,
-    price: 29.99,
-  },
-  {
-    id: 3,
-    image: 'public/images/c.png',
-    name: 'Product 3',
-    quantity: 30,
-    price: 39.99,
-  },
-  {
-    id: 4,
-    image: 'public/images/d.png',
-    name: 'Product 4',
-    quantity: 40,
-    price: 49.99,
-  },
-  {
-    id: 5,
-    image: 'public/images/a.png',
-    name: 'Product 5',
-    quantity: 50,
-    price: 59.99,
-  },
-])
+const products = computed(() => {
+  return [...inventoryStore.items]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 5)
+})
 </script>
+
+<style scoped>
+.my-sticky-header-table {
+  /* height or max-height is important */
+  max-height: 300px;
+}
+
+.my-sticky-header-table .q-table__top,
+.my-sticky-header-table .q-table__bottom,
+.my-sticky-header-table thead tr:first-child th {
+  background-color: var(--q-primary);
+}
+
+.my-sticky-header-table thead tr th {
+  position: sticky;
+  z-index: 1;
+}
+
+.my-sticky-header-table thead tr:first-child th {
+  top: 0;
+}
+</style>
