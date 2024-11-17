@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
 // Remove after full implementation of database
 import { mockItems, mockSalesData, mockInventoryData, mockFinancialData, mockLowStockAlerts, mockTopSellingProducts } from '../data/mockdata'
-import { collection, query, getDocs, serverTimestamp, updateDoc, addDoc, deleteDoc, doc } from 'firebase/firestore'
+import { collection, query, getDocs, serverTimestamp, updateDoc, addDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
@@ -27,6 +27,12 @@ export const useInventoryStore = defineStore('inventory', {
     itemToDelete: null,
     editMode: false,
     viewMode: 'list',
+    syncStatus: {
+      lastSync: null,
+      inProgress: false,
+      error: null,
+      pendingChanges: 0
+    },
     pagination: {
       rowsPerPage: 10,
       sortBy: 'name',
@@ -279,36 +285,160 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     async syncWithFirestore() {
+      if (this.syncStatus.inProgress) {
+        console.log('Sync already in progress, skipping...')
+        return
+      }
+
       try {
+        this.syncStatus.inProgress = true
+        this.syncStatus.error = null
+
+        // Get Firestore data
         const querySnapshot = await getDocs(query(collection(fireDb, 'inventory')))
         const firestoreItems = querySnapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
+          updatedAt: doc.data().updatedAt?.toDate()?.toISOString() || new Date().toISOString()
         }))
 
+        // Get local data
+        const localItems = await db.getAllItems()
+
         if (firestoreItems.length > 0) {
-          // Firestore has data, sync to local
-          await db.syncWithFirestoreSimple(firestoreItems, 'items')
-          await this.loadInventory()
+          // Merge changes between Firestore and local
+          const mergedItems = await this.mergeChanges(localItems, firestoreItems)
+
+          // Update Firestore in batches
+          const batchSize = 500
+          const inventoryRef = collection(fireDb, 'inventory')
+
+          for (let i = 0; i < mergedItems.length; i += batchSize) {
+            const batch = writeBatch(fireDb)
+            const currentBatch = mergedItems.slice(i, Math.min(i + batchSize, mergedItems.length))
+
+            for (const item of currentBatch) {
+              const { id, localId, ...itemData } = item
+              if (id) {
+                // Update existing item
+                batch.update(doc(inventoryRef, id), {
+                  ...itemData,
+                  updatedAt: serverTimestamp()
+                })
+              } else {
+                // Add new item
+                const newDocRef = doc(inventoryRef)
+                batch.set(newDocRef, {
+                  ...itemData,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                })
+              }
+            }
+
+            try {
+              await batch.commit()
+            } catch (error) {
+              console.error('Batch update failed:', error)
+              // Continue with next batch despite error
+            }
+          }
+
+          // Update local database with merged data
+          await db.syncWithFirestoreSimple(mergedItems, 'items')
         } else {
-          // Firestore is empty, push local data to Firestore
-          const localItems = await db.getAllItems()
-          if (localItems.length > 0) {
-            const inventoryRef = collection(fireDb, 'inventory')
-            for (const item of localItems) {
-              const { id, ...itemData } = item
-              await addDoc(inventoryRef, {
-                ...itemData,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
+          // Firestore is empty, push local data
+          const inventoryRef = collection(fireDb, 'inventory')
+          const batch = writeBatch(fireDb)
+          let batchCount = 0
+
+          for (const item of localItems) {
+            const { id, ...itemData } = item
+            const newDocRef = doc(inventoryRef)
+            batch.set(newDocRef, {
+              ...itemData,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+
+            batchCount++
+            if (batchCount >= 500) {
+              try {
+                await batch.commit()
+                batchCount = 0
+              } catch (error) {
+                console.error('Batch upload failed:', error)
+                // Continue despite error
+              }
+            }
+          }
+
+          // Commit any remaining items
+          if (batchCount > 0) {
+            try {
+              await batch.commit()
+            } catch (error) {
+              console.error('Final batch upload failed:', error)
             }
           }
         }
+
+        // Reload inventory after sync
+        await this.loadInventory()
+
+        this.syncStatus.lastSync = new Date().toISOString()
+        this.syncStatus.pendingChanges = 0
       } catch (error) {
-        console.error('Error syncing with Firestore:', error)
-        console.error('Continuing with local data')
+        console.error('Error in sync process:', error)
+        this.syncStatus.error = error.message
+        // Don't throw, let the app continue
+      } finally {
+        this.syncStatus.inProgress = false
       }
+    },
+
+    async mergeChanges(localItems, firestoreItems) {
+      const merged = new Map()
+
+      // Create maps for faster lookups
+      const firestoreMap = new Map(
+        firestoreItems.map(item => [item.sku, item])
+      )
+
+      // Process local items first
+      for (const localItem of localItems) {
+        try {
+          const firestoreItem = firestoreMap.get(localItem.sku)
+
+          if (firestoreItem) {
+            // Item exists in both - compare timestamps
+            const localDate = new Date(localItem.updatedAt)
+            const firestoreDate = new Date(firestoreItem.updatedAt)
+
+            merged.set(localItem.sku,
+              localDate > firestoreDate
+                ? { ...localItem, id: firestoreItem.id }
+                : firestoreItem
+            )
+          } else {
+            // Only in local - add as new
+            merged.set(localItem.sku, localItem)
+          }
+        } catch (error) {
+          console.error('Error merging item:', error)
+          // Skip problematic item but continue merging
+          continue
+        }
+      }
+
+      // Add Firestore-only items
+      for (const firestoreItem of firestoreItems) {
+        if (!merged.has(firestoreItem.sku)) {
+          merged.set(firestoreItem.sku, firestoreItem)
+        }
+      }
+
+      return Array.from(merged.values())
     },
 
     async addItem(item) {

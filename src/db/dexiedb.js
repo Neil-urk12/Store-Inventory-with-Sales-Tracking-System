@@ -84,6 +84,10 @@ class AppDatabase extends Dexie {
     return await this.contacts.where('categoryId').equals(categoryId).toArray();
   }
 
+  async getAllContacts() {
+    return await this.contacts.toArray();
+  }
+
   async addContact(contact) {
     return await this.contacts.add(contact);
   }
