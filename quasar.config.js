@@ -146,6 +146,47 @@ module.exports = configure(function (/* ctx */) {
       swFilename: 'sw.js',
       manifestFilename: 'manifest.json',
       useCredentialsForManifestTag: false,
+      extendGenerateSWOptions (cfg) {
+        // cfg.swSrc = 'src-pwa/custom-service-worker.js'
+        cfg.skipWaiting = true
+        cfg.clientsClaim = true
+      },
+      manifest : {
+        name : 'Store Inventory with Sales Tracking System',
+        short_name : 'Store Inventory with Sales Tracking System',
+        description : 'A system that can help small business owners track their stocks and sales with a very user-friendly interface and great ux design.',
+        display : 'standalone',
+        orientation : 'portrait',
+        background_color : '#ffffff',
+        theme_color : '#027be3',
+        icons : [
+          {
+            src : 'icons/icon-128x128.png',
+            sizes : '128x128',
+            type : 'image/png'
+          },
+          {
+            src : 'icons/icon-192x192.png',
+            sizes : '192x192',
+            type : 'image/png'
+          },
+          {
+            src : 'icons/icon-256x256.png',
+            sizes : '256x256',
+            type : 'image/png'
+          },
+          {
+            src : 'icons/icon-384x384.png',
+            sizes : '384x384',
+            type : 'image/png'
+          },
+          {
+            src : 'icons/icon-512x512.png',
+            sizes : '512x512',
+            type : 'image/png'
+          }
+        ]
+      }
       // useFilenameHashes: true,
       // extendGenerateSWOptions (cfg) {}
       // extendInjectManifestOptions (cfg) {},
