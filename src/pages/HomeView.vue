@@ -1,10 +1,10 @@
 <script setup>
 import { defineAsyncComponent } from 'vue'
-const ComboChart = defineAsyncComponent(() => import('../components/ComboChart.vue'))
-const StockBars = defineAsyncComponent(() => import('../components/StockBars.vue'))
-const DailyPnl = defineAsyncComponent(() => import('../components/DailyPnl.vue'))
-const DoughnutChart = defineAsyncComponent(() => import('../components/DoughnutChart.vue'))
-const DashboardTable = defineAsyncComponent(() => import('../components/DashboardTable.vue'))
+const ComboChart = defineAsyncComponent(() => import('../components/home/ComboChart.vue'))
+const StockBars = defineAsyncComponent(() => import('../components/home/StockBars.vue'))
+const DailyPnl = defineAsyncComponent(() => import('../components/home/DailyPnl.vue'))
+const DoughnutChart = defineAsyncComponent(() => import('../components/home/DoughnutChart.vue'))
+const DashboardTable = defineAsyncComponent(() => import('../components/home/DashboardTable.vue'))
 </script>
 
 <template>
