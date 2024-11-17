@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted } from 'vue'
-import { useInventoryStore } from '../stores/inventoryStore'
+import { useInventoryStore } from 'src/stores/inventoryStore'
 
 onMounted(() => {
   inventoryStore.loadInventory()

@@ -2,7 +2,15 @@ import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
 // Remove after full implementation of database
 import { mockItems, mockSalesData, mockInventoryData, mockFinancialData, mockLowStockAlerts, mockTopSellingProducts } from '../data/mockdata'
-import { collection, query, getDocs, serverTimestamp, updateDoc, addDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore'
+import { 
+  collection, 
+  getDocs, 
+  query, 
+  doc, 
+  writeBatch, 
+  serverTimestamp,
+  orderBy 
+} from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
