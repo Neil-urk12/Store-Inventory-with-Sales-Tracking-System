@@ -30,7 +30,7 @@
 </template>
 
 <script setup>
-import { computed } from "vue"
+import { computed, onMounted } from "vue"
 import { useInventoryStore } from "src/stores/inventoryStore"
 import { defineAsyncComponent } from "vue"
 const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/InventoryHeaderActions.vue'))
@@ -41,6 +41,11 @@ const InventoryListView = defineAsyncComponent(() => import('src/components/Inve
 const inventoryStore = useInventoryStore();
 const loading = computed(() => inventoryStore.loading)
 const loadInventory = () => inventoryStore.loadInventory()
+
+onMounted(async () => {
+  await inventoryStore.initializeDb()
+  await inventoryStore.loadInventory()
+})
 </script>
 
 <style lang="scss" scoped>

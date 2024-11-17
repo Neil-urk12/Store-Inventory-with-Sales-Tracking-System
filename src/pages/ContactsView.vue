@@ -1,22 +1,26 @@
 <script setup>
-import { ref, reactive } from "vue";
+import { ref, reactive, computed } from "vue";
 import { useQuasar } from "quasar";
+import { useContactsStore } from "../stores/contacts";
 
 const $q = useQuasar();
+const isDark = computed(() => $q.dark.isActive);
+const contactsStore = useContactsStore();
+
+// Initialize the database with mock data
+contactsStore.initializeDb();
 
 const showCategoryModal = ref(false);
 const categoryModalTitle = ref("");
 const newCategory = reactive({
   id: null,
   name: "",
-  contacts: [],
 });
 
 const addCategory = () => {
   categoryModalTitle.value = "Add Category";
   newCategory.id = null;
   newCategory.name = "";
-  newCategory.contacts = [];
   showCategoryModal.value = true;
 };
 
@@ -24,7 +28,6 @@ const editCategory = (category) => {
   categoryModalTitle.value = "Edit Category";
   newCategory.id = category.id;
   newCategory.name = category.name;
-  newCategory.contacts = category.contacts;
   showCategoryModal.value = true;
 };
 
@@ -42,9 +45,9 @@ const deleteCategory = (category) => {
         flat: true
       },
       persistent: true
-    }).onOk(() => {
+    }).onOk(async () => {
       try {
-        categories.value = categories.value.filter(c => c.id !== category.id);
+        await contactsStore.deleteCategory(category.id);
         $q.notify({
           type: 'positive',
           message: 'Category deleted successfully',
@@ -73,9 +76,9 @@ const deleteCategory = (category) => {
         label: 'Cancel',
         flat: true
       }
-    }).onOk(() => {
+    }).onOk(async () => {
       try {
-        categories.value = categories.value.filter(c => c.id !== category.id);
+        await contactsStore.deleteCategory(category.id);
         $q.notify({
           type: 'positive',
           message: 'Category deleted successfully',
@@ -100,57 +103,26 @@ const saveCategory = async () => {
     if (!newCategory.name.trim()) {
       $q.notify({
         type: 'negative',
-        message: 'Category name cannot be empty',
+        message: 'Category name is required',
         position: 'top',
         timeout: 2000
       });
       return;
     }
 
-    // Check for duplicate category names
-    const isDuplicate = categories.value.some(
-      c => c.name.toLowerCase() === newCategory.name.toLowerCase() &&
-      c.id !== newCategory.id
-    );
-
-    if (isDuplicate) {
-      $q.notify({
-        type: 'negative',
-        message: 'Category name already exists',
-        position: 'top',
-        timeout: 2000
-      });
-      return;
-    }
-
-    if (newCategory.id) {
-      // Update existing category
-      const index = categories.value.findIndex(c => c.id === newCategory.id);
-      if (index !== -1) {
-        categories.value[index] = {
-          ...categories.value[index],
-          name: newCategory.name.trim()
-        };
-        $q.notify({
-          type: 'positive',
-          message: 'Category updated successfully',
-          position: 'top',
-          timeout: 2000
-        });
-      }
-    } else {
-      // Add new category
-      const newId = categories.value.length
-        ? Math.max(...categories.value.map(c => c.id)) + 1
-        : 1;
-      categories.value.push({
-        id: newId,
-        name: newCategory.name.trim(),
-        contacts: []
-      });
+    if (newCategory.id === null) {
+      await contactsStore.addCategory({ name: newCategory.name });
       $q.notify({
         type: 'positive',
         message: 'Category added successfully',
+        position: 'top',
+        timeout: 2000
+      });
+    } else {
+      await contactsStore.updateCategory(newCategory.id, { name: newCategory.name });
+      $q.notify({
+        type: 'positive',
+        message: 'Category updated successfully',
         position: 'top',
         timeout: 2000
       });
@@ -167,192 +139,193 @@ const saveCategory = async () => {
   }
 };
 
-const categories = ref([
-  {
-    id: 1,
-    name: "Ice Cream Delivery",
-    contacts: [
-      {
-        id: 1,
-        name: "John Doe",
-        email: "john.doe@example.com",
-        phone: "+1234567890",
-        avatar: "https://via.placeholder.com/150",
-      },
-      {
-        id: 2,
-        name: "Jane Smith",
-        email: "jane.smith@example.com",
-        phone: "+0987654321",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "Grocery Delivery",
-    contacts: [
-      {
-        id: 3,
-        name: "Alice Johnson",
-        email: "alice.Johnson@example.com",
-        phone: "+1122334455",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "Store Restock",
-    contacts: [
-      {
-        id: 4,
-        name: "Bob Brown",
-        email: "bob.brown@example.com",
-        phone: "+99887654321",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 4,
-    name: "Family",
-    contacts: [
-      {
-        id: 5,
-        name: "Sara Lee",
-        email: "sara.lee@example.com",
-        phone: "+1234567890",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 5,
-    name: "Partners",
-    contacts: [
-      {
-        id: 6,
-        name: "Tom Wilson",
-        email: "tom.Wilson@example.com",
-        phone: "+0987654321",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-]);
-
 const showModal = ref(false);
 const modalTitle = ref("");
 const newContact = reactive({
   id: null,
+  categoryId: null,
   name: "",
   email: "",
   phone: "",
-  avatar: "",
+  avatar: "https://via.placeholder.com/150",
 });
 
-const currentCategory = ref(null);
-const currentContact = ref(null);
-
 const callContact = (phone) => {
-  $q.dialog({
-    title: "Call",
-    message: `Call ${phone}?`,
-    ok: "Call",
-    cancel: "Cancel",
-  }).onOk(() => {
-    window.location.href = `tel:${phone}`;
-  });
+  window.location.href = `tel:${phone}`;
 };
 
 const emailContact = (email) => {
-  $q.dialog({
-    title: "Email",
-    message: `Email ${email}?`,
-    ok: "Email",
-    cancel: "Cancel",
-  }).onOk(() => {
-    window.location.href = `mailto:${email}`;
-  });
+  window.location.href = `mailto:${email}`;
 };
 
 const addContact = (category) => {
   modalTitle.value = "Add Contact";
   newContact.id = null;
+  newContact.categoryId = category.id;
   newContact.name = "";
   newContact.email = "";
   newContact.phone = "";
-  newContact.avatar = "";
-  currentCategory.value = category;
   showModal.value = true;
 };
 
 const editContact = (category, contact) => {
   modalTitle.value = "Edit Contact";
   newContact.id = contact.id;
+  newContact.categoryId = category.id;
   newContact.name = contact.name;
   newContact.email = contact.email;
   newContact.phone = contact.phone;
-  newContact.avatar = contact.avatar;
-  currentCategory.value = category;
-  currentContact.value = contact;
   showModal.value = true;
 };
 
 const deleteContact = (category, contact) => {
   $q.dialog({
-    title: "Delete Contact",
-    message: `Delete ${contact.name}?`,
-    ok: "Delete",
-    cancel: "Cancel",
-  }).onOk(() => {
-    category.contacts = category.contacts.filter((c) => c.id !== contact.id);
+    title: 'Delete Contact',
+    message: `Delete contact "${contact.name}"?`,
+    ok: {
+      label: 'Delete',
+      color: 'negative'
+    },
+    cancel: {
+      label: 'Cancel',
+      flat: true
+    }
+  }).onOk(async () => {
+    try {
+      await contactsStore.deleteContact(contact.id);
+      $q.notify({
+        type: 'positive',
+        message: 'Contact deleted successfully',
+        position: 'top',
+        timeout: 2000
+      });
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      $q.notify({
+        type: 'negative',
+        message: 'Error deleting contact',
+        position: 'top',
+        timeout: 2000
+      });
+    }
   });
 };
 
 const saveContact = async () => {
   try {
-    if (newContact.id) {
-      // Update existing contact
-      const index = currentCategory.value.contacts.findIndex(
-        (c) => c.id === newContact.id,
-      );
-      if (index !== -1) {
-        currentCategory.value.contacts[index] = { ...newContact };
-      }
-    } else {
-      // Add new contact
-      const newId = currentCategory.value.contacts.length
-        ? currentCategory.value.contacts[
-            currentCategory.value.contacts.length - 1
-          ].id + 1
-        : 1;
-      currentCategory.value.contacts.push({ ...newContact, id: newId });
+    if (!newContact.name.trim()) {
+      $q.notify({
+        type: 'negative',
+        message: 'Contact name is required',
+        position: 'top',
+        timeout: 2000
+      });
+      return;
     }
-    $q.notify({
-      type: "positive",
-      message: "Contact saved successfully",
-      position: "top",
-    });
+
+    const contactData = {
+      name: newContact.name,
+      email: newContact.email,
+      phone: newContact.phone,
+      avatar: newContact.avatar,
+      categoryId: newContact.categoryId
+    };
+
+    if (newContact.id === null) {
+      await contactsStore.addContact(contactData);
+      $q.notify({
+        type: 'positive',
+        message: 'Contact added successfully',
+        position: 'top',
+        timeout: 2000
+      });
+    } else {
+      await contactsStore.updateContact(newContact.id, contactData);
+      $q.notify({
+        type: 'positive',
+        message: 'Contact updated successfully',
+        position: 'top',
+        timeout: 2000
+      });
+    }
+    closeModal();
   } catch (error) {
+    console.error('Error saving contact:', error);
     $q.notify({
-      type: "negative",
-      message: "Error saving contact",
-      position: "top",
+      type: 'negative',
+      message: 'Error saving contact',
+      position: 'top',
+      timeout: 2000
     });
   }
+};
+
+const closeModal = () => {
   showModal.value = false;
 };
 
-const closeModal = () => (showModal.value = false);
-const closeCategoryModal = () => (showCategoryModal.value = false);
+const closeCategoryModal = () => {
+  showCategoryModal.value = false;
+};
+
+// Remove after full implementation of database
+// Function to repopulate the database for testing
+const repopulateDatabase = async () => {
+  try {
+    $q.dialog({
+      title: 'Repopulate Database',
+      message: 'This will clear all existing data and repopulate with mock data. Are you sure?',
+      ok: {
+        label: 'Yes, Repopulate',
+        color: 'primary'
+      },
+      cancel: {
+        label: 'Cancel',
+        flat: true
+      },
+      persistent: true
+    }).onOk(async () => {
+      try {
+        await contactsStore.repopulateDatabase();
+        $q.notify({
+          type: 'positive',
+          message: 'Database repopulated successfully'
+        });
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Error repopulating database: ' + error.message
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error in repopulateDatabase:', error);
+  }
+};
+
+// Computed property for categories from store
+const categories = computed(() => contactsStore.categories);
 </script>
 
 <template>
-  <q-page class="q-pa-md">
-    <div class="q-mb-md">
-      <q-btn color="primary" @click="addCategory"> Add Category </q-btn>
+  <q-page class="q-pa-xs">
+    <div class="row q-mb-md items-center justify-between">
+      <div class="text-h5">Contacts</div>
+      <div>
+        <q-btn
+          color="primary"
+          icon="add"
+          label="Add Category"
+          @click="addCategory"
+          class="q-mr-sm"
+        />
+        <q-btn
+          color="secondary"
+          icon="refresh"
+          label="Repopulate Database"
+          @click="repopulateDatabase"
+        />
+      </div>
     </div>
     <q-list>
       <q-expansion-item
@@ -360,7 +333,7 @@ const closeCategoryModal = () => (showCategoryModal.value = false);
         v-for="category in categories"
         :key="category.id"
         dense
-        dark="$isDark.active"
+        :dark="isDark"
         expand-icon-class="text-primary"
       >
         <template v-slot:header>
