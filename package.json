@@ -6,9 +6,12 @@
   "author": "Neil-urk12 <neilvallecer12@gmail.com>",
   "private": true,
   "scripts": {
-    "test": "echo \"No test specified\" && exit 0",
     "dev": "quasar dev",
-    "build": "quasar build"
+    "build": "quasar build",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",
@@ -33,9 +36,10 @@
     "@types/resolve": "^1.20.6",
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.2",
+    "canvas": "^2.11.2",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.14",
-    "vitest": "^2.1.5",
+    "vitest": "^1.0.4",
     "workbox-build": "7.0.x",
     "workbox-cacheable-response": "7.0.x",
     "workbox-core": "7.0.x",
