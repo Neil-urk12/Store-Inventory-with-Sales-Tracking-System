@@ -52,8 +52,9 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
-    async loginWithPasskey(key) {
+    async loginWithPasskey(key, rememberMe = false) {
       if (!key) throw new Error('Passkey is required')
+      if (key.length < 6) throw new Error('Passkey must be at least 6 characters')
 
       this.loading = true
       this.error = null
@@ -69,16 +70,13 @@ export const useAuthStore = defineStore("auth", {
         )
 
         const snapshot = await getDocs(q)
+        if (snapshot.empty) throw new Error('Invalid passkey')
 
-        if (snapshot.empty) {
-          console.log('No matching passkey found')
-          throw new Error('Invalid passkey')
-        }
-
+        const passkey = snapshot.docs[0].data()
         if (passkey.expiresAt && passkey.expiresAt.toDate() < new Date())
           throw new Error('Passkey has expired')
 
-        await setPersistence(auth, browserLocalPersistence)
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
 
         this.isAuthenticated = true
         this.user = {
@@ -89,7 +87,6 @@ export const useAuthStore = defineStore("auth", {
         }
         return true
       } catch (error) {
-        console.error('Login error:', error.message)
         this.error = error.message
         throw error
       } finally {

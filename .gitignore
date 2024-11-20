@@ -34,3 +34,6 @@ yarn-error.log*
 .aider*
 .env
 rules.txt
+.env.production
+setting.json
+.vscode/settings.json
