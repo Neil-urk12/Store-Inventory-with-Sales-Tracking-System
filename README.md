@@ -11,7 +11,7 @@ A system that can help small business owners track their stocks and sales with a
 - **Modern UI/UX**: Beautiful and responsive design
 
 ## Tech Stack
-
+![alt text](https://img.shields.io/badge/vuejs-%2335495e.svg?style=for-the-badge&logo=vue.js&logoColor=%234FC08D)![alt text](https://img.shields.io/badge/Quasar-1976D2?style=for-the-badge&logo=quasar&logoColor=white)![alt text](https://img.shields.io/badge/pinia-%2340B883.svg?style=for-the-badge&logo=pinia&logoColor=white)![alt text](https://img.shields.io/badge/firebase-%23039BE5.svg?style=for-the-badge&logo=firebase)![alt text](https://img.shields.io/badge/Dexie.js-orange?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTAgMjUwIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMTI1IDBDNTYuMDIgMCAwIDU2LjAyIDAgMTI1czU2LjAyIDEyNSAxMjUgMTI1IDEyNS01Ni4wMiAxMjUtMTI1UzE5My45OCAwIDEyNSAwem0tMTcuNDUgMTc2LjQyYy0xLjYgMS42LTMuOTUgMi4zNS02LjMgMi4zNS0yLjM1IDAtNC43NS0uNzUtNi4zLTIuMzVsLTMzLjktMzMuOWMtMy4xLTMuMS0zLjEtOC4xNSAwLTExLjI1bDMzLjktMzMuOWMxLjYtMS42IDMuOTUtMi4zNSA2LjMtMi4zNSAyLjM1IDAgNC43NS43NSA2LjMtMi4zNWwzMy45IDMzLjljMy4xIDMuMSAzLjEgOC4xNSAwIDExLjI1bC0zMy45IDMzLjkzem0xMDMuNzUtODguMjJjMC0yMy44LTE5LjItNDMtNDMtNDNIMTA5Yy0yMy44IDAtNDMgMTkuMi00MyA0M3Y0M2MwIDIzLjggMTkuMiA0MyA0MyA0Mzh3NzMuNDVjMjMuOCAwIDQzLTE5LjIgNDMtNDN2LTQzem0tNDMgNzMuNDVIMTA5di00M2g3Ni4zMXY0M3oiLz48L3N2Zz4=)![alt text](https://img.shields.io/badge/Chart.js-FF6384?style=for-the-badge&logo=chartdotjs&logoColor=white)![alt text](https://img.shields.io/badge/vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)
 - **Frontend**: Vue 3 + Quasar Framework
 - **State Management**: Pinia
 - **Database**: Firebase
