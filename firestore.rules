@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Passkeys can only be read during verification, never listed or written from client
+    match /passkeys/{passkey} {
+      allow read: if request.auth == null 
+        && request.query.limit <= 1 
+        && request.query.filters.size() == 2
+        && request.query.filters[0].op == '=='
+        && request.query.filters[1].op == '=='
+        && request.query.filters[0].field in ['key', 'active'];
+      allow write: if false;  // Only allow writes through admin console or backend
+    }
+  }
+}

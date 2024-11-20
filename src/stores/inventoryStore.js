@@ -31,6 +31,7 @@ export const useInventoryStore = defineStore('inventory', {
     categoryFilter: null,
     itemDialog: false,
     deleteDialog: false,
+    openItemDialog: false,
     editedItem: {},
     itemToDelete: null,
     editMode: false,
