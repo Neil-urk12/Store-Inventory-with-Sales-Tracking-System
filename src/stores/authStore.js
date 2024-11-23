@@ -14,7 +14,7 @@ import {
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     user: null,
-    isAuthenticated: false,
+    isAuthenticated: localStorage.getItem('isAuthenticated') === 'true' ? true : false,
     loading: false,
     error: null
   }),
@@ -39,10 +39,10 @@ export const useAuthStore = defineStore("auth", {
 
       try {
         await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
-
         const userCredential = await signInWithEmailAndPassword(auth, email, password)
         this.user = userCredential.user
         this.isAuthenticated = true
+        localStorage.setItem('isAuthenticated', true)
         return true
       } catch (error) {
         this.error = error.message
@@ -77,7 +77,6 @@ export const useAuthStore = defineStore("auth", {
           throw new Error('Passkey has expired')
 
         await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
-
         this.isAuthenticated = true
         this.user = {
           email: 'admin@example.com',
@@ -85,6 +84,7 @@ export const useAuthStore = defineStore("auth", {
           displayName: 'Administrator',
           id: 'admin-user'
         }
+        localStorage.setItem('isAuthenticated', true)
         return true
       } catch (error) {
         this.error = error.message
@@ -100,6 +100,7 @@ export const useAuthStore = defineStore("auth", {
         await signOut(auth)
         this.user = null
         this.isAuthenticated = false
+        localStorage.removeItem('isAuthenticated')
         return true
       } catch (error) {
         this.error = error.message
