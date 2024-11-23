@@ -37,6 +37,7 @@
             :ratio="1"
             spinner-color="primary"
             style="height: 200px"
+            loading="lazy"
           >
             <div class="absolute-bottom text-subtitle2 text-center bg-transparent">
               {{ item.name }}

@@ -21,6 +21,7 @@
             :src="props.row.image"
             spinner-color="primary"
             style="height: 50px; width: 50px"
+            loading="lazy"
           />
         </q-td>
       </template>
