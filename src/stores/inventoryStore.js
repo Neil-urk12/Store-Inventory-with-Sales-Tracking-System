@@ -55,12 +55,9 @@ export const useInventoryStore = defineStore('inventory', {
       { label: 'Quantity', value: 'quantity' },
       { label: 'Category', value: 'category' }
     ],
-    categories: [
-      { label: 'Electronics', value: 'electronics' },
-      { label: 'Clothing', value: 'clothing' },
-      { label: 'Food', value: 'food' },
-      { label: 'Books', value: 'books' }
-    ],
+    categories: [],
+    categoryDialog: false,
+    editedCategory: null,
     columns: [
       { name: 'image', label: 'Image', field: 'image', align: 'left' },
       { name: 'name', label: 'Name', field: 'name', align: 'left', sortable: true },
@@ -263,7 +260,13 @@ export const useInventoryStore = defineStore('inventory', {
       return [...this.items]
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 5)
-    }
+    },
+    formattedCategories: (state) => {
+      return state.categories.map(category => ({
+        label: category.name,
+        value: category.value
+      }))
+    },
   },
 
   actions: {
@@ -303,7 +306,6 @@ export const useInventoryStore = defineStore('inventory', {
         }))
 
         this.items = processedItems
-        console.log('Processed local items:', processedItems)
 
         // If online, sync with Firestore
         if (useNetworkStatus().isOnline) {
@@ -317,7 +319,6 @@ export const useInventoryStore = defineStore('inventory', {
             quantity: Number(doc.data().quantity) || 0,
             createdAt: doc.data().createdAt || new Date().toISOString()
           }))
-          console.log('Processed Firestore items:', firestoreItems)
 
           // Only merge if Firestore has items
           if (firestoreItems.length > 0) {
@@ -332,7 +333,6 @@ export const useInventoryStore = defineStore('inventory', {
               }
             })
             this.items = mergedItems
-            console.log('Merged items:', mergedItems)
           } else {
             console.log('No Firestore items found, keeping local data')
           }
@@ -362,17 +362,55 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     async saveItem() {
+      this.loading = true;
       try {
-        if (this.editMode) {
-          await db.updateItem(this.editedItem.id, this.editedItem);
+        const { isOnline } = useNetworkStatus();
+
+        // Clean up the item data before saving
+        const itemToSave = { ...this.editedItem };
+
+        // Handle image field
+        if (!itemToSave.image || itemToSave.image.trim() === '') {
+          delete itemToSave.image;
         } else {
-          await db.addItem(this.editedItem);
+          // Ensure image URL is valid
+          try {
+            new URL(itemToSave.image);
+          } catch (e) {
+            throw new Error('Invalid image URL format');
+          }
         }
+
+        const operation = {
+          type: this.editMode ? 'update' : 'add',
+          collection: 'items',
+          data: itemToSave,
+          docId: this.editMode ? itemToSave.id : undefined
+        };
+
+        // Save to local DB
+        let id;
+        if (this.editMode) {
+          await db.updateItem(itemToSave.id, itemToSave);
+          id = itemToSave.id;
+        } else {
+          id = await db.addItem(itemToSave);
+          operation.docId = id;
+        }
+
+        // If offline, queue for sync
+        if (!isOnline.value) {
+          await syncQueue.addToQueue(operation);
+        }
+
         await this.loadInventory();
         this.itemDialog = false;
+        return { success: true, offline: !isOnline.value, id };
       } catch (error) {
         console.error('Error saving item:', error);
         throw error;
+      } finally {
+        this.loading = false;
       }
     },
 
@@ -388,10 +426,8 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     async syncWithFirestore() {
-      if (this.syncStatus.inProgress) {
-        console.log('Sync already in progress, skipping...')
-        return
-      }
+      if (this.syncStatus.inProgress)
+        return console.log('Sync already in progress, skipping...')
 
       try {
         this.syncStatus.inProgress = true
@@ -870,6 +906,70 @@ export const useInventoryStore = defineStore('inventory', {
         this.loading = false
       }
     },
+
+    async loadCategories() {
+      try {
+        const categories = await db.categories.toArray()
+        this.categories = categories
+      } catch (error) {
+        this.error = 'Failed to load categories'
+        // Fallback to empty categories array instead of throwing
+        this.categories = []
+      }
+    },
+
+    async addCategory(categoryName) {
+      try {
+        const exists = this.categories.some(
+          cat => cat.name.toLowerCase() === categoryName.toLowerCase()
+        )
+        if (exists) {
+          this.error = 'Category already exists'
+          return null
+        }
+
+        const newCategory = {
+          name: categoryName,
+          value: categoryName.charAt(0).toLowerCase() + categoryName.slice(1),
+          createdAt: new Date().toISOString()
+        }
+        const id = await db.categories.add(newCategory)
+        const categoryWithId = { ...newCategory, id }
+        this.categories.push(categoryWithId)
+        this.error = null
+        return categoryWithId
+      } catch (error) {
+        this.error = error.message || 'Failed to add category'
+        return null
+      }
+    },
+
+    async deleteCategory(categoryId) {
+      try {
+        await db.categories.delete(categoryId)
+        this.categories = this.categories.filter(cat => cat.id !== categoryId)
+        this.error = null
+        return true
+      } catch (error) {
+        this.error = 'Failed to delete category'
+        // Keep the UI state consistent even if DB operation fails
+        this.categories = this.categories.filter(cat => cat.id !== categoryId)
+        return false
+      }
+    },
+
+    openCategoryDialog() {
+      this.categoryDialog = true
+      this.editedCategory = null
+      this.error = null
+    },
+
+    closeCategoryDialog() {
+      this.categoryDialog = false
+      this.editedCategory = null
+      this.error = null
+    },
+
     getCategoryChartData() {
       // Group items by category and calculate total sales
       const categoryData = this.items.reduce((acc, item) => {
@@ -939,6 +1039,35 @@ export const useInventoryStore = defineStore('inventory', {
           }
         }
       }
+    },
+    // Item dialog actions
+    openItemDialog(item = null) {
+      if (item) {
+        this.editMode = true;
+        this.editedItem = { ...item };
+      } else {
+        this.editMode = false;
+        this.editedItem = {
+          name: '',
+          sku: '',
+          category: '',
+          quantity: 0,
+          price: 0,
+          image: null
+        };
+      }
+      this.itemDialog = true;
+    },
+
+    closeItemDialog() {
+      this.itemDialog = false;
+      this.editedItem = {};
+      this.editMode = false;
+    },
+
+    confirmDelete(item) {
+      this.itemToDelete = item;
+      this.deleteDialog = true;
     },
   }
 })

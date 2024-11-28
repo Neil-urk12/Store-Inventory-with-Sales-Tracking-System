@@ -4,16 +4,16 @@ import { mockItems, mockCategories } from '../data/mockdata';
 
 class AppDatabase extends Dexie {
   constructor() {
-    super('QuasarVueFireApp');
+    super('inventoryDb');
 
     this.version(1).stores({
       // Inventory tables
-      items: '++id, name, sku, category, quantity, price',
+      items: '++id, name, sku, category, quantity, price, image, createdAt, updatedAt',
       sales: '++id, itemId, quantity, price, date',
       cashFlow: '++id, paymentMethod, type, amount, date, description',
 
       // Contacts tables
-      categories: '++id, name',
+      categories: '++id, name, value, createdAt',
       contacts: '++id, categoryId, name, email, phone, avatar, [categoryId+name]',
 
       // Sync queue table
