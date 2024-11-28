@@ -1,35 +1,3 @@
-<template>
-  <q-table
-    title="Recently Added Products"
-    :rows="products"
-    :columns="columns"
-    row-key="id"
-    :loading="loading"
-    :pagination="pagination"
-    :rows-per-page-options="[5, 10, 15]"
-    class="my-sticky-header-table"
-  >
-    <template v-slot:body="props">
-      <q-tr :props="props">
-        <q-td key="image" :props="props">
-          <q-img
-            :src="props.row.image"
-            :alt="props.row.name"
-            style="width: 50px; height: 50px; object-fit: cover"
-            @error="(err) => props.row.image = '/images/no-image.png'"
-          />
-        </q-td>
-        <q-td key="name" :props="props">{{ props.row.name }}</q-td>
-        <q-td key="quantity" :props="props">{{ props.row.quantity }}</q-td>
-        <q-td key="price" :props="props">{{ props.row.price }}</q-td>
-        <q-td key="createdAt" :props="props">
-          {{ new Date(props.row.createdAt).toLocaleDateString() }}
-        </q-td>
-      </q-tr>
-    </template>
-  </q-table>
-</template>
-
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useInventoryStore } from 'src/stores/inventoryStore'
@@ -92,10 +60,41 @@ const products = computed(() => {
 })
 </script>
 
+<template>
+  <q-table
+    title="Recently Added Products"
+    :rows="products"
+    :columns="columns"
+    row-key="id"
+    :loading="loading"
+    :pagination="pagination"
+    :rows-per-page-options="[5, 10, 15]"
+    class="my-sticky-header-table"
+  >
+    <template v-slot:body="props">
+      <q-tr :props="props">
+        <q-td key="image" :props="props">
+          <q-img
+            :src="props.row.image"
+            :alt="props.row.name"
+            style="width: 50px; height: 50px; object-fit: cover"
+            @error="(err) => props.row.image = '/images/no-image.png'"
+          />
+        </q-td>
+        <q-td key="name" :props="props">{{ props.row.name }}</q-td>
+        <q-td key="quantity" :props="props">{{ props.row.quantity }}</q-td>
+        <q-td key="price" :props="props">{{ props.row.price }}</q-td>
+        <q-td key="createdAt" :props="props">
+          {{ new Date(props.row.createdAt).toLocaleDateString() }}
+        </q-td>
+      </q-tr>
+    </template>
+  </q-table>
+</template>
+
 <style scoped>
 .my-sticky-header-table {
-  /* height or max-height is important */
-  max-height: 300px;
+  max-height: 365px;
 }
 
 .my-sticky-header-table .q-table__top,
