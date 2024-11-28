@@ -3,7 +3,7 @@
     :color="modeColor"
     :icon="darkModeIcon"
     @click="toggleDarkMode"
-  />
+  > Toggle Mode </q-btn>
 </template>
 
 <script setup>

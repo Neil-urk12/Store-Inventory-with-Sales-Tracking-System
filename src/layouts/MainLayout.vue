@@ -87,7 +87,6 @@ const linksList = [
   { title: 'Inventory', icon: 'inventory', link: '/inventory' },
   { title: 'Reports', icon: 'analytics', link: '/reports' },
   { title: 'Contacts', icon: 'contacts', link: '/contacts' },
-  { title: 'Profile', icon: 'person', link: '/profile' },
 ]
 
 const leftDrawerOpen = ref(false)
