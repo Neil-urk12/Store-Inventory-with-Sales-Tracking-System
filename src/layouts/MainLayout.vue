@@ -8,7 +8,7 @@
           round
           icon="menu"
           aria-label="Menu"
-          @click="toggleLeftDrawer"
+          @click="leftDrawerOpen = !leftDrawerOpen"
         />
 
         <q-toolbar-title>
@@ -36,7 +36,11 @@
           :key="link.title"
           v-bind="link"
         />
-        <ColorToggle class="bg-accent"></ColorToggle>
+         <ColorToggle class="bg-accent q-mt-md q-ml-md"></ColorToggle>
+        <q-space></q-space>
+        <q-btn flat dense aria-label="sign out" class="bg-primary q-ml-md q-mt-md q-px-md" @click="logout">
+          Sign out
+        </q-btn>
       </q-list>
     </q-drawer>
 
@@ -62,10 +66,21 @@
 import { defineAsyncComponent, ref } from 'vue'
 const EssentialLink = defineAsyncComponent(() => import('src/components/layout/EssentialLink.vue'))
 const ColorToggle = defineAsyncComponent(() => import('src/components/layout/ColorToggle.vue'))
+import { useAuthStore } from 'src/stores/authStore'
+import { useRouter } from 'vue-router';
+
+const router = useRouter()
+const authStore = useAuthStore()
 
 defineOptions({
   name: 'MainLayout'
 })
+
+async function logout (){
+  await authStore.logout()
+  localStorage.removeItem("isAuthenticated")
+  router.push('/login')
+}
 
 const linksList = [
   { title: 'Dashboard', icon: 'dashboard', link: '/' },
@@ -73,10 +88,7 @@ const linksList = [
   { title: 'Reports', icon: 'analytics', link: '/reports' },
   { title: 'Contacts', icon: 'contacts', link: '/contacts' },
   { title: 'Profile', icon: 'person', link: '/profile' },
-  { title: 'Facebook', icon: 'public', link: 'https://facebook.quasar.dev' },
 ]
 
 const leftDrawerOpen = ref(false)
-
-const toggleLeftDrawer = () => leftDrawerOpen.value = !leftDrawerOpen.value
 </script>
