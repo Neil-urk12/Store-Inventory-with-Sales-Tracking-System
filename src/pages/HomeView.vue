@@ -14,7 +14,9 @@ const DashboardTable = defineAsyncComponent(() => import('../components/home/Das
         <q-card class="section-card text-white">
           <Suspense>
             <template #default>
-              <ComboChart />
+              <q-card-section class="q-pt-lg q-pb-lg">
+                <ComboChart />
+              </q-card-section>
             </template>
             <template #fallback>
               <q-card-section>
@@ -45,9 +47,7 @@ const DashboardTable = defineAsyncComponent(() => import('../components/home/Das
       </div>
       <div class="col-12 col-md-6">
         <q-card class="section-card text-white">
-          <q-card-section>
             <DashboardTable></DashboardTable>
-          </q-card-section>
         </q-card>
       </div>
     </div>
