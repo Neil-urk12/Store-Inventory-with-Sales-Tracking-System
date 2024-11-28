@@ -1,3 +1,19 @@
+<script setup>
+import { onMounted } from "vue"
+import { useInventoryStore } from "src/stores/inventoryStore"
+import { defineAsyncComponent } from "vue"
+const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/inventory/InventoryHeaderActions.vue'))
+const DeleteDialog = defineAsyncComponent(() => import('src/components/inventory/DeleteDialog.vue'))
+const ItemDialog = defineAsyncComponent(() => import('src/components/inventory/ItemDialog.vue'))
+const InventoryListView = defineAsyncComponent(() => import('src/components/inventory/InventoryListView.vue'))
+const inventoryStore = useInventoryStore()
+
+onMounted(async () => {
+  await inventoryStore.initializeDb()
+  await inventoryStore.loadInventory()
+})
+</script>
+
 <template>
   <div class="q-pa-md">
     <InventoryHeaderActions></InventoryHeaderActions>
@@ -10,13 +26,12 @@
     >
       {{ inventoryStore.error }}
       <template v-slot:action>
-        <q-btn flat color="white" label="Retry" @click="loadInventory" />
+        <q-btn flat color="white" label="Retry" @click="inventoryStore.loadInventory" />
       </template>
     </q-banner>
     <Suspense>
       <template #default>
-        <InventoryGridView v-if="inventoryStore.viewMode === 'grid'" />
-        <InventoryListView v-else />
+        <InventoryListView />
       </template>
       <template #fallback>
         <div class="row justify-center q-pa-md">
@@ -29,24 +44,6 @@
   </div>
 </template>
 
-<script setup>
-import { computed, onMounted } from "vue"
-import { useInventoryStore } from "src/stores/inventoryStore"
-import { defineAsyncComponent } from "vue"
-const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/inventory/InventoryHeaderActions.vue'))
-const DeleteDialog = defineAsyncComponent(() => import('src/components/inventory/DeleteDialog.vue'))
-const ItemDialog = defineAsyncComponent(() => import('src/components/inventory/ItemDialog.vue'))
-const InventoryGridView = defineAsyncComponent(() => import('src/components/inventory/InventoryGridView.vue'))
-const InventoryListView = defineAsyncComponent(() => import('src/components/inventory/InventoryListView.vue'))
-const inventoryStore = useInventoryStore();
-const loadInventory = () => inventoryStore.loadInventory()
-
-onMounted(async () => {
-  await inventoryStore.initializeDb()
-  await inventoryStore.loadInventory()
-})
-</script>
-
 <style lang="scss" scoped>
 .inventory-card {
   height: 100%;
@@ -58,17 +55,13 @@ onMounted(async () => {
 }
 .inventory-table {
   .q-table__card {
-    border-radius: 8px;
+    border-radius: 8px
   }
 }
 @media (max-width: 599px) {
-  .inventory-card {
-    margin-bottom: 1rem;
-  }
+  .inventory-card {margin-bottom: 1rem}
   .q-table {
-    &__container {
-      overflow-x: auto;
-    }
+    &__container {overflow-x: auto}
   }
 }
 </style>
