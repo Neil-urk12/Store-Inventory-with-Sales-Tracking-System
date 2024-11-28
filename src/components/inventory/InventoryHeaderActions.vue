@@ -3,14 +3,22 @@
     <div class="col-12 col-sm-6">
       <div class="text-h6">Inventory Management</div>
     </div>
-    <div class="col-12 col-sm-6 text-right">
-      <q-btn
-        color="primary"
-        icon="add"
-        label="Add Item"
-        @click="inventoryStore.openItemDialog()"
-      />
-    </div>
+    <!-- <div class="col-12 col-sm-6 text-right">
+      <q-btn-group spread>
+        <q-btn
+          color="primary"
+          icon="add"
+          label="Add Item"
+          @click="inventoryStore.openItemDialog()"
+        />
+        <q-btn
+          color="primary"
+          icon="category"
+          label="Manage Categories"
+          @click="inventoryStore.openCategoryDialog()"
+        />
+      </q-btn-group>
+    </div> -->
   </div>
   <div class="row q-col-gutter-md q-mb-md">
     <div class="col-12 col-sm-6">
@@ -32,7 +40,7 @@
         <div class="col-6">
           <q-select
             v-model="inventoryStore.categoryFilter"
-            :options="inventoryStore.categories"
+            :options="inventoryStore.formattedCategories"
             outlined
             dense
             label="Category"
@@ -45,25 +53,101 @@
         <div class="col-6">
           <q-btn-group spread>
             <q-btn
-              :color="inventoryStore.viewMode === 'grid' ? 'primary' : 'grey'"
-              icon="grid_view"
-              @click="inventoryStore.viewMode = 'grid'"
-              dense
-            />
-            <q-btn
-              :color="inventoryStore.viewMode === 'list' ? 'primary' : 'grey'"
-              icon="list"
-              @click="inventoryStore.viewMode = 'list'"
-              dense
-            />
+            color="primary"
+            icon="add"
+            dense
+            label="Add Item"
+            @click="inventoryStore.openItemDialog()"
+          />
+          <q-btn
+            color="primary"
+            icon="category"
+            dense
+            label="Add Categories"
+            @click="inventoryStore.openCategoryDialog()"
+          />
           </q-btn-group>
         </div>
       </div>
     </div>
   </div>
+  <q-dialog v-model="inventoryStore.categoryDialog">
+    <q-card style="min-width: 350px">
+      <q-card-section class="row items-center q-pb-none">
+        <div class="text-h6">Add Category</div>
+        <q-space />
+        <q-btn icon="close" flat round dense v-close-popup />
+      </q-card-section>
+
+      <q-card-section>
+        <q-input
+          v-model="newCategoryName"
+          label="Category Name"
+          :rules="[val => !!val || 'Category name is required']"
+          @keyup.enter="handleAddCategory"
+        />
+      </q-card-section>
+
+      <q-card-actions align="right">
+        <q-btn flat label="Cancel" color="primary" v-close-popup />
+        <q-btn flat label="Add" color="primary" @click="handleAddCategory" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
+import { onMounted, ref, watch } from 'vue'
+import { useQuasar } from 'quasar'
+
+const $q = useQuasar()
 const inventoryStore = useInventoryStore()
+const newCategoryName = ref('')
+
+// Reset category input when dialog closes
+watch(() => inventoryStore.categoryDialog, (newVal) => {
+  if (!newVal) {
+    newCategoryName.value = ''
+  }
+})
+
+const handleAddCategory = async () => {
+  if (!newCategoryName.value) {
+    $q.notify({
+      color: 'negative',
+      message: 'Category name is required',
+      position: 'top'
+    })
+    return
+  }
+
+  const result = await inventoryStore.addCategory(newCategoryName.value)
+
+  if (result) {
+    $q.notify({
+      color: 'positive',
+      message: 'Category added successfully',
+      position: 'top'
+    })
+    newCategoryName.value = ''
+    inventoryStore.closeCategoryDialog()
+  } else {
+    $q.notify({
+      color: 'negative',
+      message: inventoryStore.error || 'Failed to add category',
+      position: 'top'
+    })
+  }
+}
+
+onMounted(async () => {
+  await inventoryStore.loadCategories()
+})
 </script>
+
+<style scoped>
+.q-btn-group {
+  box-shadow: none;
+}
+</style>
