@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { useContactsStore } from "../stores/contacts";
 
@@ -7,35 +7,55 @@ const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
 const contactsStore = useContactsStore();
 
-// Initialize the database with mock data
-contactsStore.initializeDb();
+onMounted(async () => {
+  try {
+    await contactsStore.initializeDb();
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to initialize contacts database',
+      position: 'top'
+    })
+  }
+})
 
-const showCategoryModal = ref(false);
-const categoryModalTitle = ref("");
-const newCategory = reactive({
+const contactEntryModalOpen = ref(false);
+const contactEntryModalTitle = ref("");
+const contactCategoryModalTitle = ref("");
+const showContactCategoryModal = ref(false);
+const newContactCategory = reactive({
   id: null,
   name: "",
 });
 
-const addCategory = () => {
-  categoryModalTitle.value = "Add Category";
-  newCategory.id = null;
-  newCategory.name = "";
-  showCategoryModal.value = true;
+const newContact = reactive({
+  id: null,
+  categoryId: null,
+  name: "",
+  email: "",
+  phone: "",
+  avatar: "https://via.placeholder.com/150",
+});
+
+const addContactCategory = () => {
+  contactCategoryModalTitle.value = "Add Contact Category";
+  newContactCategory.id = null;
+  newContactCategory.name = "";
+  showContactCategoryModal.value = true;
 };
 
-const editCategory = (category) => {
-  categoryModalTitle.value = "Edit Category";
-  newCategory.id = category.id;
-  newCategory.name = category.name;
-  showCategoryModal.value = true;
+const editContactCategory = (contactCategory) => {
+  contactCategoryModalTitle.value = "Edit Contact Category";
+  newContactCategory.id = contactCategory.id;
+  newContactCategory.name = contactCategory.name;
+  showContactCategoryModal.value = true;
 };
 
-const deleteCategory = (category) => {
-  if (category.contacts.length > 0) {
+const deleteContactCategory = (contactCategory) => {
+  if (contactCategory.contacts.length > 0) {
     $q.dialog({
-      title: 'Delete Category',
-      message: `This category contains ${category.contacts.length} contact${category.contacts.length === 1 ? '' : 's'}. Are you sure you want to delete "${category.name}" and all its contacts?`,
+      title: 'Delete Contact Category',
+      message: `This contact category contains ${contactCategory.contacts.length} contact${contactCategory.contacts.length === 1 ? '' : 's'}. Are you sure you want to delete "${contactCategory.name}" and all its contacts?`,
       ok: {
         label: 'Delete',
         color: 'negative'
@@ -47,18 +67,18 @@ const deleteCategory = (category) => {
       persistent: true
     }).onOk(async () => {
       try {
-        await contactsStore.deleteCategory(category.id);
+        await contactsStore.deleteContactCategory(contactCategory.id);
         $q.notify({
           type: 'positive',
-          message: 'Category deleted successfully',
+          message: 'Contact category deleted successfully',
           position: 'top',
           timeout: 2000
         });
       } catch (error) {
-        console.error('Error deleting category:', error);
+        console.error('Error deleting contact category:', error);
         $q.notify({
           type: 'negative',
-          message: 'Error deleting category',
+          message: 'Error deleting contact category',
           position: 'top',
           timeout: 2000
         });
@@ -66,8 +86,8 @@ const deleteCategory = (category) => {
     });
   } else {
     $q.dialog({
-      title: 'Delete Category',
-      message: `Delete category "${category.name}"?`,
+      title: 'Delete Contact Category',
+      message: `Delete contact category "${contactCategory.name}"?`,
       ok: {
         label: 'Delete',
         color: 'negative'
@@ -78,18 +98,18 @@ const deleteCategory = (category) => {
       }
     }).onOk(async () => {
       try {
-        await contactsStore.deleteCategory(category.id);
+        await contactsStore.deleteContactCategory(contactCategory.id);
         $q.notify({
           type: 'positive',
-          message: 'Category deleted successfully',
+          message: 'Contact category deleted successfully',
           position: 'top',
           timeout: 2000
         });
       } catch (error) {
-        console.error('Error deleting category:', error);
+        console.error('Error deleting contact category:', error);
         $q.notify({
           type: 'negative',
-          message: 'Error deleting category',
+          message: 'Error deleting contact category',
           position: 'top',
           timeout: 2000
         });
@@ -98,57 +118,40 @@ const deleteCategory = (category) => {
   }
 };
 
-const saveCategory = async () => {
+const saveContactCategory = async () => {
   try {
-    if (!newCategory.name.trim()) {
-      $q.notify({
-        type: 'negative',
-        message: 'Category name is required',
-        position: 'top',
-        timeout: 2000
+    if (newContactCategory.id) {
+      await contactsStore.updateContactCategory(newContactCategory.id, {
+        name: newContactCategory.name
       });
-      return;
-    }
-
-    if (newCategory.id === null) {
-      await contactsStore.addCategory({ name: newCategory.name });
       $q.notify({
         type: 'positive',
-        message: 'Category added successfully',
+        message: 'Contact category updated successfully',
         position: 'top',
         timeout: 2000
       });
     } else {
-      await contactsStore.updateCategory(newCategory.id, { name: newCategory.name });
+      await contactsStore.addContactCategory({
+        name: newContactCategory.name
+      });
       $q.notify({
         type: 'positive',
-        message: 'Category updated successfully',
+        message: 'Contact category added successfully',
         position: 'top',
         timeout: 2000
       });
     }
-    closeCategoryModal();
+    showContactCategoryModal.value = false;
   } catch (error) {
-    console.error('Error saving category:', error);
+    console.error('Error saving contact category:', error);
     $q.notify({
       type: 'negative',
-      message: 'Error saving category',
+      message: 'Error saving contact category',
       position: 'top',
       timeout: 2000
     });
   }
 };
-
-const showModal = ref(false);
-const modalTitle = ref("");
-const newContact = reactive({
-  id: null,
-  categoryId: null,
-  name: "",
-  email: "",
-  phone: "",
-  avatar: "https://via.placeholder.com/150",
-});
 
 const callContact = (phone) => {
   window.location.href = `tel:${phone}`;
@@ -158,30 +161,30 @@ const emailContact = (email) => {
   window.location.href = `mailto:${email}`;
 };
 
-const addContact = (category) => {
-  modalTitle.value = "Add Contact";
+const addContact = (contactCategory) => {
+  contactEntryModalTitle.value = "Add Contact";
   newContact.id = null;
-  newContact.categoryId = category.id;
+  newContact.categoryId = contactCategory.id;
   newContact.name = "";
   newContact.email = "";
   newContact.phone = "";
-  showModal.value = true;
+  contactEntryModalOpen.value = true;
 };
 
-const editContact = (category, contact) => {
-  modalTitle.value = "Edit Contact";
-  newContact.id = contact.id;
-  newContact.categoryId = category.id;
-  newContact.name = contact.name;
-  newContact.email = contact.email;
-  newContact.phone = contact.phone;
-  showModal.value = true;
+const editContact = (contactCategory, contactPerson) => {
+  contactEntryModalTitle.value = "Edit Contact";
+  newContact.id = contactPerson.id;
+  newContact.categoryId = contactCategory.id;
+  newContact.name = contactPerson.name;
+  newContact.email = contactPerson.email;
+  newContact.phone = contactPerson.phone;
+  contactEntryModalOpen.value = true;
 };
 
-const deleteContact = (category, contact) => {
+const deleteContact = (contactCategory, contactPerson) => {
   $q.dialog({
     title: 'Delete Contact',
-    message: `Delete contact "${contact.name}"?`,
+    message: `Delete contact "${contactPerson.name}"?`,
     ok: {
       label: 'Delete',
       color: 'negative'
@@ -192,7 +195,7 @@ const deleteContact = (category, contact) => {
     }
   }).onOk(async () => {
     try {
-      await contactsStore.deleteContact(contact.id);
+      await contactsStore.deleteContact(contactPerson.id);
       $q.notify({
         type: 'positive',
         message: 'Contact deleted successfully',
@@ -231,15 +234,7 @@ const saveContact = async () => {
       categoryId: newContact.categoryId
     };
 
-    if (newContact.id === null) {
-      await contactsStore.addContact(contactData);
-      $q.notify({
-        type: 'positive',
-        message: 'Contact added successfully',
-        position: 'top',
-        timeout: 2000
-      });
-    } else {
+    if (newContact.id) {
       await contactsStore.updateContact(newContact.id, contactData);
       $q.notify({
         type: 'positive',
@@ -247,8 +242,16 @@ const saveContact = async () => {
         position: 'top',
         timeout: 2000
       });
+    } else {
+      await contactsStore.addContact(contactData);
+      $q.notify({
+        type: 'positive',
+        message: 'Contact added successfully',
+        position: 'top',
+        timeout: 2000
+      });
     }
-    closeModal();
+    contactEntryModalOpen.value = false;
   } catch (error) {
     console.error('Error saving contact:', error);
     $q.notify({
@@ -260,95 +263,46 @@ const saveContact = async () => {
   }
 };
 
-const closeModal = () => {
-  showModal.value = false;
-};
-
-const closeCategoryModal = () => {
-  showCategoryModal.value = false;
-};
-
-// Remove after full implementation of database
-// Function to repopulate the database for testing
-const repopulateDatabase = async () => {
-  try {
-    $q.dialog({
-      title: 'Repopulate Database',
-      message: 'This will clear all existing data and repopulate with mock data. Are you sure?',
-      ok: {
-        label: 'Yes, Repopulate',
-        color: 'primary'
-      },
-      cancel: {
-        label: 'Cancel',
-        flat: true
-      },
-      persistent: true
-    }).onOk(async () => {
-      try {
-        await contactsStore.repopulateDatabase();
-        $q.notify({
-          type: 'positive',
-          message: 'Database repopulated successfully'
-        });
-      } catch (error) {
-        $q.notify({
-          type: 'negative',
-          message: 'Error repopulating database: ' + error.message
-        });
-      }
-    });
-  } catch (error) {
-    console.error('Error in repopulateDatabase:', error);
-  }
-};
-
-// Computed property for categories from store
-const categories = computed(() => contactsStore.categories);
+// Computed property for contact categories from store
+const contactCategories = computed(() => contactsStore.contactCategories);
 </script>
 
 <template>
   <q-page class="q-pa-xs">
     <div class="row q-mb-md items-center justify-between">
-      <div class="text-h5">Contacts</div>
+      <div class="text-h5">Contact Management</div>
       <div>
         <q-btn
           color="primary"
           icon="add"
-          label="Add Category"
-          @click="addCategory"
+          label="Add Contact Category"
+          @click="addContactCategory"
           class="q-mr-sm"
-        />
-        <q-btn
-          color="secondary"
-          icon="refresh"
-          label="Repopulate Database"
-          @click="repopulateDatabase"
         />
       </div>
     </div>
     <q-list>
       <q-expansion-item
-        class="category-header bg-transparent q-mb-sm"
-        v-for="category in categories"
-        :key="category.id"
+        class="contact-category-header bg-transparent q-mb-sm"
+        v-for="contactCategory in contactCategories"
+        :key="contactCategory.id"
         dense
         :dark="isDark"
-        expand-icon-class="text-primary"
+        group="contact-categories"
+        icon="folder"
+        :label="contactCategory.name"
       >
-        <template v-slot:header>
-          <div class="row items-center full-width">
-            <div class="text-h6 text-weight-medium">{{ category.name }}</div>
-            <q-space />
+        <template v-slot:header-right>
+          <div class="row items-center">
             <q-btn
               icon="edit"
               color="primary"
               flat
               round
               dense
-              @click.stop="editCategory(category)"
+              @click.stop="editContactCategory(contactCategory)"
             >
-              <q-tooltip>Edit Category</q-tooltip>
+              <q-tooltip>Edit Contact Category</q-tooltip>
             </q-btn>
             <q-btn
               icon="delete"
@@ -356,27 +310,27 @@ const categories = computed(() => contactsStore.categories);
               flat
               round
               dense
-              @click.stop="deleteCategory(category)"
+              @click.stop="deleteContactCategory(contactCategory)"
             >
-              <q-tooltip>Delete Category</q-tooltip>
+              <q-tooltip>Delete Contact Category</q-tooltip>
             </q-btn>
           </div>
         </template>
         <q-list>
           <q-item
-            v-for="contact in category.contacts"
-            :key="contact.id"
+            v-for="contactPerson in contactCategory.contacts"
+            :key="contactPerson.id"
             class="q-mb-md contact-card"
           >
             <q-item-section avatar>
               <q-avatar>
-                <img :src="contact.avatar" />
+                <img :src="contactPerson.avatar" />
               </q-avatar>
             </q-item-section>
             <q-item-section>
-              <q-item-label>{{ contact.name }}</q-item-label>
-              <q-item-label caption>{{ contact.email }}</q-item-label>
-              <q-item-label caption>{{ contact.phone }}</q-item-label>
+              <q-item-label>{{ contactPerson.name }}</q-item-label>
+              <q-item-label caption>{{ contactPerson.email }}</q-item-label>
+              <q-item-label caption>{{ contactPerson.phone }}</q-item-label>
             </q-item-section>
             <q-item-section side>
               <q-btn
@@ -384,35 +338,35 @@ const categories = computed(() => contactsStore.categories);
                 color="primary"
                 flat
                 round
-                @click="callContact(contact.phone)"
+                @click="callContact(contactPerson.phone)"
               />
               <q-btn
                 icon="email"
                 color="primary"
                 flat
                 round
-                @click="emailContact(contact.email)"
+                @click="emailContact(contactPerson.email)"
               />
               <q-btn
                 icon="edit"
                 color="accent"
                 flat
                 round
-                @click="editContact(category, contact)"
+                @click="editContact(contactCategory, contactPerson)"
               />
               <q-btn
                 icon="delete"
                 color="negative"
                 flat
                 round
-                @click="deleteContact(category, contact)"
+                @click="deleteContact(contactCategory, contactPerson)"
               />
             </q-item-section>
           </q-item>
           <q-separator />
           <q-item>
             <q-item-section>
-              <q-btn color="primary" @click="addContact(category)">
+              <q-btn color="primary" @click="addContact(contactCategory)">
                 Add Contact
               </q-btn>
             </q-item-section>
@@ -420,21 +374,21 @@ const categories = computed(() => contactsStore.categories);
         </q-list>
       </q-expansion-item>
     </q-list>
-    <q-dialog v-model="showCategoryModal">
+    <q-dialog v-model="showContactCategoryModal">
       <q-card style="width: 300px">
         <q-card-section>
-          <div class="text-h6">{{ categoryModalTitle }}</div>
+          <div class="text-h6">{{ contactCategoryModalTitle }}</div>
         </q-card-section>
         <q-card-section>
-          <q-form @submit="saveCategory">
+          <q-form @submit="saveContactCategory">
             <q-input
-              v-model="newCategory.name"
-              label="Category Name"
+              v-model="newContactCategory.name"
+              label="Contact Category Name"
               required
             />
             <div class="row justify-end q-mt-md">
               <q-btn color="primary" type="submit">Save</q-btn>
-              <q-btn color="negative" flat @click="closeCategoryModal"
+              <q-btn color="negative" flat @click="showContactCategoryModal = false"
                 >Cancel</q-btn
               >
             </div>
@@ -442,10 +396,10 @@ const categories = computed(() => contactsStore.categories);
         </q-card-section>
       </q-card>
     </q-dialog>
-    <q-dialog v-model="showModal">
-      <q-card style="width: 300px">
+    <q-dialog v-model="contactEntryModalOpen">
+      <q-card style="min-width: 350px">
         <q-card-section>
-          <div class="text-h6">{{ modalTitle }}</div>
+          <div class="text-h6">{{ contactEntryModalTitle }}</div>
         </q-card-section>
         <q-card-section>
           <q-form @submit="saveContact">
@@ -464,7 +418,9 @@ const categories = computed(() => contactsStore.categories);
             />
             <div class="row justify-end q-mt-md">
               <q-btn color="primary" type="submit"> Save </q-btn>
-              <q-btn color="negative" flat @click="closeModal"> Cancel </q-btn>
+              <q-btn color="negative" flat @click="contactEntryModalOpen = false"
+                >Cancel</q-btn
+              >
             </div>
           </q-form>
         </q-card-section>
@@ -474,7 +430,7 @@ const categories = computed(() => contactsStore.categories);
 </template>
 
 <style scoped>
-.category-header {
+.contact-category-header {
   font-size: 1.2rem;
   padding: 16px;
 }
