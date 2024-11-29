@@ -3,22 +3,6 @@
     <div class="col-12 col-sm-6">
       <div class="text-h6">Inventory Management</div>
     </div>
-    <!-- <div class="col-12 col-sm-6 text-right">
-      <q-btn-group spread>
-        <q-btn
-          color="primary"
-          icon="add"
-          label="Add Item"
-          @click="inventoryStore.openItemDialog()"
-        />
-        <q-btn
-          color="primary"
-          icon="category"
-          label="Manage Categories"
-          @click="inventoryStore.openCategoryDialog()"
-        />
-      </q-btn-group>
-    </div> -->
   </div>
   <div class="row q-col-gutter-md q-mb-md">
     <div class="col-12 col-sm-6">
