@@ -1,3 +1,117 @@
+<script setup>
+import { useInventoryStore } from 'src/stores/inventoryStore'
+import { computed, ref } from 'vue'
+import { useQuasar } from 'quasar'
+
+const $q = useQuasar()
+const inventoryStore = useInventoryStore()
+const loading = ref(false)
+
+const items = computed(() => inventoryStore.sortedItems)
+
+const categoryOptions = [
+  'Electronics',
+  'Clothing',
+  'Books',
+  'Food',
+  'Toys',
+  'Sports',
+  'Home',
+  'Other'
+]
+
+const formatPrice = (price) => {
+  return `$${Number(price).toFixed(2)}`
+}
+
+const columns = [
+  {
+    name: 'image',
+    label: 'Image',
+    field: 'image',
+    align: 'left'
+  },
+  {
+    name: 'name',
+    label: 'Name',
+    field: 'name',
+    align: 'left',
+    sortable: true,
+    style: 'position: sticky; left: 0; z-index: 2; box-shadow: 4px 0 4px rgba(0,0,0,0.1);',
+    headerStyle: 'position: sticky; left: 0; z-index: 3; box-shadow: 4px 0 4px rgba(0,0,0,0.1);'
+  },
+  { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
+  { name: 'category', label: 'Category', field: 'category', align: 'left', sortable: true },
+  { name: 'quantity', label: 'Stock', field: 'quantity', align: 'left', sortable: true },
+  { name: 'price', label: 'Price', field: 'price', align: 'left', sortable: true },
+  { name: 'actions', label: 'Actions', field: 'actions', align: 'right' }
+]
+
+const pagination = ref({
+  sortBy: 'name',
+  descending: false,
+  page: 1,
+  rowsPerPage: 10
+})
+
+async function updateField(item, field, value) {
+  // Prevent unnecessary updates and type coercion issues
+  if (String(value) === String(item[field])) return
+
+  const updatePromise = (async () => {
+    try {
+      loading.value = true
+      await inventoryStore.updateItem(item.id, { [field]: value })
+      $q.notify({
+        type: 'positive',
+        message: `Successfully updated ${field}`,
+        position: 'top',
+        timeout: 2000
+      })
+    } catch (error) {
+      console.error('Error updating item:', error)
+      $q.notify({
+        type: 'negative',
+        message: `Failed to update ${field}: ${error.message}`,
+        position: 'top',
+        timeout: 3000
+      })
+      throw error
+    } finally {
+      loading.value = false
+    }
+  })()
+
+  // Debounce rapid updates
+  await debounce(() => updatePromise, 300)()
+}
+
+function getStockColor(quantity) {
+  if (quantity <= 0) return 'negative'
+  if (quantity <= 10) return 'warning'
+  return 'positive'
+}
+
+function customSort(rows, sortBy, descending) {
+  const data = [...rows]
+  if (!sortBy) return data
+
+  return data.sort((a, b) => {
+    const aValue = a[sortBy]
+    const bValue = b[sortBy]
+
+    if (typeof aValue === 'string')
+      return descending
+        ? bValue.localeCompare(aValue)
+        : aValue.localeCompare(bValue)
+
+    return descending
+      ? bValue - aValue
+      : aValue - bValue
+  })
+}
+</script>
+
 <template>
   <div class="q-pa-md">
     <q-table
@@ -146,115 +260,6 @@
     </q-table>
   </div>
 </template>
-
-<script setup>
-import { useInventoryStore } from 'src/stores/inventoryStore'
-import { computed, ref } from 'vue'
-import { useQuasar } from 'quasar'
-
-const $q = useQuasar()
-const inventoryStore = useInventoryStore()
-const loading = ref(false)
-
-const items = computed(() => inventoryStore.sortedItems)
-
-const categoryOptions = [
-  'Electronics',
-  'Clothing',
-  'Books',
-  'Food',
-  'Toys',
-  'Sports',
-  'Home',
-  'Other'
-]
-
-const formatPrice = (price) => {
-  return `$${Number(price).toFixed(2)}`
-}
-
-const columns = [
-  {
-    name: 'image',
-    label: 'Image',
-    field: 'image',
-    align: 'left'
-  },
-  {
-    name: 'name',
-    label: 'Name',
-    field: 'name',
-    align: 'left',
-    sortable: true,
-    style: 'position: sticky; left: 0; z-index: 2; box-shadow: 4px 0 4px rgba(0,0,0,0.1);',
-    headerStyle: 'position: sticky; left: 0; z-index: 3; box-shadow: 4px 0 4px rgba(0,0,0,0.1);'
-  },
-  { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
-  { name: 'category', label: 'Category', field: 'category', align: 'left', sortable: true },
-  { name: 'quantity', label: 'Stock', field: 'quantity', align: 'left', sortable: true },
-  { name: 'price', label: 'Price', field: 'price', align: 'left', sortable: true },
-  { name: 'actions', label: 'Actions', field: 'actions', align: 'right' }
-]
-
-const pagination = ref({
-  sortBy: 'name',
-  descending: false,
-  page: 1,
-  rowsPerPage: 10
-})
-
-async function updateField(item, field, value) {
-  try {
-    if (value === item[field]) return
-
-    loading.value = true
-    const updatedItem = { ...item, [field]: value }
-    await inventoryStore.updateItem(updatedItem)
-
-    $q.notify({
-      type: 'positive',
-      message: `Successfully updated ${field}`,
-      position: 'top',
-      timeout: 2000
-    })
-  } catch (error) {
-    console.error('Error updating item:', error)
-    $q.notify({
-      type: 'negative',
-      message: `Failed to update ${field}: ${error.message}`,
-      position: 'top',
-      timeout: 3000
-    })
-  } finally {
-    loading.value = false
-  }
-}
-
-function getStockColor(quantity) {
-  if (quantity <= 0) return 'negative'
-  if (quantity <= 10) return 'warning'
-  return 'positive'
-}
-
-function customSort(rows, sortBy, descending) {
-  const data = [...rows]
-  if (!sortBy) return data
-
-  return data.sort((a, b) => {
-    const aValue = a[sortBy]
-    const bValue = b[sortBy]
-
-    if (typeof aValue === 'string')
-      return descending
-        ? bValue.localeCompare(aValue)
-        : aValue.localeCompare(bValue)
-
-    return descending
-      ? bValue - aValue
-      : aValue - bValue
-  })
-}
-</script>
 
 <style lang="scss" scoped>
 .inventory-table {
