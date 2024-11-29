@@ -1,37 +1,59 @@
+/**
+ * @fileoverview Manages inventory data and operations, including local and cloud synchronization.
+ * Implements Pinia store pattern for state management.
+ */
+
 import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
-// Remove after full implementation of database
-import { mockItems, mockSalesData, mockInventoryData, mockFinancialData, mockLowStockAlerts, mockTopSellingProducts } from '../data/mockdata'
 import {
   collection,
   getDocs,
   query,
+  orderBy,
+  addDoc,
+  updateDoc,
+  deleteDoc,
   doc,
   writeBatch,
-  serverTimestamp,
-  orderBy
+  serverTimestamp
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
-import { formatDate } from '../utils/dateUtils'
 import debounce from 'lodash/debounce'
+import { formatDate } from '../utils/dateUtils'
 import { date } from 'quasar'
+import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 
-const { formatDate: formatQuasarDate } = date
+// Constants
+const BATCH_SIZE = 500
+const DEFAULT_SORT = 'name'
+const DEFAULT_SORT_DIRECTION = 'asc'
+const SORT_OPTIONS = [
+  { label: 'Name', value: 'name' },
+  { label: 'Price', value: 'price' },
+  { label: 'Quantity', value: 'quantity' },
+  { label: 'Category', value: 'category' }
+]
 
+// Debounced search function to prevent excessive database calls
+const debouncedSearch = debounce((store) => {
+  store.loadInventory()
+}, 300)
+
+/**
+ * @const {Store} useInventoryStore
+ * @description Pinia store for managing inventory state and operations
+ */
 export const useInventoryStore = defineStore('inventory', {
   state: () => ({
     loading: false,
-    lowStocks: 0,
-    outOfStocks: 0,
     error: null,
     items: [],
     searchQuery: '',
     categoryFilter: null,
     itemDialog: false,
     deleteDialog: false,
-    openItemDialog: false,
     editedItem: {},
     itemToDelete: null,
     editMode: false,
@@ -42,40 +64,18 @@ export const useInventoryStore = defineStore('inventory', {
       error: null,
       pendingChanges: 0
     },
-    pagination: {
-      rowsPerPage: 10,
-      sortBy: 'name',
-      descending: false
-    },
-    sortBy: 'name',
-    sortDirection: 'asc',
-    sortOptions: [
-      { label: 'Name', value: 'name' },
-      { label: 'Price', value: 'price' },
-      { label: 'Quantity', value: 'quantity' },
-      { label: 'Category', value: 'category' }
-    ],
-    categories: [
-      { label: 'Electronics', value: 'electronics' },
-      { label: 'Clothing', value: 'clothing' },
-      { label: 'Food', value: 'food' },
-      { label: 'Books', value: 'books' }
-    ],
-    columns: [
-      { name: 'image', label: 'Image', field: 'image', align: 'left' },
-      { name: 'name', label: 'Name', field: 'name', align: 'left', sortable: true },
-      { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
-      { name: 'category', label: 'Category', field: 'category', align: 'left', sortable: true },
-      { name: 'quantity', label: 'Stock', field: 'quantity', align: 'left', sortable: true },
-      { name: 'price', label: 'Price', field: 'price', align: 'left', sortable: true },
-      { name: 'actions', label: 'Actions', field: 'actions', align: 'right' }
-    ],
+    sortBy: DEFAULT_SORT,
+    sortDirection: DEFAULT_SORT_DIRECTION,
+    sortOptions: SORT_OPTIONS,
+    categories: [],
+    categoryDialog: false,
+    editedCategory: null,
     selectedItems: [],
     dateRange: {
-      from: formatQuasarDate(new Date(), 'YYYY-MM-DD'),
-      to: formatQuasarDate(new Date(), 'YYYY-MM-DD')
+      from: formatDate(new Date(), 'YYYY-MM-DD'),
+      to: formatDate(new Date(), 'YYYY-MM-DD')
     },
-    salesData: mockSalesData,
+    salesData: [],
     selectedTimeframe: 'daily',
     profitTimeframe: 'daily',
     cashFlowTransactions: {
@@ -83,135 +83,64 @@ export const useInventoryStore = defineStore('inventory', {
       GCash: [],
       Growsari: []
     },
-    inventoryData: mockInventoryData,
-    financialData: mockFinancialData,
-    lowStockAlerts: mockLowStockAlerts,
-    topSellingProducts: mockTopSellingProducts,
+    inventoryData: [],
+    financialData: [],
+    lowStockAlerts: [],
+    topSellingProducts: [],
     chartData: {
-      daily: {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        datasets: [
-          {
-            label: 'Sales',
-            data: [30, 40, 50, 60, 70, 80, 90],
-            type: 'line',
-            borderColor: '#42A5F5',
-            fill: false,
-            tension: 0.1
-          },
-          {
-            label: 'Expenses',
-            data: [20, 30, 40, 50, 60, 70, 80],
-            type: 'bar',
-            backgroundColor: '#FF6384'
-          }
-        ]
-      },
-      weekly: {
-        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-        datasets: [
-          {
-            label: 'Sales',
-            data: [150, 200, 250, 300],
-            type: 'line',
-            borderColor: '#42A5F5',
-            fill: false,
-            tension: 0.1
-          },
-          {
-            label: 'Expenses',
-            data: [100, 150, 200, 250],
-            type: 'bar',
-            backgroundColor: '#FF6384'
-          }
-        ]
-      },
-      monthly: {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-        datasets: [
-          {
-            label: 'Sales',
-            data: [700, 800, 900, 1000, 1100, 1200],
-            type: 'line',
-            borderColor: '#42A5F5',
-            fill: false,
-            tension: 0.1
-          },
-          {
-            label: 'Expenses',
-            data: [600, 700, 800, 900, 1000, 1100],
-            type: 'bar',
-            backgroundColor: '#FF6384'
-          }
-        ]
-      },
-      yearly: {
-        labels: ['2020', '2021', '2022', '2023'],
-        datasets: [
-          {
-            label: 'Sales',
-            data: [8000, 9000, 10000, 11000],
-            type: 'line',
-            borderColor: '#42A5F5',
-            fill: false,
-            tension: 0.1
-          },
-          {
-            label: 'Expenses',
-            data: [7000, 8000, 9000, 10000],
-            type: 'bar',
-            backgroundColor: '#FF6384'
-          }
-        ]
-      }
-    },
-    cashFlowTransactions: {
-      Cash: [],
-      GCash: [],
-      Growsari: []
+      daily: { labels: [], datasets: [] },
+      weekly: { labels: [], datasets: [] },
+      monthly: { labels: [], datasets: [] }
     }
   }),
 
   getters: {
+    /**
+     * @getter
+     * @returns {Array} Filtered and sorted items based on search query and category
+     */
     filteredItems(state) {
-      let items = [...state.items]
-      if (state.searchQuery) {
-        const query = state.searchQuery.toLowerCase()
-        items = items.filter(item =>
-          item.name.toLowerCase().includes(query) ||
-          item.sku.toLowerCase().includes(query) ||
-          item.category.toLowerCase().includes(query)
-        )
-      }
-      if (state.categoryFilter)
-        items = items.filter(item => item.category === state.categoryFilter)
-      return items
+      return state.items.filter(item => {
+        const matchesSearch = !state.searchQuery ||
+          item.name.toLowerCase().includes(state.searchQuery.toLowerCase())
+        const matchesCategory = !state.categoryFilter ||
+          item.category === state.categoryFilter
+        return matchesSearch && matchesCategory
+      })
     },
 
+    /**
+     * @getter
+     * @returns {Array} Sorted items based on the current sort options
+     */
     sortedItems(state) {
-      const items = [...state.filteredItems]  // Create a new array to avoid mutating the original
-      if(state.sortBy && state.sortOptions.some(option => option.value === state.sortBy))  {
-        items.sort((a, b) => {
-          const aValue = a[state.sortBy]
-          const bValue = b[state.sortBy]
+      const items = [...state.filteredItems]
 
-          if (aValue == null) return state.sortDirection === 'asc' ? 1 : -1
-          if (bValue == null) return state.sortDirection === 'asc' ? -1 : 1
-
-          if (typeof aValue === 'string') {
-            return state.sortDirection === 'asc'
-              ? aValue.localeCompare(bValue)
-              : bValue.localeCompare(aValue)
-          }
-          const numA = Number(aValue)
-          const numB = Number(bValue)
-          return state.sortDirection === 'asc'
-            ? numA - numB
-            : numB - numA
-        })
+      if (!state.sortBy || !SORT_OPTIONS.some(opt => opt.value === state.sortBy)) {
+        return items
       }
-      return items
+
+      const getValue = (item) => {
+        const value = item[state.sortBy]
+        return value == null ? '' : value
+      }
+
+      return items.sort((a, b) => {
+        const aVal = getValue(a)
+        const bVal = getValue(b)
+
+        const compare = typeof aVal === 'string'
+          ? aVal.localeCompare(bVal)
+          : aVal - bVal
+
+        return state.sortDirection === 'asc' ? compare : -compare
+      })
     },
+
+    /**
+     * @getter
+     * @returns {Array} Stock data for all items
+     */
     stockData(state) {
       return state.items.map(item => ({
         name: item.name,
@@ -220,15 +149,35 @@ export const useInventoryStore = defineStore('inventory', {
         lastUpdated: formatDate(new Date(), 'MM/DD/YYYY')
       }))
     },
+
+    /**
+     * @getter
+     * @returns {number} Total revenue from sales data
+     */
     getTotalRevenue(state) {
       return state.salesData.reduce((sum, item) => sum + item.revenue, 0)
     },
+
+    /**
+     * @getter
+     * @returns {Array} Items with low stock levels
+     */
     getLowStockItems(state) {
       return state.inventoryData.filter(item => item.currentStock <= item.minStock * 1.2)
     },
+
+    /**
+     * @getter
+     * @returns {number} Net profit from financial data
+     */
     getNetProfit(state) {
       return state.financialData.find(item => item.category === 'Net Profit')?.amount || 0
     },
+
+    /**
+     * @getter
+     * @returns {number} Daily profit from sales data
+     */
     getDailyProfit() {
       const today = new Date().toISOString().split('T')[0]
       return (this.salesData || [])
@@ -236,6 +185,10 @@ export const useInventoryStore = defineStore('inventory', {
         .reduce((total, sale) => total + ((sale?.price || 0) * (sale?.quantity || 0)), 0)
     },
 
+    /**
+     * @getter
+     * @returns {number} Daily expense from cash flow transactions
+     */
     getDailyExpense() {
       const today = new Date().toISOString().split('T')[0]
       const cashTransactions = this.cashFlowTransactions?.Cash || []
@@ -244,306 +197,344 @@ export const useInventoryStore = defineStore('inventory', {
         .reduce((total, t) => total + (t?.amount || 0), 0)
     },
 
+    /**
+     * @getter
+     * @returns {Array} Categories with their corresponding stock levels
+     */
     getCategoryStocks() {
-      const categoryStocks = {}
-      this.items.forEach(item => {
-        if (!categoryStocks[item.category]) {
-          categoryStocks[item.category] = 0
-        }
-        categoryStocks[item.category] += item.quantity
-      })
-      return Object.values(categoryStocks)
+      return Object.values(
+        this.items.reduce((acc, item) => {
+          acc[item.category] = (acc[item.category] || 0) + item.quantity
+          return acc
+        }, {})
+      )
     },
 
+    /**
+     * @getter
+     * @returns {Array} List of unique categories
+     */
     getCategories() {
       return [...new Set(this.items.map(item => item.category))]
     },
 
+    /**
+     * @getter
+     * @returns {Array} Recently added products
+     */
     getRecentlyAddedProducts() {
       return [...this.items]
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 5)
-    }
+    },
+
+    /**
+     * @getter
+     * @returns {Array} Formatted categories for display
+     */
+    formattedCategories(state) {
+      return state.categories.map(category => ({
+        label: category.name,
+        value: category.value
+      }))
+    },
   },
 
   actions: {
+    /**
+     * @async
+     * @method initializeDb
+     * @returns {Promise<void>}
+     * @description Initializes the database and performs initial sync if needed
+     */
     async initializeDb() {
       try {
-        const existingItems = await db.getAllItems();
-        if (existingItems.length === 0) {
-          // Populate with mock data if empty
-          for (const item of mockItems) await db.addItem(item);
+        const existingItems = await db.items.count()
+        if (existingItems === 0) {
+          const { isOnline } = useNetworkStatus()
+          if (isOnline.value) {
+            await this.syncWithFirestore()
+            await syncQueue.processQueue()
+          }
         }
-        await this.loadInventory();
+        await this.loadInventory()
+      } catch (error) {
+        this.error = handleError(error, 'Failed to initialize database')
+      }
+    },
 
-        // Initial sync if online
+    /**
+     * @async
+     * @method loadInventory
+     * @returns {Promise<void>}
+     * @description Loads inventory from local database and syncs with Firestore if online
+     */
+    async loadInventory() {
+      try {
+        this.loading = true
+        console.log('Loading inventory...')
+
+        // Load from local first
+        const localItems = await db.getAllItems()
+        this.items = localItems.map(processItem)
+
+        // Sync with Firestore if online
         const { isOnline } = useNetworkStatus()
         if (isOnline.value) {
           await this.syncWithFirestore()
-          await syncQueue.processQueue()
         }
       } catch (error) {
-        console.error('Error initializing database:', error);
-        this.error = error.message;
-      }
-    },
-
-    async loadInventory() {
-      try {
-        console.log('Loading inventory...')
-        // Load from IndexedDB first
-        const localItems = await db.items.toArray()
-
-        // Ensure items have the required properties
-        const processedItems = localItems.map(item => ({
-          ...item,
-          category: item.category || 'Uncategorized',
-          quantity: Number(item.quantity) || 0,
-          createdAt: item.createdAt || new Date().toISOString()
-        }))
-
-        this.items = processedItems
-        console.log('Processed local items:', processedItems)
-
-        // If online, sync with Firestore
-        if (useNetworkStatus().isOnline) {
-          const firestoreRef = collection(fireDb, 'items')
-          const q = query(firestoreRef, orderBy('createdAt', 'desc'))
-          const querySnapshot = await getDocs(q)
-          const firestoreItems = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            category: doc.data().category || 'Uncategorized',
-            quantity: Number(doc.data().quantity) || 0,
-            createdAt: doc.data().createdAt || new Date().toISOString()
-          }))
-          console.log('Processed Firestore items:', firestoreItems)
-
-          // Only merge if Firestore has items
-          if (firestoreItems.length > 0) {
-            // Merge items, preferring Firestore data but keeping local items not in Firestore
-            const mergedItems = [...processedItems]
-            firestoreItems.forEach(firestoreItem => {
-              const localIndex = mergedItems.findIndex(item => item.id === firestoreItem.id)
-              if (localIndex !== -1) {
-                mergedItems[localIndex] = firestoreItem
-              } else {
-                mergedItems.push(firestoreItem)
-              }
-            })
-            this.items = mergedItems
-            console.log('Merged items:', mergedItems)
-          } else {
-            console.log('No Firestore items found, keeping local data')
-          }
-        }
-
-        // If no items at all, use mock data
-        if (!this.items.length) {
-          console.log('No items found, using mock data')
-          this.items = mockItems.map(item => ({
-            ...item,
-            category: item.category || 'Uncategorized',
-            quantity: Number(item.quantity) || 0,
-            createdAt: item.createdAt || new Date().toISOString()
-          }))
-        }
-      } catch (error) {
-        console.error('Error loading inventory:', error)
-        // Fallback to mock data if both sources fail
-        this.items = mockItems.map(item => ({
-          ...item,
-          category: item.category || 'Uncategorized',
-          quantity: Number(item.quantity) || 0,
-          createdAt: item.createdAt || new Date().toISOString()
-        }))
-        console.log('Using processed mock data:', this.items)
-      }
-    },
-
-    async saveItem() {
-      try {
-        if (this.editMode) {
-          await db.updateItem(this.editedItem.id, this.editedItem);
-        } else {
-          await db.addItem(this.editedItem);
-        }
-        await this.loadInventory();
-        this.itemDialog = false;
-      } catch (error) {
-        console.error('Error saving item:', error);
-        throw error;
-      }
-    },
-
-    async deleteItem() {
-      try {
-        await db.deleteItem(this.itemToDelete.id);
-        await this.loadInventory();
-        this.deleteDialog = false;
-      } catch (error) {
-        console.error('Error deleting item:', error);
-        throw error;
-      }
-    },
-
-    async syncWithFirestore() {
-      if (this.syncStatus.inProgress) {
-        console.log('Sync already in progress, skipping...')
-        return
-      }
-
-      try {
-        this.syncStatus.inProgress = true
-        this.syncStatus.error = null
-
-        // Get Firestore data
-        const querySnapshot = await getDocs(query(collection(fireDb, 'inventory')))
-        const firestoreItems = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          updatedAt: doc.data().updatedAt?.toDate()?.toISOString() || new Date().toISOString()
-        }))
-
-        // Get local data
-        const localItems = await db.getAllItems()
-
-        if (firestoreItems.length > 0) {
-          // Merge changes between Firestore and local
-          const mergedItems = await this.mergeChanges(localItems, firestoreItems)
-
-          // Update Firestore in batches
-          const batchSize = 500
-          const inventoryRef = collection(fireDb, 'inventory')
-
-          for (let i = 0; i < mergedItems.length; i += batchSize) {
-            const batch = writeBatch(fireDb)
-            const currentBatch = mergedItems.slice(i, Math.min(i + batchSize, mergedItems.length))
-
-            for (const item of currentBatch) {
-              const { id, localId, ...itemData } = item
-              if (id) {
-                // Update existing item
-                batch.update(doc(inventoryRef, id), {
-                  ...itemData,
-                  updatedAt: serverTimestamp()
-                })
-              } else {
-                // Add new item
-                const newDocRef = doc(inventoryRef)
-                batch.set(newDocRef, {
-                  ...itemData,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                })
-              }
-            }
-
-            try {
-              await batch.commit()
-            } catch (error) {
-              console.error('Batch update failed:', error)
-              // Continue with next batch despite error
-            }
-          }
-
-          // Update local database with merged data
-          await db.syncWithFirestoreSimple(mergedItems, 'items')
-        } else {
-          // Firestore is empty, push local data
-          const inventoryRef = collection(fireDb, 'inventory')
-          const batch = writeBatch(fireDb)
-          let batchCount = 0
-
-          for (const item of localItems) {
-            const { id, ...itemData } = item
-            const newDocRef = doc(inventoryRef)
-            batch.set(newDocRef, {
-              ...itemData,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            })
-
-            batchCount++
-            if (batchCount >= 500) {
-              try {
-                await batch.commit()
-                batchCount = 0
-              } catch (error) {
-                console.error('Batch upload failed:', error)
-                // Continue despite error
-              }
-            }
-          }
-
-          // Commit any remaining items
-          if (batchCount > 0) {
-            try {
-              await batch.commit()
-            } catch (error) {
-              console.error('Final batch upload failed:', error)
-            }
-          }
-        }
-
-        // Reload inventory after sync
-        await this.loadInventory()
-
-        this.syncStatus.lastSync = new Date().toISOString()
-        this.syncStatus.pendingChanges = 0
-      } catch (error) {
-        console.error('Error in sync process:', error)
-        this.syncStatus.error = error.message
-        // Don't throw, let the app continue
+        this.error = handleError(error, 'Failed to load inventory')
       } finally {
-        this.syncStatus.inProgress = false
+        this.loading = false
       }
     },
 
-    async mergeChanges(localItems, firestoreItems) {
-      const merged = new Map()
+    /**
+     * @async
+     * @method saveItem
+     * @param {Object} item - Item to save
+     * @returns {Promise<string>} Saved item ID
+     * @description Saves an item to the local database and queues for sync
+     */
+    async saveItem(item) {
+      const errors = validateItem(item)
+      if (errors.length > 0) {
+        throw new Error(`Validation failed: ${errors.join(', ')}`)
+      }
 
-      // Create maps for faster lookups
-      const firestoreMap = new Map(
-        firestoreItems.map(item => [item.sku, item])
-      )
+      const processedItem = processItem(item)
+      let savedId
 
-      // Process local items first
-      for (const localItem of localItems) {
+      // Always save to local DB first
+      await db.transaction('rw', db.items, async () => {
         try {
-          const firestoreItem = firestoreMap.get(localItem.sku)
+          // Save to local DB
+          savedId = await db.items.add({
+            ...processedItem,
+            syncStatus: 'pending',
+            firebaseId: null,
+            updatedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          })
 
-          if (firestoreItem) {
-            // Item exists in both - compare timestamps
-            const localDate = new Date(localItem.updatedAt)
-            const firestoreDate = new Date(firestoreItem.updatedAt)
+          // Queue for sync
+          await syncQueue.addToQueue({
+            type: 'add',
+            collection: 'items',
+            data: {
+              ...processedItem,
+              id: savedId
+            }
+          })
+        } catch (error) {
+          console.error('Error saving item locally:', error)
+          throw error
+        }
+      })
 
-            merged.set(localItem.sku,
-              localDate > firestoreDate
-                ? { ...localItem, id: firestoreItem.id }
-                : firestoreItem
-            )
-          } else {
-            // Only in local - add as new
-            merged.set(localItem.sku, localItem)
+      return savedId
+    },
+
+    /**
+     * @async
+     * @method updateItem
+     * @param {string} id - Item ID to update
+     * @param {Object} changes - Changes to apply to the item
+     * @returns {Promise<string>} Updated item ID
+     * @description Updates an item in the local database and queues for sync
+     */
+    async updateItem(id, changes) {
+      const item = await db.items.get(id)
+      if (!item) throw new Error('Item not found')
+
+      const updatedItem = { ...item, ...changes }
+      const errors = validateItem(updatedItem)
+      if (errors.length > 0) {
+        throw new Error(`Validation failed: ${errors.join(', ')}`)
+      }
+
+      // Add version tracking
+      const version = (item.version || 0) + 1
+      const timestamp = new Date().toISOString()
+
+      // Always update local DB first with transaction
+      return await db.transaction('rw', db.items, async () => {
+        try {
+          // Check if item was modified during our operation
+          const currentItem = await db.items.get(id)
+          if (currentItem.version !== item.version) {
+            throw new Error('Item was modified by another process')
+          }
+
+          // Update local DB
+          await db.items.update(id, {
+            ...changes,
+            version,
+            syncStatus: 'pending',
+            updatedAt: timestamp
+          })
+
+          // Queue for sync
+          await syncQueue.addToQueue({
+            type: 'update',
+            collection: 'items',
+            data: {
+              ...changes,
+              id,
+              version,
+              updatedAt: timestamp
+            }
+          })
+
+          return id
+        } catch (error) {
+          // Attempt to rollback the local update
+          if (error.message !== 'Item was modified by another process') {
+            try {
+              await db.items.update(id, item)
+            } catch (rollbackError) {
+              console.error('Failed to rollback local update:', rollbackError)
+            }
+          }
+          throw error
+        }
+      })
+    },
+
+    /**
+     * @async
+     * @method deleteItem
+     * @param {string} id - Item ID to delete
+     * @returns {Promise<string>} Deleted item ID
+     * @description Deletes an item from the local database and queues for sync
+     */
+    async deleteItem(id) {
+      const item = await db.items.get(id)
+      if (!item) throw new Error('Item not found')
+
+      // Always delete from local DB first
+      await db.transaction('rw', db.items, async () => {
+        try {
+          await db.items.delete(id)
+
+          // Queue for sync only if item was previously synced
+          if (item.firebaseId) {
+            await syncQueue.addToQueue({
+              type: 'delete',
+              collection: 'items',
+              docId: id
+            })
           }
         } catch (error) {
-          console.error('Error merging item:', error)
-          // Skip problematic item but continue merging
-          continue
+          console.error('Error deleting item locally:', error)
+          throw error
         }
-      }
+      })
 
-      // Add Firestore-only items
-      for (const firestoreItem of firestoreItems) {
-        if (!merged.has(firestoreItem.sku)) {
-          merged.set(firestoreItem.sku, firestoreItem)
-        }
-      }
-
-      return Array.from(merged.values())
+      return id
     },
 
+    /**
+     * @async
+     * @method syncWithFirestore
+     * @returns {Promise<void>}
+     * @description Syncs local database with Firestore
+     */
+    async syncWithFirestore() {
+      const { isOnline } = useNetworkStatus()
+      if (!isOnline.value) return
+
+      try {
+        // Get all local items that have been synced before
+        const localItems = await db.items
+          .where('syncStatus')
+          .equals('synced')
+          .toArray()
+
+        // Get all Firestore items
+        const firestoreSnapshot = await getDocs(
+          query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
+        )
+        const firestoreItems = firestoreSnapshot.docs.map(doc => ({
+          ...doc.data(),
+          firebaseId: doc.id
+        }))
+
+        await this.mergeChanges(localItems, firestoreItems)
+      } catch (error) {
+        console.error('Error syncing with Firestore:', error)
+        throw error
+      }
+    },
+
+    /**
+     * @async
+     * @method mergeChanges
+     * @param {Array} localItems - Local items to merge
+     * @param {Array} firestoreItems - Firestore items to merge
+     * @returns {Promise<void>}
+     * @description Merges local and Firestore items, resolving conflicts
+     */
+    async mergeChanges(localItems, firestoreItems) {
+      return await db.transaction('rw', db.items, async () => {
+        // Only process items that are already synced (not pending local changes)
+        for (const firestoreItem of firestoreItems) {
+          const localItem = localItems.find(
+            item => item.firebaseId === firestoreItem.firebaseId
+          )
+
+          if (localItem) {
+            // Only update if the item is not pending local changes
+            const currentItem = await db.items.get(localItem.id)
+            if (currentItem.syncStatus !== 'pending') {
+              const firestoreDate = new Date(firestoreItem.updatedAt)
+              const localDate = new Date(currentItem.updatedAt)
+
+              if (firestoreDate > localDate) {
+                await db.items.update(localItem.id, {
+                  ...firestoreItem,
+                  id: localItem.id,
+                  syncStatus: 'synced'
+                })
+              }
+            }
+          } else if (firestoreItem.localId) {
+            // This is a new item from another client
+            const existingLocal = await db.items
+              .where('id')
+              .equals(parseInt(firestoreItem.localId))
+              .first()
+
+            if (!existingLocal) {
+              await db.items.add({
+                ...firestoreItem,
+                syncStatus: 'synced'
+              })
+            }
+          }
+        }
+
+        // Don't delete local items that haven't been synced yet
+        for (const localItem of localItems) {
+          if (localItem.firebaseId &&
+              !firestoreItems.find(item => item.firebaseId === localItem.firebaseId)) {
+            const currentItem = await db.items.get(localItem.id)
+            if (currentItem.syncStatus !== 'pending') {
+              await db.items.delete(localItem.id)
+            }
+          }
+        }
+      })
+    },
+
+    /**
+     * @async
+     * @method addItem
+     * @param {Object} item - Item to add
+     * @returns {Promise<string>} Added item ID
+     * @description Adds an item to the local database and queues for sync
+     */
     async addItem(item) {
       try {
         const id = await db.addItem(item)
@@ -568,30 +559,12 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
-    async updateItem(id, changes) {
-      try {
-        await db.updateItem(id, changes)
-        const { isOnline } = useNetworkStatus()
-
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'update',
-            collection: 'inventory',
-            docId: id,
-            data: changes,
-            timestamp: new Date()
-          })
-          await syncQueue.processQueue()
-        }
-
-        await this.loadInventory()
-      } catch (error) {
-        console.error('Error updating item:', error)
-        this.error = error.message
-        throw error
-      }
-    },
-
+    /**
+     * @async
+     * @method deleteSelected
+     * @returns {Promise<void>}
+     * @description Deletes selected items from the local database
+     */
     async deleteSelected() {
       const selectedItems = this.selectedItems.filter(id => this.items.some(item => item.id === id))
       // Uncomment the API call here
@@ -599,188 +572,110 @@ export const useInventoryStore = defineStore('inventory', {
       this.selectedItems = []
     },
 
+    /**
+     * @async
+     * @method generateSalesReport
+     * @returns {Promise<Array>} Sales report data
+     * @description Generates a sales report for the specified date range
+     */
     async generateSalesReport() {
       try {
-        // In a real application, this would fetch from an API
-        // For now, return the mock data
-        return [
-          {
-            productName: 'Product A',
-            quantitySold: 50,
-            revenue: 5000,
-            date: date.formatDate(new Date(2024, 0, 15), 'MM/DD/YY HH:mm:ss') // January 15, 2024
-          },
-          {
-            productName: 'Product B',
-            quantitySold: 30,
-            revenue: 3000,
-            date: date.formatDate(new Date(2024, 0, 14), 'MM/DD/YY HH:mm:ss') // January 14, 2024
-          },
-          {
-            productName: 'Product C',
-            quantitySold: 20,
-            revenue: 2000,
-            date: date.formatDate(new Date(2024, 0, 10), 'MM/DD/YY HH:mm:ss') // January 10, 2024
-          },
-          {
-            productName: 'Product D',
-            quantitySold: 40,
-            revenue: 4000,
-            date: date.formatDate(new Date(), 'MM/DD/YY HH:mm:ss')
-          }
-        ]
+        this.loading = true;
+        const { from, to } = this.dateRange;
+
+        // Fetch sales data from database for the date range
+        const salesData = await db.sales
+          .where('date')
+          .between(from, to)
+          .toArray();
+
+        return salesData.map(sale => ({
+          id: sale.id,
+          date: sale.date,
+          amount: sale.amount,
+          items: sale.items
+        }));
       } catch (error) {
-        console.error('Error generating sales report:', error)
-        throw error
+        console.error('Error generating sales report:', error);
+        throw error;
+      } finally {
+        this.loading = false;
       }
     },
 
-    formatDate(dateStr) {
-      if (!dateStr) return ''
-      return formatQuasarDate(new Date(dateStr), 'MM/DD/YY HH:mm:ss')
-    },
-
-    setDateRange(range) {
-      this.dateRange = {
-        from: formatQuasarDate(new Date(range.from), 'YYYY-MM-DD'),
-        to: formatQuasarDate(new Date(range.to), 'YYYY-MM-DD')
-      }
-    },
-
+    /**
+     * @async
+     * @method generateFinancialReport
+     * @returns {Promise<Object>} Financial report data
+     * @description Generates a financial report for the specified date range
+     */
     async generateFinancialReport() {
       try {
-        this.loading = true
-        // Mock financial data generation based on date range
-        const startDate = new Date(this.dateRange.from)
-        const endDate = new Date(this.dateRange.to)
+        this.loading = true;
+        const { from, to } = this.dateRange;
 
-        // Mock data for demonstration
-        const report = {
-          totalRevenue: this.getTotalRevenue,
-          netProfit: this.getNetProfit,
-          period: `${this.formatDate(this.dateRange.from)} - ${this.formatDate(this.dateRange.to)}`,
-          summary: {
-            sales: Math.floor(Math.random() * 1000),
-            expenses: Math.floor(Math.random() * 500),
-            profit: Math.floor(Math.random() * 500)
+        // Fetch financial data from database for the date range
+        const transactions = await db.cashFlow
+          .where('date')
+          .between(from, to)
+          .toArray();
+
+        // Calculate totals
+        const totals = transactions.reduce((acc, curr) => {
+          if (curr.type === 'income') {
+            acc.revenue += curr.amount;
+          } else if (curr.type === 'expense') {
+            acc.expenses += curr.amount;
           }
-        }
+          return acc;
+        }, { revenue: 0, expenses: 0 });
 
-        return report
+        return {
+          ...totals,
+          profit: totals.revenue - totals.expenses,
+          period: { start: from, end: to }
+        };
       } catch (error) {
-        console.error('Error generating financial report:', error)
-        throw error
+        console.error('Error generating financial report:', error);
+        throw error;
       } finally {
-        this.loading = false
-      }
-    },
-    updateSalesTimeframe(value) {
-      this.selectedTimeframe = value;
-    },
-
-    updateProfitTimeframe(value) {
-      this.profitTimeframe = value;
-    },
-
-    getChartData(timeframe) {
-      return this.chartData[timeframe];
-    },
-
-    getChartOptions(textColor) {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              color: textColor
-            },
-            grid: {
-              color: textColor,
-              drawBorder: false
-            }
-          },
-          x: {
-            ticks: {
-              color: textColor
-            },
-            grid: {
-              color: textColor,
-              drawBorder: false
-            }
-          }
-        },
-        plugins: {
-          legend: {
-            labels: {
-              color: textColor
-            }
-          }
-        }
-      };
-    },
-    exportToCSV(data, filename) {
-      const headers = Object.keys(data[0]);
-      const csvContent = [
-        headers.join(','),
-        ...data.map(row =>
-          headers.map(header => {
-            let cell = row[header]
-            if (typeof cell === 'object' && cell !== null)
-              cell = JSON.stringify(cell)
-
-            cell = String(cell).replace(/"/g, '""')
-            return cell.includes(',') ? `"${cell}"` : cell
-          }).join(',')
-        )
-      ].join('\n');
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-
-      link.setAttribute('href', url);
-      link.setAttribute('download', `${filename}.csv`);
-      link.style.visibility = 'hidden';
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    },
-    async updateItem(item) {
-      try {
-        const itemRef = doc(fireDb, 'inventory', item.id)
-        await updateDoc(itemRef, item)
-
-        const index = this.items.findIndex(i => i.id === item.id)
-        if (index !== -1)
-          this.items[index] = { ...this.items[index], ...item }
-      } catch (error) {
-        console.error('Error updating item:', error)
-        throw error
-      }
-    },
-    async addCashFlowTransaction(paymentMethod, transaction) {
-      try {
-        const docRef = await addDoc(collection(fireDb, `cashFlow_${paymentMethod}`), {
-          ...transaction,
-          date: serverTimestamp()
-        })
-
-        this.cashFlowTransactions[paymentMethod].push({
-          ...transaction,
-          id: docRef.id,
-          date: new Date()
-        })
-
-        return true
-      } catch (error) {
-        console.error('Error adding transaction:', error)
-        return false
+        this.loading = false;
       }
     },
 
+    /**
+     * @async
+     * @method formatDate
+     * @param {string} dateStr - Date string to format
+     * @returns {string} Formatted date string
+     * @description Formats a date string for display
+     */
+    formatDate(dateStr) {
+      if (!dateStr) return ''
+      return formatDate(new Date(dateStr), 'MM/DD/YY HH:mm:ss')
+    },
+
+    /**
+     * @async
+     * @method setDateRange
+     * @param {Object} range - Date range to set
+     * @returns {void}
+     * @description Sets the date range for reports
+     */
+    setDateRange(range) {
+      this.dateRange = {
+        from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
+        to: formatDate(new Date(range.to), 'YYYY-MM-DD')
+      }
+    },
+
+    /**
+     * @async
+     * @method fetchCashFlowTransactions
+     * @param {string} paymentMethod - Payment method to fetch transactions for
+     * @returns {Promise<boolean>} Success flag
+     * @description Fetches cash flow transactions for the specified payment method
+     */
     async fetchCashFlowTransactions(paymentMethod) {
       try {
         const q = query(
@@ -802,6 +697,13 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
+    /**
+     * @async
+     * @method getBalance
+     * @param {string} paymentMethod - Payment method to get balance for
+     * @returns {number} Balance
+     * @description Gets the balance for the specified payment method
+     */
     getBalance(paymentMethod) {
       if (!this.cashFlowTransactions[paymentMethod]) {
         return 0
@@ -811,6 +713,13 @@ export const useInventoryStore = defineStore('inventory', {
       }, 0)
     },
 
+    /**
+     * @async
+     * @method formatCurrency
+     * @param {number} value - Value to format
+     * @returns {string} Formatted currency string
+     * @description Formats a value as a currency string
+     */
     formatCurrency(value) {
       if (!value && value !== 0) {
         return new Intl.NumberFormat('en-PH', {
@@ -823,6 +732,15 @@ export const useInventoryStore = defineStore('inventory', {
         currency: 'PHP'
       }).format(value)
     },
+
+    /**
+     * @async
+     * @method deleteCashFlowTransaction
+     * @param {string} paymentMethod - Payment method to delete transaction for
+     * @param {string} transactionId - Transaction ID to delete
+     * @returns {Promise<boolean>} Success flag
+     * @description Deletes a cash flow transaction
+     */
     async deleteCashFlowTransaction(paymentMethod, transactionId) {
       try {
         const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
@@ -839,6 +757,15 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
+    /**
+     * @async
+     * @method updateCashFlowTransaction
+     * @param {string} paymentMethod - Payment method to update transaction for
+     * @param {string} transactionId - Transaction ID to update
+     * @param {Object} updatedData - Updated transaction data
+     * @returns {Promise<boolean>} Success flag
+     * @description Updates a cash flow transaction
+     */
     async updateCashFlowTransaction(paymentMethod, transactionId, updatedData) {
       try {
         const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
@@ -857,7 +784,13 @@ export const useInventoryStore = defineStore('inventory', {
         return false
       }
     },
-    // Remove after full implementation of database ---------------------------------
+
+    /**
+     * @async
+     * @method repopulateDatabase
+     * @returns {Promise<void>}
+     * @description Repopulates the database with mock data
+     */
     async repopulateDatabase() {
       try {
         this.loading = true
@@ -870,6 +803,108 @@ export const useInventoryStore = defineStore('inventory', {
         this.loading = false
       }
     },
+
+    /**
+     * @async
+     * @method loadCategories
+     * @returns {Promise<void>}
+     * @description Loads categories from the database
+     */
+    async loadCategories() {
+      try {
+        const categories = await db.categories.toArray()
+        this.categories = categories
+      } catch (error) {
+        this.error = 'Failed to load categories'
+        // Fallback to empty categories array instead of throwing
+        this.categories = []
+      }
+    },
+
+    /**
+     * @async
+     * @method addCategory
+     * @param {string} categoryName - Category name to add
+     * @returns {Promise<Object|null>} Added category object or null on error
+     * @description Adds a category to the database
+     */
+    async addCategory(categoryName) {
+      try {
+        const exists = this.categories.some(
+          cat => cat.name.toLowerCase() === categoryName.toLowerCase()
+        )
+        if (exists) {
+          this.error = 'Category already exists'
+          return null
+        }
+
+        const newCategory = {
+          name: categoryName,
+          value: categoryName.charAt(0).toLowerCase() + categoryName.slice(1),
+          createdAt: new Date().toISOString()
+        }
+        const id = await db.categories.add(newCategory)
+        const categoryWithId = { ...newCategory, id }
+        this.categories.push(categoryWithId)
+        this.error = null
+        return categoryWithId
+      } catch (error) {
+        this.error = error.message || 'Failed to add category'
+        return null
+      }
+    },
+
+    /**
+     * @async
+     * @method deleteCategory
+     * @param {string} categoryId - Category ID to delete
+     * @returns {Promise<boolean>} Success flag
+     * @description Deletes a category from the database
+     */
+    async deleteCategory(categoryId) {
+      try {
+        await db.categories.delete(categoryId)
+        this.categories = this.categories.filter(cat => cat.id !== categoryId)
+        this.error = null
+        return true
+      } catch (error) {
+        this.error = 'Failed to delete category'
+        // Keep the UI state consistent even if DB operation fails
+        this.categories = this.categories.filter(cat => cat.id !== categoryId)
+        return false
+      }
+    },
+
+    /**
+     * @async
+     * @method openCategoryDialog
+     * @returns {void}
+     * @description Opens the category dialog
+     */
+    openCategoryDialog() {
+      this.categoryDialog = true
+      this.editedCategory = null
+      this.error = null
+    },
+
+    /**
+     * @async
+     * @method closeCategoryDialog
+     * @returns {void}
+     * @description Closes the category dialog
+     */
+    closeCategoryDialog() {
+      this.categoryDialog = false
+      this.editedCategory = null
+      this.error = null
+    },
+
+    /**
+     * @async
+     * @method getCategoryChartData
+     * @returns {Object} Chart data for categories
+     * @description Gets chart data for categories
+     */
     getCategoryChartData() {
       // Group items by category and calculate total sales
       const categoryData = this.items.reduce((acc, item) => {
@@ -904,6 +939,13 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
+    /**
+     * @async
+     * @method getCategoryChartOptions
+     * @param {string} textColor - Text color for the chart
+     * @returns {Object} Chart options for categories
+     * @description Gets chart options for categories
+     */
     getCategoryChartOptions(textColor) {
       return {
         responsive: true,
@@ -938,6 +980,82 @@ export const useInventoryStore = defineStore('inventory', {
             }
           }
         }
+      }
+    },
+
+    /**
+     * @async
+     * @method openItemDialog
+     * @param {Object|null} item - Item to edit or null for new item
+     * @returns {void}
+     * @description Opens the item dialog
+     */
+    openItemDialog(item = null) {
+      if (item) {
+        this.editMode = true;
+        this.editedItem = { ...item };
+      } else {
+        this.editMode = false;
+        this.editedItem = {
+          name: '',
+          sku: '',
+          category: '',
+          quantity: 0,
+          price: 0,
+          image: null
+        };
+      }
+      this.itemDialog = true;
+    },
+
+    /**
+     * @async
+     * @method closeItemDialog
+     * @returns {void}
+     * @description Closes the item dialog
+     */
+    closeItemDialog() {
+      this.itemDialog = false;
+      this.editedItem = {};
+      this.editMode = false;
+    },
+
+    /**
+     * @async
+     * @method confirmDelete
+     * @param {Object} item - Item to delete
+     * @returns {void}
+     * @description Confirms deletion of an item
+     */
+    async confirmDelete(item) {
+      this.itemToDelete = item;
+      this.deleteDialog = true;
+    },
+
+    /**
+     * @async
+     * @method handleDeleteConfirm
+     * @returns {void}
+     * @description Handles deletion confirmation
+     */
+    async handleDeleteConfirm() {
+      if (!this.itemToDelete) return;
+      
+      try {
+        const itemId = this.itemToDelete.id;
+        await this.deleteItem(itemId);
+        
+        // Remove item from local state
+        const index = this.items.findIndex(item => item.id === itemId);
+        if (index !== -1) {
+          this.items.splice(index, 1);
+        }
+        
+        this.deleteDialog = false;
+        this.itemToDelete = null;
+      } catch (error) {
+        console.error('Error deleting item:', error);
+        throw error;
       }
     },
   }

@@ -1,24 +1,39 @@
+/**
+ * @fileoverview Manages contacts and contact categories with local and cloud synchronization.
+ * Implements Pinia store pattern for contact management.
+ */
+
 import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
-// Remove after full implementation of database
-import { mockCategories } from '../data/mockdata'
-import { collection, query, getDocs, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  writeBatch,
+  doc,
+  serverTimestamp
+} from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
 
+/**
+ * @const {Store} useContactsStore
+ * @description Pinia store for managing contacts and contact categories
+ */
 export const useContactsStore = defineStore('contacts', {
   state: () => ({
     loading: false,
     error: null,
-    categories: [],
-    contacts: [],
+    contactCategories: [],
+    contactsList: [],
     searchQuery: '',
-    categoryFilter: null,
-    contactDialog: false,
-    editedContact: {},
+    contactCategoryFilter: null,
+    contactEntryDialog: false,
+    contactBeingEdited: {},
     editMode: false,
-    syncStatus: {
+    contactsSyncStatus: {
       lastSync: null,
       inProgress: false,
       error: null,
@@ -27,135 +42,79 @@ export const useContactsStore = defineStore('contacts', {
   }),
 
   getters: {
-    getContactsByCategory: (state) => (categoryId) => {
-      const category = state.categories.find(c => c.id === categoryId)
-      return category ? category.contacts : []
+    /**
+     * @getter
+     * @param {string} contactCategoryId - Category ID to filter by
+     * @returns {Array} Contacts in the specified category
+     */
+    getContactsByCategory: (state) => (contactCategoryId) => {
+      const contactCategory = state.contactCategories.find(c => c.id === contactCategoryId)
+      return contactCategory ? contactCategory.contacts : []
     },
 
-    getCategoryById: (state) => (categoryId) => {
-      return state.categories.find(c => c.id === categoryId)
+    /**
+     * @getter
+     * @param {string} contactCategoryId - Category ID to find
+     * @returns {Object|undefined} Contact category by ID
+     */
+    getContactCategoryById: (state) => (contactCategoryId) => {
+      return state.contactCategories.find(c => c.id === contactCategoryId)
     }
   },
 
   actions: {
+    /**
+     * @async
+     * @method initializeDb
+     * @returns {Promise<void>}
+     * @description Initializes the contacts database and performs initial sync if needed
+     */
     async initializeDb() {
       try {
-        const existingCategories = await db.getAllCategories()
-        if (existingCategories.length === 0) {
-          for (const category of mockCategories) {
-            const catId = await db.addCategory({
-              name: category.name
-            })
-
-            for (const contact of category.contacts) {
-              await db.addContact({
-                ...contact,
-                categoryId: catId
-              })
-            }
+        const existingContactCategories = await db.getAllContactCategories()
+        if (existingContactCategories.length === 0) {
+          const { isOnline } = useNetworkStatus()
+          if (isOnline.value) {
+            await this.syncWithFirestore()
+            await syncQueue.processQueue()
           }
         }
-        await this.loadCategories()
-
-        // Initial sync if online
-        const { isOnline } = useNetworkStatus()
-        if (isOnline.value) {
-          await this.syncWithFirestore()
-          await syncQueue.processQueue()
-        }
+        await this.loadContactCategories()
       } catch (error) {
         console.error('Error initializing database:', error)
         this.error = error.message
       }
     },
 
-    async loadCategories() {
+    /**
+     * @async
+     * @method loadContactCategories
+     * @returns {Promise<void>}
+     * @description Loads contact categories and their associated contacts
+     */
+    async loadContactCategories() {
       this.loading = true
       try {
-        const categories = await db.getAllCategories()
+        const categories = await db.getAllContactCategories()
         for (const category of categories) {
           category.contacts = await db.getContactsByCategory(category.id)
         }
-        this.categories = categories
+        this.contactCategories = categories
       } catch (error) {
-        console.error('Error loading categories:', error)
+        console.error('Error loading contact categories:', error)
         this.error = error.message
       } finally {
         this.loading = false
       }
     },
 
-    async addCategory(category) {
-      try {
-        const id = await db.addCategory(category)
-        const { isOnline } = useNetworkStatus()
-
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'categories',
-            data: { ...category, localId: id },
-            timestamp: new Date()
-          })
-          await syncQueue.processQueue()
-        }
-
-        await this.loadCategories()
-        return id
-      } catch (error) {
-        console.error('Error adding category:', error)
-        this.error = error.message
-        throw error
-      }
-    },
-
-    async updateCategory(id, changes) {
-      try {
-        await db.updateCategory(id, changes)
-        const { isOnline } = useNetworkStatus()
-
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'update',
-            collection: 'categories',
-            docId: id,
-            data: changes,
-            timestamp: new Date()
-          })
-          await syncQueue.processQueue()
-        }
-
-        await this.loadCategories()
-      } catch (error) {
-        console.error('Error updating category:', error)
-        this.error = error.message
-        throw error
-      }
-    },
-
-    async deleteCategory(id) {
-      try {
-        await db.deleteCategory(id)
-        const { isOnline } = useNetworkStatus()
-
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'delete',
-            collection: 'categories',
-            docId: id,
-            timestamp: new Date()
-          })
-          await syncQueue.processQueue()
-        }
-
-        await this.loadCategories()
-      } catch (error) {
-        console.error('Error deleting category:', error)
-        this.error = error.message
-        throw error
-      }
-    },
-
+    /**
+     * @async
+     * @method addContact
+     * @param {Object} contact - Contact to add
+     * @returns {Promise<string>} ID of added contact
+     * @throws {Error} If adding contact fails
+     */
     async addContact(contact) {
       try {
         const id = await db.addContact(contact)
@@ -164,14 +123,14 @@ export const useContactsStore = defineStore('contacts', {
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'add',
-            collection: 'contacts',
-            data: { ...contact, localId: id },
+            collection: 'contactsList',
+            data: { ...contact, id: id.toString() },
             timestamp: new Date()
           })
           await syncQueue.processQueue()
         }
 
-        await this.loadCategories()
+        await this.loadContactCategories()
         return id
       } catch (error) {
         console.error('Error adding contact:', error)
@@ -180,6 +139,107 @@ export const useContactsStore = defineStore('contacts', {
       }
     },
 
+    /**
+     * @async
+     * @method addContactCategory
+     * @param {Object} contactCategory - Category to add
+     * @returns {Promise<string>} ID of added category
+     * @throws {Error} If adding category fails
+     */
+    async addContactCategory(contactCategory) {
+      try {
+        const id = await db.addContactCategory(contactCategory)
+        const { isOnline } = useNetworkStatus()
+
+        if (isOnline.value) {
+          await syncQueue.addToQueue({
+            type: 'add',
+            collection: 'contactCategories',
+            data: { ...contactCategory, localId: id },
+            timestamp: new Date()
+          })
+          await syncQueue.processQueue()
+        }
+
+        await this.loadContactCategories()
+        return id
+      } catch (error) {
+        console.error('Error adding contact category:', error)
+        this.error = error.message
+        throw error
+      }
+    },
+
+    /**
+     * @async
+     * @method updateContactCategory
+     * @param {string} id - Category ID to update
+     * @param {Object} changes - Changes to apply to the category
+     * @returns {Promise<void>}
+     * @throws {Error} If updating category fails
+     */
+    async updateContactCategory(id, changes) {
+      try {
+        await db.updateContactCategory(id, changes)
+        const { isOnline } = useNetworkStatus()
+
+        if (isOnline.value) {
+          await syncQueue.addToQueue({
+            type: 'update',
+            collection: 'contactCategories',
+            docId: id,
+            data: changes,
+            timestamp: new Date()
+          })
+          await syncQueue.processQueue()
+        }
+
+        await this.loadContactCategories()
+      } catch (error) {
+        console.error('Error updating contact category:', error)
+        this.error = error.message
+        throw error
+      }
+    },
+
+    /**
+     * @async
+     * @method deleteContactCategory
+     * @param {string} id - Category ID to delete
+     * @returns {Promise<void>}
+     * @throws {Error} If deleting category fails
+     */
+    async deleteContactCategory(id) {
+      try {
+        await db.deleteContactCategory(id)
+        const { isOnline } = useNetworkStatus()
+
+        if (isOnline.value) {
+          await syncQueue.addToQueue({
+            type: 'delete',
+            collection: 'contactCategories',
+            docId: id.toString(),
+            timestamp: new Date()
+          })
+          await syncQueue.processQueue()
+        }
+
+        await this.loadContactCategories()
+      } catch (error) {
+        console.error('Error deleting contact category:', error)
+        this.error = error.message
+        throw error
+      }
+    },
+
+    /**
+     * @async
+     * @method updateContact
+     * @param {string} id - Contact ID to update
+     * @param {Object} changes - Changes to apply to the contact
+     * @returns {Promise<void>}
+     * @throws {Error} If updating contact fails
+     */
     async updateContact(id, changes) {
       try {
         await db.updateContact(id, changes)
@@ -188,15 +248,15 @@ export const useContactsStore = defineStore('contacts', {
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'update',
-            collection: 'contacts',
-            docId: id,
-            data: changes,
+            collection: 'contactsList',
+            docId: id.toString(),
+            data: { ...changes, id: id.toString() },
             timestamp: new Date()
           })
           await syncQueue.processQueue()
         }
 
-        await this.loadCategories()
+        await this.loadContactCategories()
       } catch (error) {
         console.error('Error updating contact:', error)
         this.error = error.message
@@ -204,6 +264,13 @@ export const useContactsStore = defineStore('contacts', {
       }
     },
 
+    /**
+     * @async
+     * @method deleteContact
+     * @param {string} id - Contact ID to delete
+     * @returns {Promise<void>}
+     * @throws {Error} If deleting contact fails
+     */
     async deleteContact(id) {
       try {
         await db.deleteContact(id)
@@ -212,14 +279,14 @@ export const useContactsStore = defineStore('contacts', {
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'delete',
-            collection: 'contacts',
-            docId: id,
+            collection: 'contactsList',
+            docId: id.toString(),
             timestamp: new Date()
           })
           await syncQueue.processQueue()
         }
 
-        await this.loadCategories()
+        await this.loadContactCategories()
       } catch (error) {
         console.error('Error deleting contact:', error)
         this.error = error.message
@@ -227,59 +294,65 @@ export const useContactsStore = defineStore('contacts', {
       }
     },
 
+    /**
+     * @async
+     * @method syncWithFirestore
+     * @returns {Promise<void>}
+     * @description Synchronizes local contacts data with Firestore
+     */
     async syncWithFirestore() {
-      if (this.syncStatus.inProgress) {
+      if (this.contactsSyncStatus.inProgress) {
         console.log('Sync already in progress, skipping...')
         return
       }
 
       try {
-        this.syncStatus.inProgress = true
-        this.syncStatus.error = null
+        this.contactsSyncStatus.inProgress = true
+        this.contactsSyncStatus.error = null
 
         // Get local data
-        const localCategories = await db.getAllCategories()
+        const localContactCategories = await db.getAllContactCategories()
         const localContacts = await db.getAllContacts()
 
         // Get Firestore data
-        const categoriesSnapshot = await getDocs(query(collection(fireDb, 'categories')))
-        const contactsSnapshot = await getDocs(query(collection(fireDb, 'contacts')))
+        const contactCategoriesSnapshot = await getDocs(query(collection(fireDb, 'contactCategories')))
+        const contactsListSnapshot = await getDocs(query(collection(fireDb, 'contactsList')))
 
-        const firestoreCategories = categoriesSnapshot.docs.map(doc => ({
+        const firestoreContactCategories = contactCategoriesSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           updatedAt: doc.data().updatedAt?.toDate()?.toISOString() || new Date().toISOString()
         }))
-        const firestoreContacts = contactsSnapshot.docs.map(doc => ({
+        const firestoreContactsList = contactsListSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           updatedAt: doc.data().updatedAt?.toDate()?.toISOString() || new Date().toISOString()
         }))
 
-        if (firestoreCategories.length > 0 || firestoreContacts.length > 0) {
+        if (firestoreContactCategories.length > 0 || firestoreContactsList.length > 0) {
           // Merge changes
-          const mergedCategories = await this.mergeChanges(localCategories, firestoreCategories, 'name')
-          const mergedContacts = await this.mergeChanges(localContacts, firestoreContacts, 'email')
+          const mergedContactCategories = await this.mergeChanges(localContactCategories, firestoreContactCategories, 'name')
+          const mergedContacts = await this.mergeChanges(localContacts, firestoreContactsList, 'email')
 
           // Update Firestore in batches
           const batchSize = 500
 
-          // Update categories
-          if (mergedCategories.length > 0) {
-            const categoriesRef = collection(fireDb, 'categories')
-            for (let i = 0; i < mergedCategories.length; i += batchSize) {
+          // Update contact categories
+          if (mergedContactCategories.length > 0) {
+            const contactCategoriesRef = collection(fireDb, 'contactCategories')
+            for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
               const batch = writeBatch(fireDb)
-              const currentBatch = mergedCategories.slice(i, Math.min(i + batchSize, mergedCategories.length))
+              const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
 
               for (const category of currentBatch) {
                 const { id, ...categoryData } = category
                 if (id) {
-                  batch.update(doc(categoriesRef, id), {
+                  batch.update(doc(contactCategoriesRef, id), {
                     ...categoryData,
                     updatedAt: serverTimestamp()
                   })
                 } else {
-                  const newDocRef = doc(categoriesRef)
+                  const newDocRef = doc(contactCategoriesRef)
                   batch.set(newDocRef, {
                     ...categoryData,
                     createdAt: serverTimestamp(),
@@ -291,7 +364,7 @@ export const useContactsStore = defineStore('contacts', {
               try {
                 await batch.commit()
               } catch (error) {
-                console.error('Category batch update failed:', error)
+                console.error('Contact category batch update failed:', error)
                 // Continue with next batch
               }
             }
@@ -299,7 +372,7 @@ export const useContactsStore = defineStore('contacts', {
 
           // Update contacts
           if (mergedContacts.length > 0) {
-            const contactsRef = collection(fireDb, 'contacts')
+            const contactsRef = collection(fireDb, 'contactsList')
             for (let i = 0; i < mergedContacts.length; i += batchSize) {
               const batch = writeBatch(fireDb)
               const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
@@ -331,25 +404,25 @@ export const useContactsStore = defineStore('contacts', {
           }
 
           // Update local database
-          if (mergedCategories.length > 0) {
-            await db.syncWithFirestoreSimple(mergedCategories, 'categories')
+          if (mergedContactCategories.length > 0) {
+            await db.syncWithFirestoreSimple(mergedContactCategories, 'contactCategories')
           }
           if (mergedContacts.length > 0) {
-            await db.syncWithFirestoreSimple(mergedContacts, 'contacts')
+            await db.syncWithFirestoreSimple(mergedContacts, 'contactsList')
           }
         } else {
           // Firestore is empty, push local data
-          const categoriesRef = collection(fireDb, 'categories')
-          const contactsRef = collection(fireDb, 'contacts')
+          const contactCategoriesRef = collection(fireDb, 'contactCategories')
+          const contactsRef = collection(fireDb, 'contactsList')
 
-          // Upload categories
-          if (localCategories.length > 0) {
+          // Upload contact categories
+          if (localContactCategories.length > 0) {
             const batch = writeBatch(fireDb)
             let batchCount = 0
 
-            for (const category of localCategories) {
+            for (const category of localContactCategories) {
               const { id, ...categoryData } = category
-              const newDocRef = doc(categoriesRef)
+              const newDocRef = doc(contactCategoriesRef)
               batch.set(newDocRef, {
                 ...categoryData,
                 createdAt: serverTimestamp(),
@@ -362,7 +435,7 @@ export const useContactsStore = defineStore('contacts', {
                   await batch.commit()
                   batchCount = 0
                 } catch (error) {
-                  console.error('Category batch upload failed:', error)
+                  console.error('Contact category batch upload failed:', error)
                 }
               }
             }
@@ -371,7 +444,7 @@ export const useContactsStore = defineStore('contacts', {
               try {
                 await batch.commit()
               } catch (error) {
-                console.error('Final category batch upload failed:', error)
+                console.error('Final contact category batch upload failed:', error)
               }
             }
           }
@@ -412,19 +485,27 @@ export const useContactsStore = defineStore('contacts', {
         }
 
         // Reload data
-        await this.loadCategories()
+        await this.loadContactCategories()
 
-        this.syncStatus.lastSync = new Date().toISOString()
-        this.syncStatus.pendingChanges = 0
+        this.contactsSyncStatus.lastSync = new Date().toISOString()
+        this.contactsSyncStatus.pendingChanges = 0
       } catch (error) {
         console.error('Error in sync process:', error)
-        this.syncStatus.error = error.message
+        this.contactsSyncStatus.error = error.message
         // Don't throw, let the app continue
       } finally {
-        this.syncStatus.inProgress = false
+        this.contactsSyncStatus.inProgress = false
       }
     },
 
+    /**
+     * @async
+     * @method mergeChanges
+     * @param {Array} localItems - Local items to merge
+     * @param {Array} firestoreItems - Firestore items to merge
+     * @param {string} uniqueField - Field to use for merging
+     * @returns {Promise<Array>} Merged items
+     */
     async mergeChanges(localItems, firestoreItems, uniqueField) {
       const merged = new Map()
 
@@ -467,20 +548,6 @@ export const useContactsStore = defineStore('contacts', {
       }
 
       return Array.from(merged.values())
-    },
-
-    // Remove after full implementation of database
-    async repopulateDatabase() {
-      try {
-        this.loading = true
-        await db.repopulateWithMockData()
-        await this.loadCategories()
-      } catch (error) {
-        console.error('Error repopulating database:', error)
-        this.error = error.message
-      } finally {
-        this.loading = false
-      }
     }
   }
 })
