@@ -10,7 +10,9 @@ import {
   signOut,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  onAuthStateChanged,
+  sendPasswordResetEmail
 } from 'firebase/auth'
 import { collection, getDocs, query, where, limit } from 'firebase/firestore'
 import { getFirestore } from 'firebase/firestore'
@@ -50,23 +52,16 @@ export const useAuthStore = defineStore('auth', {
      * @throws {Error} If login fails
      */
     async loginWithEmail(email, password, rememberMe = false) {
-      if (!email || !password) {
-        throw new Error('Email and password are required')
-      }
+      if (!email || !password) throw new Error('Email and password are required')
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(email)) {
-        throw new Error('Invalid email format')
-      }
+      if (!emailRegex.test(email)) throw new Error('Invalid email format')
 
       this.loading = true
       this.error = null
 
       try {
-        await setPersistence(
-          auth,
-          rememberMe ? browserLocalPersistence : browserSessionPersistence
-        )
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
         const userCredential = await signInWithEmailAndPassword(auth, email, password)
         this.user = userCredential.user
         this.isAuthenticated = true
@@ -113,10 +108,7 @@ export const useAuthStore = defineStore('auth', {
           throw new Error('Passkey has expired')
         }
 
-        await setPersistence(
-          auth,
-          rememberMe ? browserLocalPersistence : browserSessionPersistence
-        )
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
         this.isAuthenticated = true
         this.user = {
           email: 'admin@example.com',
@@ -141,14 +133,18 @@ export const useAuthStore = defineStore('auth', {
      * @description Logs out the current user and clears authentication state
      */
     async logout() {
+      this.loading = true
       try {
         await signOut(auth)
         this.user = null
         this.isAuthenticated = false
         localStorage.removeItem('isAuthenticated')
+        return true
       } catch (error) {
-        console.error('Logout error:', error)
+        this.error = error.message
         throw error
+      } finally {
+        this.loading = false
       }
     },
 
@@ -161,14 +157,16 @@ export const useAuthStore = defineStore('auth', {
      */
     async resetPassword(email) {
       if (!email) throw new Error('Email is required')
-
+      
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(email)) throw new Error('Invalid email format')
 
       this.loading = true
       this.error = null
+
       try {
         await sendPasswordResetEmail(auth, email)
+        return true
       } catch (error) {
         this.error = error.message
         throw error
@@ -186,9 +184,11 @@ export const useAuthStore = defineStore('auth', {
         if (user) {
           this.user = user
           this.isAuthenticated = true
+          localStorage.setItem('isAuthenticated', true)
         } else {
           this.user = null
           this.isAuthenticated = false
+          localStorage.removeItem('isAuthenticated')
         }
       })
     }
