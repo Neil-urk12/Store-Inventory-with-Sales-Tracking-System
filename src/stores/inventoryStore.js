@@ -21,7 +21,7 @@ import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
 import debounce from 'lodash/debounce'
-import { formatQuasarDate } from '../utils/dateUtils'
+import { formatDate } from '../utils/dateUtils'
 import { date } from 'quasar'
 
 // Constants
@@ -122,8 +122,8 @@ export const useInventoryStore = defineStore('inventory', {
     editedCategory: null,
     selectedItems: [],
     dateRange: {
-      from: formatQuasarDate(new Date(), 'YYYY-MM-DD'),
-      to: formatQuasarDate(new Date(), 'YYYY-MM-DD')
+      from: formatDate(new Date(), 'YYYY-MM-DD'),
+      to: formatDate(new Date(), 'YYYY-MM-DD')
     },
     salesData: [],
     selectedTimeframe: 'daily',
@@ -196,7 +196,7 @@ export const useInventoryStore = defineStore('inventory', {
         name: item.name,
         'current stock': item.quantity,
         'dead stock': 0,
-        lastUpdated: formatQuasarDate(new Date(), 'MM/DD/YYYY')
+        lastUpdated: formatDate(new Date(), 'MM/DD/YYYY')
       }))
     },
 
@@ -702,7 +702,7 @@ export const useInventoryStore = defineStore('inventory', {
      */
     formatDate(dateStr) {
       if (!dateStr) return ''
-      return formatQuasarDate(new Date(dateStr), 'MM/DD/YY HH:mm:ss')
+      return formatDate(new Date(dateStr), 'MM/DD/YY HH:mm:ss')
     },
 
     /**
@@ -714,8 +714,8 @@ export const useInventoryStore = defineStore('inventory', {
      */
     setDateRange(range) {
       this.dateRange = {
-        from: formatQuasarDate(new Date(range.from), 'YYYY-MM-DD'),
-        to: formatQuasarDate(new Date(range.to), 'YYYY-MM-DD')
+        from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
+        to: formatDate(new Date(range.to), 'YYYY-MM-DD')
       }
     },
 
