@@ -1,6 +1,4 @@
 import Dexie from 'dexie';
-// Remove after full implementation of database
-import { mockItems, mockCategories } from '../data/mockdata';
 
 class AppDatabase extends Dexie {
   constructor() {
@@ -8,16 +6,17 @@ class AppDatabase extends Dexie {
 
     this.version(1).stores({
       // Inventory tables
-      items: '++id, name, sku, category, quantity, price, image, createdAt, updatedAt',
-      sales: '++id, itemId, quantity, price, date',
-      cashFlow: '++id, paymentMethod, type, amount, date, description',
+      items: '++id, name, sku, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId',
+      sales: '++id, itemId, quantity, price, date, syncStatus, firebaseId',
+      cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
       // Contacts tables
-      categories: '++id, name, value, createdAt',
-      contacts: '++id, categoryId, name, email, phone, avatar, [categoryId+name]',
+      contactCategories: '++id, name, value, createdAt, syncStatus, firebaseId',
+      contactsList: '++id, categoryId, name, email, phone, avatar, [categoryId+name], syncStatus, firebaseId',
 
       // Sync queue table
-      syncQueue: '++id, type, collection, data, docId, timestamp'
+      syncQueue: '++id, type, collection, data, docId, timestamp, attempts, lastAttempt, status, error',
+      syncLocks: 'lockId, timestamp, owner'
     });
 
     this.items.hook('creating', (primKey, obj) => {
@@ -62,42 +61,42 @@ class AppDatabase extends Dexie {
   }
 //--------------------------------------------------------------------
   // Contacts Methods
-  async getAllCategories() {
-    return await this.categories.toArray();
+  async getAllContactCategories() {
+    return await this.contactCategories.toArray();
   }
 
-  async addCategory(category) {
-    return await this.categories.add(category);
+  async addContactCategory(contactCategory) {
+    return await this.contactCategories.add(contactCategory);
   }
 
-  async updateCategory(id, changes) {
-    return await this.categories.update(id, changes);
+  async updateContactCategory(contactCategoryId, changes) {
+    return await this.contactCategories.update(contactCategoryId, changes);
   }
 
-  async deleteCategory(id) {
-    // Delete all contacts in this category first
-    await this.contacts.where('categoryId').equals(id).delete();
-    return await this.categories.delete(id);
+  async deleteContactCategory(contactCategoryId) {
+    // Delete all contacts in this contact category first
+    await this.contactsList.where('categoryId').equals(contactCategoryId).delete();
+    return await this.contactCategories.delete(contactCategoryId);
   }
 
-  async getContactsByCategory(categoryId) {
-    return await this.contacts.where('categoryId').equals(categoryId).toArray();
+  async getContactsByCategory(contactCategoryId) {
+    return await this.contactsList.where('categoryId').equals(contactCategoryId).toArray();
   }
 
   async getAllContacts() {
-    return await this.contacts.toArray();
+    return await this.contactsList.toArray();
   }
 
-  async addContact(contact) {
-    return await this.contacts.add(contact);
+  async addContact(contactPerson) {
+    return await this.contactsList.add(contactPerson);
   }
 
-  async updateContact(id, changes) {
-    return await this.contacts.update(id, changes);
+  async updateContact(contactId, changes) {
+    return await this.contactsList.update(contactId, changes);
   }
 
-  async deleteContact(id) {
-    return await this.contacts.delete(id);
+  async deleteContact(contactId) {
+    return await this.contactsList.delete(contactId);
   }
   //--------------------------------------------------------------------
   // Sync Methods
@@ -121,59 +120,28 @@ class AppDatabase extends Dexie {
   //--------------------------------------------------------------------
 
   // Utility Methods
-  // Remove after full implementation of database
   async clearAllTables() {
     await this.transaction('rw',
       this.items,
       this.sales,
       this.cashFlow,
-      this.categories,
-      this.contacts,
+      this.contactCategories,
+      this.contactsList,
       this.syncQueue,
+      this.syncLocks,
       async () => {
         await Promise.all([
           this.items.clear(),
           this.sales.clear(),
           this.cashFlow.clear(),
-          this.categories.clear(),
-          this.contacts.clear(),
-          this.syncQueue.clear()
+          this.contactCategories.clear(),
+          this.contactsList.clear(),
+          this.syncQueue.clear(),
+          this.syncLocks.clear()
         ])
     });
   }
 
-  // Remove after full implementation of database
-  async repopulateWithMockData() {
-    await this.transaction('rw',
-      this.items,
-      this.categories,
-      this.contacts,
-      async () => {
-        // Clear existing data
-        await this.clearAllTables()
-
-        // Add mock items
-        for (const item of mockItems) {
-          const { id, ...itemData } = item // Remove the id to let Dexie auto-generate it
-          await this.items.add(itemData)
-        }
-
-        // Add mock categories and contacts
-        for (const category of mockCategories) {
-          const { contacts, ...categoryData } = category
-          const categoryId = await this.categories.add(categoryData)
-
-          // Add contacts for this category
-          for (const contact of contacts) {
-            const { id, ...contactData } = contact // Remove the id to let Dexie auto-generate it
-            await this.contacts.add({
-              ...contactData,
-              categoryId
-            })
-          }
-        }
-    })
-  }
 }
 
 // Create and export a single instance

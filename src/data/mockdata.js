@@ -1,271 +1,106 @@
 import { date } from 'quasar'
 const { formatDate } = date
 
-// Generate dynamic dates for last restocked
-const generateRecentDate = () => {
-  const date = new Date()
-  date.setDate(date.getDate() - Math.floor(Math.random() * 30)) // Random date within last 30 days
-  return formatDate(date, 'YYYY-MM-DD')
+/**
+ * Template for inventory items structure
+ * Replace this with real data from your backend
+ */
+export const itemTemplate = {
+  id: 'string | number', // Unique identifier
+  name: 'string', // Product name
+  sku: 'string', // Stock keeping unit
+  category: 'string', // Product category
+  quantity: 'number', // Current stock quantity
+  price: 'number', // Product price
+  image: 'string', // URL to product image
+  createdAt: 'string', // ISO date string
+  updatedAt: 'string', // ISO date string
+  syncStatus: 'string', // Status of sync with backend
+  firebaseId: 'string' // ID in Firebase (if using Firebase)
 }
 
-// Generate dynamic product data
-export const mockItems = [
-  {
-    id: 1,
-    name: 'Apple iPhone 13',
-    sku: 'IPH13',
-    category: 'electronics',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 999.99,
-    image: 'https://picsum.photos/200/300'
-  },
-  {
-    id: 2,
-    name: 'Samsung Galaxy S22',
-    sku: 'SGS22',
-    category: 'electronics',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 899.99,
-    image: 'https://picsum.photos/200/301'
-  },
-  {
-    id: 3,
-    name: 'Nike Air Max 270',
-    sku: 'NAM270',
-    category: 'clothing',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 129.99,
-    image: 'https://picsum.photos/200/302'
-  },
-  {
-    id: 4,
-    name: 'Adidas Superstar',
-    sku: 'ADSUP',
-    category: 'clothing',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 99.99,
-    image: 'https://picsum.photos/200/303'
-  },
-  {
-    id: 5,
-    name: 'Harry Potter and the Philosopher\'s Stone',
-    sku: 'HP1',
-    category: 'books',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 19.99,
-    image: 'https://picsum.photos/200/304'
-  },
-  {
-    id: 6,
-    name: 'The Lord of the Rings',
-    sku: 'LOTR',
-    category: 'books',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 29.99,
-    image: 'https://picsum.photos/200/305'
-  },
-  {
-    id: 7,
-    name: 'Apple MacBook Air',
-    sku: 'MBA',
-    category: 'electronics',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 1499.99,
-    image: 'https://picsum.photos/200/306'
-  },
-  {
-    id: 8,
-    name: 'Dell Inspiron 15',
-    sku: 'DIN15',
-    category: 'electronics',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 699.99,
-    image: 'https://picsum.photos/200/307'
-  },
-  {
-    id: 9,
-    name: 'Nike Air Force 1',
-    sku: 'NAF1',
-    category: 'clothing',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 89.99,
-    image: 'https://picsum.photos/200/308'
-  },
-  {
-    id: 10,
-    name: 'Adidas Yeezy Boost 350',
-    sku: 'ADYB350',
-    category: 'clothing',
-    quantity: Math.floor(Math.random() * 50) + 1,
-    price: 299.99,
-    image: 'https://picsum.photos/200/309'
+/**
+ * Template for sales data structure
+ * Replace this with real data from your backend
+ */
+export const salesDataTemplate = {
+  id: 'string | number', // Unique identifier
+  date: 'string', // ISO date string
+  amount: 'number', // Sale amount
+  items: [{ // Array of items sold
+    id: 'string | number',
+    quantity: 'number',
+    price: 'number'
+  }],
+  syncStatus: 'string',
+  firebaseId: 'string'
+}
+
+/**
+ * Template for inventory data structure
+ * Replace this with real data from your backend
+ */
+export const inventoryDataTemplate = {
+  totalItems: 'number',
+  totalValue: 'number',
+  categories: [{
+    name: 'string',
+    count: 'number',
+    value: 'number'
+  }],
+  lastUpdated: 'string' // ISO date string
+}
+
+/**
+ * Template for financial data structure
+ * Replace this with real data from your backend
+ */
+export const financialDataTemplate = {
+  revenue: 'number',
+  expenses: 'number',
+  profit: 'number',
+  period: {
+    start: 'string', // ISO date string
+    end: 'string' // ISO date string
   }
-]
+}
 
-// Generate dynamic sales data based on items
-export const mockSalesData = mockItems.slice(0, 3).map(item => ({
-  productId: item.id,
-  productName: item.name,
-  quantitySold: Math.floor(Math.random() * 100) + 1,
-  revenue: (Math.floor(Math.random() * 100) + 1) * item.price
-}))
+/**
+ * Template for low stock alerts structure
+ * Replace this with real data from your backend
+ */
+export const lowStockAlertsTemplate = [{
+  id: 'string | number',
+  name: 'string',
+  currentStock: 'number',
+  threshold: 'number',
+  category: 'string'
+}]
 
-// Generate dynamic inventory data
-export const mockInventoryData = [
-  {
-    id: 1,
-    product: 'Gaming Laptop',
-    currentStock: Math.floor(Math.random() * 20) + 1,
-    minStock: 5,
-    maxStock: 20,
-    lastRestocked: generateRecentDate(),
-    category: 'electronics'
-  },
-  {
-    id: 2,
-    product: 'Wireless Mouse',
-    currentStock: Math.floor(Math.random() * 100) + 1,
-    minStock: 20,
-    maxStock: 100,
-    lastRestocked: generateRecentDate(),
-    category: 'electronics'
-  },
-  {
-    id: 3,
-    product: 'USB-C Cable',
-    currentStock: Math.floor(Math.random() * 300) + 1,
-    minStock: 50,
-    maxStock: 300,
-    lastRestocked: generateRecentDate(),
-    category: 'accessories'
-  },
-  {
-    id: 4,
-    product: 'Mechanical Keyboard',
-    currentStock: Math.floor(Math.random() * 50) + 1,
-    minStock: 10,
-    maxStock: 50,
-    lastRestocked: generateRecentDate(),
-    category: 'electronics'
-  },
-  {
-    id: 5,
-    product: 'Monitor Stand',
-    currentStock: Math.floor(Math.random() * 60) + 1,
-    minStock: 15,
-    maxStock: 60,
-    lastRestocked: generateRecentDate(),
-    category: 'accessories'
-  }
-]
+/**
+ * Template for top selling products structure
+ * Replace this with real data from your backend
+ */
+export const topSellingProductsTemplate = [{
+  id: 'string | number',
+  name: 'string',
+  salesCount: 'number',
+  revenue: 'number',
+  period: 'string' // e.g., 'daily', 'weekly', 'monthly'
+}]
 
-// Generate dynamic financial data
-const currentDate = formatDate(new Date(), 'YYYY-MM-DD')
-export const mockFinancialData = [
-  { id: 1, category: 'Revenue', amount: Math.floor(Math.random() * 50000) + 20000, date: currentDate, type: 'income' },
-  { id: 2, category: 'Cost of Goods', amount: -Math.floor(Math.random() * 30000) - 10000, date: currentDate, type: 'expense' },
-  { id: 3, category: 'Operating Expenses', amount: -Math.floor(Math.random() * 10000) - 2000, date: currentDate, type: 'expense' },
-  { id: 4, category: 'Tax', amount: -Math.floor(Math.random() * 5000) - 1000, date: currentDate, type: 'expense' }
-]
-
-// Calculate net profit dynamically
-const netProfit = mockFinancialData.reduce((sum, item) => sum + item.amount, 0)
-mockFinancialData.push({ id: 5, category: 'Net Profit', amount: netProfit, date: currentDate, type: 'summary' })
-
-// Generate dynamic low stock alerts based on inventory data
-export const mockLowStockAlerts = mockInventoryData
-  .filter(item => item.currentStock <= item.minStock * 1.5) // Alert when stock is within 50% of minimum
-  .map(item => ({
-    id: item.id,
-    product: item.product,
-    currentStock: item.currentStock,
-    minStock: item.minStock,
-    status: item.currentStock <= item.minStock ? 'critical' : 'warning'
-  }))
-
-// Generate dynamic top selling products
-export const mockTopSellingProducts = mockItems
-  .slice(0, 5)
-  .map(item => ({
-    id: item.id,
-    product: item.name,
-    totalSold: Math.floor(Math.random() * 100) + 1,
-    revenue: (Math.floor(Math.random() * 100) + 1) * item.price
-  }))
-  .sort((a, b) => b.revenue - a.revenue)
-
-// Mock data for contacts
-export const mockCategories = [
-  {
-    id: 1,
-    name: "Ice Cream Delivery",
-    contacts: [
-      {
-        id: 1,
-        name: "John Doe",
-        email: "john.doe@example.com",
-        phone: "+1234567890",
-        avatar: "https://via.placeholder.com/150",
-      },
-      {
-        id: 2,
-        name: "Jane Smith",
-        email: "jane.smith@example.com",
-        phone: "+0987654321",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "Grocery Delivery",
-    contacts: [
-      {
-        id: 3,
-        name: "Alice Johnson",
-        email: "alice.Johnson@example.com",
-        phone: "+1122334455",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "Store Restock",
-    contacts: [
-      {
-        id: 4,
-        name: "Bob Brown",
-        email: "bob.brown@example.com",
-        phone: "+99887654321",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 4,
-    name: "Family",
-    contacts: [
-      {
-        id: 5,
-        name: "Sara Lee",
-        email: "sara.lee@example.com",
-        phone: "+1234567890",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-  {
-    id: 5,
-    name: "Partners",
-    contacts: [
-      {
-        id: 6,
-        name: "Tom Wilson",
-        email: "tom.Wilson@example.com",
-        phone: "+0987654321",
-        avatar: "https://via.placeholder.com/150",
-      },
-    ],
-  },
-];
+/**
+ * Template for contact categories structure
+ * Replace this with real data from your backend
+ */
+export const contactCategoriesTemplate = [{
+  id: 'string | number',
+  name: 'string',
+  contacts: [{
+    id: 'string | number',
+    name: 'string',
+    email: 'string',
+    phone: 'string',
+    avatar: 'string'
+  }]
+}]
