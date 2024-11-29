@@ -28,3 +28,19 @@ if (process.env.MODE !== 'ssr' || process.env.PROD) {
     )
   )
 }
+
+// Add background sync handler
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'syncData') {
+    event.waitUntil(
+      // Notify the client to process the queue
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'SYNC_REQUIRED'
+          })
+        })
+      })
+    )
+  }
+})
