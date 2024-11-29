@@ -67,12 +67,26 @@ export const useFinancialStore = defineStore('financial', {
           .equals('pending')
           .toArray()
 
-        if (unsyncedTransactions.length === 0) return
+        if (unsyncedTransactions.length === 0) return console.log('No transactions to sync')
 
         const firestoreRef = collection(fireDb, 'cashFlow')
 
         for (const transaction of unsyncedTransactions) {
           try {
+            const validation = await this.validateTransactionData(transaction)
+            if (!validation.isValid) {
+              console.error(
+                `Validation failed for transaction ${transaction.id}:`,
+                validation.errors
+              )
+              // Handle invalid transaction, e.g., mark for review or skip
+              await db.cashFlow.update(transaction.id, {
+                syncStatus: 'validation_failed',
+                syncError: validation.errors.join(', ')
+              })
+              continue // Skip to the next transaction
+            }
+
             const cleanTransaction = {
               paymentMethod: transaction.paymentMethod,
               type: transaction.type,
@@ -222,6 +236,8 @@ export const useFinancialStore = defineStore('financial', {
               syncError: error.message
             })
           }
+        } else {
+          console.log('Offline - transaction will sync later')
         }
 
         return id
