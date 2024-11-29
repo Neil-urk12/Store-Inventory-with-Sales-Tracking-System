@@ -81,7 +81,6 @@ src/
 - Product CRUD operations
 - Stock level tracking
 - Category management
-- Barcode scanning support
 
 ### Reporting System
 - Sales analytics
