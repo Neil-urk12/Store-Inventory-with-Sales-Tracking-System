@@ -179,7 +179,11 @@ const viewStockLevels = () => {
                 <div v-if="isRenderingCategory" class="absolute-center">
                   <q-spinner-dots size="40px" />
                 </div>
-                <canvas id="categoryChart"></canvas>
+                <div v-else-if="!inventoryStore.items.length" class="absolute-center text-center">
+                  <q-icon name="bar_chart" size="48px" color="grey-5" />
+                  <div class="text-grey-5 q-mt-sm">No category data available</div>
+                </div>
+                <canvas v-else id="categoryChart"></canvas>
               </div>
             </div>
           </q-card-section>
@@ -225,7 +229,11 @@ const viewStockLevels = () => {
                 <div v-if="isRenderingSales" class="absolute-center">
                   <q-spinner-dots size="40px" />
                 </div>
-                <canvas id="salesTrendChart"></canvas>
+                <div v-else-if="!inventoryStore.items.length" class="absolute-center text-center">
+                  <q-icon name="show_chart" size="48px" color="grey-5" />
+                  <div class="text-grey-5 q-mt-sm">No sales data available for selected timeframe</div>
+                </div>
+                <canvas v-else id="salesTrendChart"></canvas>
               </div>
             </div>
           </q-card-section>
