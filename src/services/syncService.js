@@ -1,13 +1,24 @@
+/**
+ * @fileoverview This file contains functions for syncing data with firebase.
+*/
+
 import { useNetworkStatus } from './networkStatus'
 import Dexie from 'dexie'
 
-// Define the database
+/**
+ * Create a new Dexie database instance for offline sync.
+ */
 const db = new Dexie('offlineSync')
 db.version(1).stores({
   pendingRequests: '++id,type,timestamp'
 })
 
-// Queue an operation for background sync
+/**
+ * Queue a new operation to be processed later.
+ * @async
+ * @param {Object} operation - The operation to be queued.
+ * @description This function adds a new operation to the pendingRequests table.
+*/
 export const queueOperation = async (operation) => {
   await db.pendingRequests.add({
     ...operation,
@@ -15,7 +26,10 @@ export const queueOperation = async (operation) => {
   })
 }
 
-// Process queued operations
+/**
+ * @async
+ * @description Process all queued operations.
+*/
 export const processQueue = async () => {
   const { isOnline } = useNetworkStatus()
   if (!isOnline.value) return
@@ -56,7 +70,10 @@ export const processQueue = async () => {
   }
 }
 
-// Register background sync
+/**
+ * @async
+ * @description Register the service worker for background sync
+*/
 export const registerBackgroundSync = async () => {
   if ('serviceWorker' in navigator && 'sync' in window.registration) {
     try {
@@ -67,10 +84,12 @@ export const registerBackgroundSync = async () => {
   }
 }
 
-// Initialize background sync when online
+/**
+ * @description Initialize background sync when online.
+*/
 export const initBackgroundSync = () => {
   const { isOnline } = useNetworkStatus()
-  
+
   // Process queue when coming back online
   window.addEventListener('online', () => {
     processQueue()
