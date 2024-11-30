@@ -25,6 +25,9 @@ import { formatDate } from '../utils/dateUtils'
 import { date } from 'quasar'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 
+// Get network status at the store level
+const { isOnline } = useNetworkStatus()
+
 // Constants
 const BATCH_SIZE = 500
 const DEFAULT_SORT = 'name'
@@ -235,7 +238,7 @@ export const useInventoryStore = defineStore('inventory', {
     formattedCategories(state) {
       return state.categories.map(category => ({
         label: category.name,
-        value: category.value
+        value: category.id
       }))
     },
   },
@@ -251,7 +254,6 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         const existingItems = await db.items.count()
         if (existingItems === 0) {
-          const { isOnline } = useNetworkStatus()
           if (isOnline.value) {
             await this.syncWithFirestore()
             await syncQueue.processQueue()
@@ -279,7 +281,6 @@ export const useInventoryStore = defineStore('inventory', {
         this.items = localItems.map(processItem)
 
         // Sync with Firestore if online
-        const { isOnline } = useNetworkStatus()
         if (isOnline.value) {
           await this.syncWithFirestore()
         }
@@ -292,114 +293,123 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method saveItem
-     * @param {Object} item - Item to save
-     * @returns {Promise<string>} Saved item ID
-     * @description Saves an item to the local database and queues for sync
+     * @method createNewItem
+     * @param {Object} item - New item to create
+     * @returns {Promise<Object>} Created item result
      */
-    async saveItem(item) {
-      const errors = validateItem(item)
-      if (errors.length > 0) {
+    async createNewItem(item) {
+      this.loading = true;
+
+      try {
+        // Validate item before saving
+        const errors = validateItem(item);
+        if (errors.length > 0) {
         throw new Error(`Validation failed: ${errors.join(', ')}`)
-      }
-
-      const processedItem = processItem(item)
-      let savedId
-
-      // Always save to local DB first
-      await db.transaction('rw', db.items, async () => {
-        try {
-          // Save to local DB
-          savedId = await db.items.add({
-            ...processedItem,
-            syncStatus: 'pending',
-            firebaseId: null,
-            updatedAt: new Date().toISOString(),
-            createdAt: new Date().toISOString()
-          })
-
-          // Queue for sync
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'items',
-            data: {
-              ...processedItem,
-              id: savedId
-            }
-          })
-        } catch (error) {
-          console.error('Error saving item locally:', error)
-          throw error
         }
-      })
 
-      return savedId
+        // Process item (format data, set defaults, etc.)
+        const processedItem = processItem(item)
+        const result = await db.createItem(processedItem)
+
+        if (isOnline.value) {
+          try {
+            // Add to Firestore if online
+            const docRef = await addDoc(collection(fireDb, 'items'), {
+              ...processedItem,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await db.updateItem(result, { firebaseId: docRef.id });
+            return { id: result, offline: false };
+          } catch (firebaseError) {
+            console.error('Firebase error:', firebaseError);
+            // If Firebase fails, queue for sync
+            await this.queueForSync('create', processedItem, result);
+            return { id: result, offline: true };
+          }
+        }
+
+        // Queue for sync if offline
+        await this.queueForSync('create', processedItem, result);
+        await this.loadInventory();
+        return { id: result, offline: true };
+      } catch (error) {
+        console.error('Error creating item:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
     },
 
     /**
      * @async
-     * @method updateItem
+     * @method updateExistingItem
      * @param {string} id - Item ID to update
-     * @param {Object} changes - Changes to apply to the item
-     * @returns {Promise<string>} Updated item ID
-     * @description Updates an item in the local database and queues for sync
+     * @param {Object} changes - Changes to apply
+     * @returns {Promise<Object>} Update result
      */
-    async updateItem(id, changes) {
-      const item = await db.items.get(id)
-      if (!item) throw new Error('Item not found')
+    async updateExistingItem(id, changes) {
+      this.loading = true;
 
-      const updatedItem = { ...item, ...changes }
-      const errors = validateItem(updatedItem)
-      if (errors.length > 0) {
-        throw new Error(`Validation failed: ${errors.join(', ')}`)
-      }
-
-      // Add version tracking
-      const version = (item.version || 0) + 1
-      const timestamp = new Date().toISOString()
-
-      // Always update local DB first with transaction
-      return await db.transaction('rw', db.items, async () => {
-        try {
-          // Check if item was modified during our operation
-          const currentItem = await db.items.get(id)
-          if (currentItem.version !== item.version) {
-            throw new Error('Item was modified by another process')
-          }
-
-          // Update local DB
-          await db.items.update(id, {
-            ...changes,
-            version,
-            syncStatus: 'pending',
-            updatedAt: timestamp
-          })
-
-          // Queue for sync
-          await syncQueue.addToQueue({
-            type: 'update',
-            collection: 'items',
-            data: {
-              ...changes,
-              id,
-              version,
-              updatedAt: timestamp
-            }
-          })
-
-          return id
-        } catch (error) {
-          // Attempt to rollback the local update
-          if (error.message !== 'Item was modified by another process') {
-            try {
-              await db.items.update(id, item)
-            } catch (rollbackError) {
-              console.error('Failed to rollback local update:', rollbackError)
-            }
-          }
-          throw error
+      try {
+        // Validate changes before updating
+        const errors = validateItem({ ...changes, id });
+        if (errors.length > 0) {
+          throw new Error(`Validation failed: ${errors.join(', ')}`);
         }
-      })
+
+        // Process changes
+        const processedChanges = processItem(changes);
+        const result = await db.updateExistingItem(id, processedChanges);
+
+        if (isOnline.value) {
+          const item = await db.items.get(id);
+          if (item?.firebaseId) {
+            try {
+              await updateDoc(doc(fireDb, 'items', item.firebaseId), {
+                ...processedChanges,
+                updatedAt: serverTimestamp()
+              });
+              return { id, offline: false };
+            } catch (firebaseError) {
+              console.error('Firebase error:', firebaseError);
+              // If Firebase fails, queue for sync
+              await this.queueForSync('update', processedChanges, id);
+              return { id, offline: true };
+            }
+          }
+        }
+
+        // Queue for sync if offline
+        await this.queueForSync('update', processedChanges, id);
+        await this.loadInventory();
+        return { id, offline: true };
+      } catch (error) {
+        console.error('Error updating item:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /**
+     * @async
+     * @method queueForSync
+     * @param {string} type - Operation type ('create' or 'update')
+     * @param {Object} data - Data to sync
+     * @param {string} docId - Document ID
+     * @private
+     */
+    async queueForSync(type, data, docId) {
+      await syncQueue.add({
+        type,
+        collection: 'items',
+        data,
+        docId,
+        timestamp: new Date().toISOString(),
+        attempts: 0,
+        status: 'pending'
+      });
     },
 
     /**
@@ -442,7 +452,6 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Syncs local database with Firestore
      */
     async syncWithFirestore() {
-      const { isOnline } = useNetworkStatus()
       if (!isOnline.value) return
 
       try {
@@ -538,8 +547,6 @@ export const useInventoryStore = defineStore('inventory', {
     async addItem(item) {
       try {
         const id = await db.addItem(item)
-        const { isOnline } = useNetworkStatus()
-
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'add',
@@ -1040,17 +1047,17 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async handleDeleteConfirm() {
       if (!this.itemToDelete) return;
-      
+
       try {
         const itemId = this.itemToDelete.id;
         await this.deleteItem(itemId);
-        
+
         // Remove item from local state
         const index = this.items.findIndex(item => item.id === itemId);
         if (index !== -1) {
           this.items.splice(index, 1);
         }
-        
+
         this.deleteDialog = false;
         this.itemToDelete = null;
       } catch (error) {

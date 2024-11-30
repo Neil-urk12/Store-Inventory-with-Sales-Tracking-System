@@ -67,6 +67,109 @@ class AppDatabase extends Dexie {
   }
   /**
    * @async
+   * @method createItem
+   * @param {Object} item
+   * @returns {Promise<Object>}
+   * @description Creates a new item in the database with validation
+   * @throws {Error} If validation fails
+  */
+  async createItem(item) {
+    // Validate required fields
+    if (!item.name?.trim()) {
+      throw new Error('Item name is required');
+    }
+    if (!item.categoryId) {
+      throw new Error('Category is required');
+    }
+    if (typeof item.price !== 'number' || item.price < 0) {
+      throw new Error('Valid price is required');
+    }
+    
+    // Sanitize and prepare item data
+    const newItem = {
+      ...item,
+      name: item.name.trim(),
+      sku: item.sku?.trim() || null,
+      quantity: Math.max(0, parseInt(item.quantity) || 0),
+      price: parseFloat(item.price),
+      image: item.image?.trim() || null,
+      syncStatus: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      // Check for duplicate SKU if provided
+      if (newItem.sku) {
+        const existingItem = await this.items.where('sku').equals(newItem.sku).first();
+        if (existingItem) {
+          throw new Error(`Item with SKU ${newItem.sku} already exists`);
+        }
+      }
+      
+      return await this.items.add(newItem);
+    } catch (error) {
+      console.error('Database error creating item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * @async
+   * @method updateExistingItem
+   * @param {number} id
+   * @param {Object} changes
+   * @returns {Promise<Object>}
+   * @description Updates an existing item in the database with validation
+   * @throws {Error} If validation fails or item not found
+  */
+  async updateExistingItem(id, changes) {
+    // Check if item exists
+    const existingItem = await this.items.get(id);
+    if (!existingItem) {
+      throw new Error('Item not found');
+    }
+
+    // Validate changes
+    if (changes.name !== undefined && !changes.name?.trim()) {
+      throw new Error('Item name cannot be empty');
+    }
+    if (changes.price !== undefined && (typeof changes.price !== 'number' || changes.price < 0)) {
+      throw new Error('Price must be a non-negative number');
+    }
+    if (changes.quantity !== undefined && (typeof changes.quantity !== 'number' || changes.quantity < 0)) {
+      throw new Error('Quantity must be a non-negative number');
+    }
+
+    try {
+      // Check for duplicate SKU if SKU is being changed
+      if (changes.sku && changes.sku !== existingItem.sku) {
+        const duplicateSku = await this.items.where('sku').equals(changes.sku.trim()).first();
+        if (duplicateSku) {
+          throw new Error(`Item with SKU ${changes.sku} already exists`);
+        }
+      }
+
+      // Sanitize and prepare update data
+      const updatedChanges = {
+        ...changes,
+        name: changes.name?.trim() || existingItem.name,
+        sku: changes.sku?.trim() || existingItem.sku,
+        quantity: changes.quantity !== undefined ? Math.max(0, parseInt(changes.quantity)) : existingItem.quantity,
+        price: changes.price !== undefined ? parseFloat(changes.price) : existingItem.price,
+        image: changes.image?.trim() || existingItem.image,
+        updatedAt: new Date().toISOString(),
+        syncStatus: 'pending'
+      };
+
+      return await this.items.update(id, updatedChanges);
+    } catch (error) {
+      console.error('Database error updating item:', error);
+      throw error;
+    }
+  }
+  /**
+   * @async
    * @method addItem
    * @param {Object} item
    * @returns {Promise<Object>}

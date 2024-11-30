@@ -61,7 +61,9 @@ const validateAndSave = async () => {
     const isValid = await formRef.value.validate()
     if (!isValid) return
 
-    const result = await inventoryStore.saveItem()
+    const result = editMode.value
+      ? await inventoryStore.updateExistingItem(editedItem.value.id, editedItem.value)
+      : await inventoryStore.createNewItem(editedItem.value)
 
     const action = editMode.value ? 'updated' : 'added'
     if (result.offline) {
@@ -81,6 +83,11 @@ const validateAndSave = async () => {
         position: 'top'
       })
     }
+    
+    // Close dialog and reset form
+    inventoryStore.itemDialog = false
+    formRef.value.resetValidation()
+    await inventoryStore.loadInventory() // Refresh the inventory list
   } catch (err) {
     console.error('Save error:', err)
     $q.notify({
@@ -141,7 +148,7 @@ const validateAndSave = async () => {
           />
 
           <q-select
-            v-model="editedItem.category"
+            v-model="editedItem.categoryId"
             :options="inventoryStore.formattedCategories"
             label="Category"
             :rules="[val => !!val || 'Category is required']"
