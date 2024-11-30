@@ -23,8 +23,8 @@ const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock
 </script>
 
 <template>
-  <div class="stock-bars  fit column justify-center q-mb-md">
-    <div class="stock-flex fit row no-wrap items-start content-start text-center text-black">
+  <div class="stock-bars">
+    <div class="stock-flex row no-wrap items-start content-start text-center text-black q-mb-sm">
         <div class="bar green bg-green" :style="{ width: inStockWidth, minWidth: '10%' }">
             {{ inStock }}
         </div>
@@ -38,8 +38,8 @@ const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock
             {{ noStock }}
         </div>
     </div>
-    <div class="legends fit row wrap justify-center items-center content-start q-mt-xs">
-        <ul class="fit row items-center content-start q-pa-none">
+    <div class="legends row wrap justify-center items-center q-mt-xs">
+        <ul class="row items-center q-pa-none q-ma-none">
             <li class="inStockList" :style="{ color: textColor }">In Stocks</li>
             <li class="lowStockList" :style="{ color: textColor }">Low Stocks</li>
             <li class="noStockList" :style="{ color: textColor }">Out of Stocks</li>
@@ -49,34 +49,48 @@ const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock
 </template>
 
 <style scoped>
-.stock-bars{
+.stock-bars {
+  width: 100%;
   border: 1px solid var(--line-clr);
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-  padding: 1rem 2rem;
-  border-radius: 16px;
+  padding: 1rem;
 }
-.stock-flex {font-weight: 600}
-.bar {height: 20px}
+.stock-flex { 
+  font-weight: 600;
+  width: 100%;
+}
+.bar {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.legends ul {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
 .stock-bars ul li {
-  margin: 0.25rem 0.85rem 0rem 0.85rem;
   list-style-type: square;
-  font-size: 1.25rem;
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 0 0.5rem;
 }
 .inStockList::marker {
   color: green;
-  font-size: 1.5rem
+  font-size: 1.2rem;
 }
 .lowStockList::marker {
   color: yellow;
-  font-size: 1.5rem
+  font-size: 1.2rem;
 }
 .noStockList::marker {
   color: red;
-  border: 1px solid rgb(255, 255, 255);
-  font-size: 1.5rem
+  font-size: 1.2rem;
 }
 </style>
