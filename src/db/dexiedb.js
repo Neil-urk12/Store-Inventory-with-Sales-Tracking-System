@@ -22,7 +22,8 @@ class AppDatabase extends Dexie {
 
     this.version(1).stores({
       // Inventory tables
-      items: '++id, name, sku, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId',
+      categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
+      items: '++id, name, sku, categoryId, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
       sales: '++id, itemId, quantity, price, date, syncStatus, firebaseId',
       cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
@@ -41,6 +42,15 @@ class AppDatabase extends Dexie {
     });
 
     this.items.hook('updating', (modifications, primKey, obj) => {
+      modifications.updatedAt = new Date().toISOString();
+    });
+
+    this.categories.hook('creating', (primKey, obj) => {
+      obj.createdAt = new Date().toISOString();
+      obj.updatedAt = new Date().toISOString();
+    });
+
+    this.categories.hook('updating', (modifications, primKey, obj) => {
       modifications.updatedAt = new Date().toISOString();
     });
   }
