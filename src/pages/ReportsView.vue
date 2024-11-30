@@ -6,12 +6,12 @@ import { useInventoryStore } from '../stores/inventoryStore'
 const SalesReportDialog = defineAsyncComponent(() => import('../components/reports/SalesReportDialog.vue'))
 const StockLevelsDialog = defineAsyncComponent(() => import('../components/reports/StockLevelsDialog.vue'))
 const CashFlowDialog = defineAsyncComponent(() => import('../components/reports/CashFlowDialog.vue'))
+const SalesChart = defineAsyncComponent(() => import('../components/reports/SalesChart.vue'))
 
 Chart.register(...registerables)
 
 const $q = useQuasar()
 const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
-const salesTrendChart = ref(null)
 const categoryChart = ref(null)
 const inventoryStore = useInventoryStore()
 const stockModal = ref(false)
@@ -36,25 +36,7 @@ const paymentMethods = [
 
 const updateSalesTimeframe = (value) => inventoryStore.updateSalesTimeframe(value)
 
-const isRenderingSales = ref(false)
 const isRenderingCategory = ref(false)
-
-const renderSalesChart = async () => {
-  if (salesTrendChart.value) {
-    salesTrendChart.value.destroy()
-  }
-
-  const ctx = document.getElementById('salesTrendChart')
-  if (!ctx) return
-
-  const textColor = $q.dark.isActive ? '#ffffff' : '#000000'
-
-  salesTrendChart.value = new Chart(ctx, {
-    type: 'bar',
-    data: inventoryStore.getChartData(selectedTimeframe.value),
-    options: inventoryStore.getChartOptions(textColor)
-  })
-}
 
 const renderCategoryChart = async () => {
   if (categoryChart.value) {
@@ -71,17 +53,6 @@ const renderCategoryChart = async () => {
     data: inventoryStore.getCategoryChartData(),
     options: inventoryStore.getCategoryChartOptions(textColor)
   })
-}
-
-const rerenderSalesChart = async () => {
-  if (isRenderingSales.value) return
-  isRenderingSales.value = true
-
-  try {
-    await renderSalesChart()
-  } finally {
-    isRenderingSales.value = false
-  }
 }
 
 const rerenderCategoryChart = async () => {
@@ -105,18 +76,15 @@ watch(() => inventoryStore.items, async () => {
 }, { deep: true })
 
 watch(() => $q.dark.isActive, async () => {
-  await renderSalesChart()
   await renderCategoryChart()
 })
 
 onMounted(async () => {
   await inventoryStore.loadInventory()
-  await renderSalesChart()
   await renderCategoryChart()
 })
 
 onUnmounted(() => {
-  if (salesTrendChart.value) salesTrendChart.value.destroy()
   if (categoryChart.value) categoryChart.value.destroy()
 })
 
@@ -134,42 +102,69 @@ const viewStockLevels = () => {
 
 <template>
   <q-page padding>
-    <div class="row q-col-gutter-md">
-      <div class="col-12 col-md-6 col-lg-4">
-        <q-card class="report-card bg-transparent">
+    <div class="row q-col-gutter-xl">
+      <div class="col-12 col-md-6">
+        <q-card class="report-card">
           <q-card-section>
-            <div class="section-containers full-width row wrap justify-evenly items-center content-start">
-              <div class="sales">
-                <div class="text-h6" :style="textColor">Sales Reports</div>
-                <q-btn color="primary" label="Generate Sales Report" @click="salesReportDialog = true" class="q-mt-sm" />
+            <div class="section-containers row q-col-gutter-md justify-start items-stretch">
+              <div class="col-12 col-sm-4">
+                <div class="report-section">
+                  <div class="text-h6 q-mb-sm" :style="textColor">Sales Reports</div>
+                  <q-btn
+                    color="primary"
+                    label="Generate Report"
+                    @click="salesReportDialog = true"
+                    class="full-width"
+                    icon="assessment"
+                  />
+                </div>
               </div>
-              <div class="financial">
-                <div class="text-h6" :style="textColor">Stock Reports</div>
-                <q-btn color="primary" label="View Stock Levels" @click="viewStockLevels" class="q-mt-sm" />
+              <div class="col-12 col-sm-4">
+                <div class="report-section">
+                  <div class="text-h6 q-mb-sm" :style="textColor">Stock Reports</div>
+                  <q-btn
+                    color="primary"
+                    label="View Stock"
+                    @click="viewStockLevels"
+                    class="full-width"
+                    icon="inventory"
+                  />
+                </div>
               </div>
-              <div class="cash-flow">
-                <div class="text-h6" :style="textColor">Cash Flow Reports</div>
-                <q-btn-group spread>
-                  <q-btn v-for="method in paymentMethods" :key="method.value" :color="method.color" :icon="method.icon" @click="openCashFlow(method.value)" class="q-mt-sm" />
-                </q-btn-group>
+              <div class="col-12 col-sm-4">
+                <div class="report-section">
+                  <div class="text-h6 q-mb-sm" :style="textColor">Cash Flow</div>
+                  <div class="row q-col-gutter-sm">
+                    <div v-for="method in paymentMethods" :key="method.value" class="col-4">
+                      <q-btn
+                        :color="method.color"
+                        :icon="method.icon"
+                        @click="openCashFlow(method.value)"
+                        class="full-width"
+                        square
+                      >
+                        <q-tooltip>{{ method.label }}</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </q-card-section>
           <q-card-section>
-            <div class="chart-wrapper">
-              <div class="row q-ma-none items-center">
+            <div class="chart-wrapper q-pt-md">
+              <div class="row items-center justify-between q-mb-md">
+                <div class="text-h6" :style="textColor">Category Distribution</div>
                 <q-btn
                   round
+                  flat
                   color="primary"
                   :loading="isRenderingCategory"
                   :disable="isRenderingCategory"
                   @click="rerenderCategoryChart"
-                  class="q-mr-md"
                   icon="refresh"
                 >
-                  <q-tooltip anchor="center right" self="center left">
-                    Refresh Chart
-                  </q-tooltip>
+                  <q-tooltip>Refresh Chart</q-tooltip>
                   <template v-slot:loading>
                     <q-spinner-dots />
                   </template>
@@ -177,7 +172,7 @@ const viewStockLevels = () => {
               </div>
               <div class="chart-container">
                 <div v-if="isRenderingCategory" class="absolute-center">
-                  <q-spinner-dots size="40px" />
+                  <q-spinner-dots size="40px" color="primary"/>
                 </div>
                 <div v-else-if="!inventoryStore.items.length" class="absolute-center text-center">
                   <q-icon name="bar_chart" size="48px" color="grey-5" />
@@ -190,54 +185,7 @@ const viewStockLevels = () => {
         </q-card>
       </div>
       <div class="col-12 col-md-6">
-        <q-card class="chart-card bg-transparent">
-          <q-card-section class="chart-section">
-            <div class="chart-wrapper">
-              <div class="row q-ma-none items-center">
-                <q-btn
-                  round
-                  color="primary"
-                  :loading="isRenderingSales"
-                  :disable="isRenderingSales"
-                  @click="rerenderSalesChart"
-                  class="q-mr-md"
-                  icon="refresh"
-                >
-                  <q-tooltip anchor="center right" self="center left">
-                    Refresh Chart
-                  </q-tooltip>
-                  <template v-slot:loading>
-                    <q-spinner-dots />
-                  </template>
-                </q-btn>
-                <q-btn-dropdown
-                  flat
-                  color="primary"
-                  :label="'Sales: ' + selectedTimeframe"
-                  class="q-mr-md"
-                  :dark="$q.dark.isActive"
-                  :disable="isRenderingSales"
-                >
-                  <q-list>
-                    <q-item v-for="option in timeframeOptions" :key="option.value" clickable v-close-popup @click="updateSalesTimeframe(option.value)">
-                      <q-item-section>{{ option.label }}</q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-btn-dropdown>
-              </div>
-              <div class="chart-container">
-                <div v-if="isRenderingSales" class="absolute-center">
-                  <q-spinner-dots size="40px" />
-                </div>
-                <div v-else-if="!inventoryStore.items.length" class="absolute-center text-center">
-                  <q-icon name="show_chart" size="48px" color="grey-5" />
-                  <div class="text-grey-5 q-mt-sm">No sales data available for selected timeframe</div>
-                </div>
-                <canvas v-else id="salesTrendChart"></canvas>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
+        <SalesChart class="full-height" />
       </div>
     </div>
     <SalesReportDialog v-model="salesReportDialog" />
@@ -253,36 +201,45 @@ const viewStockLevels = () => {
 .report-card {
   height: 100%;
   min-height: 250px;
-  color: var(--q-primary-text-color)
+  transition: all 0.3s ease;
 }
 
-.q-table__title {
-  font-size: 1.2em;
-  font-weight: 500
-}
-
-.sales, .financial, .cash-flow {
-  overflow: auto
-}
-
-.chart-card {
-  height: 100%;
-  min-height: 400px;
+.report-section {
+  padding: 1rem;
   border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  height: 100%;
+}
+
+.dark .report-section {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chart-wrapper {
+  position: relative;
 }
 
 .chart-container {
   position: relative;
-  min-height: 300px;
+  height: 400px;
+  width: 100%;
 }
 
-:deep(.q-table) {
-  color: var(--q-primary-text-color);
+.q-btn {
+  transition: transform 0.2s ease;
 }
 
-@media (max-width: 600px) {
+.q-btn:hover {
+  transform: translateY(-2px);
+}
+
+@media (max-width: 599px) {
+  .report-section {
+    margin-bottom: 1rem;
+  }
+
   .chart-container {
-    height: 250px;
+    height: 300px;
   }
 }
 </style>
