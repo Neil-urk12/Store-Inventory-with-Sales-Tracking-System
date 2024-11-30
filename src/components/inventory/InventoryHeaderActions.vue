@@ -12,7 +12,7 @@
         dense
         placeholder="Search inventory...."
         clearable
-        @clear="inventoryStore.handleSearch"
+        @clear="() => { inventoryStore.searchQuery = ''; inventoryStore.handleSearch(); }"
         @update:model-value="inventoryStore.handleSearch">
         <template v-slot:append>
           <q-icon name="search" />
@@ -31,6 +31,7 @@
             emit-value
             map-options
             clearable
+            @clear="() => { inventoryStore.categoryFilter = null; inventoryStore.handleFilters(); }"
             @update:model-value="inventoryStore.handleFilters"
           />
         </div>

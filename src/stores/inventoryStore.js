@@ -100,16 +100,36 @@ export const useInventoryStore = defineStore('inventory', {
   getters: {
     /**
      * @getter
-     * @returns {Array} Filtered and sorted items based on search query and category
+     * @returns {Array} Filtered items based on search query and category
      */
     filteredItems(state) {
       return state.items.filter(item => {
-        const matchesSearch = !state.searchQuery ||
-          item.name.toLowerCase().includes(state.searchQuery.toLowerCase())
-        const matchesCategory = !state.categoryFilter ||
-          item.category === state.categoryFilter
+        const searchQuery = state.searchQuery?.toLowerCase() || ''
+        const categoryFilter = state.categoryFilter
+
+        // Search in multiple fields
+        const matchesSearch = !searchQuery || [
+          item.name,
+          item.sku,
+          this.getCategoryName(item.categoryId)
+        ].some(field => 
+          String(field).toLowerCase().includes(searchQuery)
+        )
+
+        // Category filter
+        const matchesCategory = !categoryFilter || item.categoryId === categoryFilter
+
         return matchesSearch && matchesCategory
       })
+    },
+
+    /**
+     * @getter
+     * @returns {Function} Function to get category name from ID
+     */
+    getCategoryName: (state) => (categoryId) => {
+      const category = state.categories.find(cat => cat.id === categoryId)
+      return category ? category.name : 'Uncategorized'
     },
 
     /**
@@ -117,27 +137,31 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Array} Sorted items based on the current sort options
      */
     sortedItems(state) {
-      const items = [...state.filteredItems]
-
-      if (!state.sortBy || !SORT_OPTIONS.some(opt => opt.value === state.sortBy)) {
-        return items
+      const items = this.filteredItems
+      if (state.sortBy) {
+        items.sort((a, b) => {
+          let aVal = a[state.sortBy]
+          let bVal = b[state.sortBy]
+          
+          // Map categoryId to category name for sorting
+          if (state.sortBy === 'category') {
+            aVal = this.getCategoryName(a.categoryId)
+            bVal = this.getCategoryName(b.categoryId)
+          }
+          
+          if (typeof aVal === 'string') {
+            return state.sortDesc 
+              ? bVal.localeCompare(aVal) 
+              : aVal.localeCompare(bVal)
+          }
+          return state.sortDesc ? bVal - aVal : aVal - bVal
+        })
       }
-
-      const getValue = (item) => {
-        const value = item[state.sortBy]
-        return value == null ? '' : value
-      }
-
-      return items.sort((a, b) => {
-        const aVal = getValue(a)
-        const bVal = getValue(b)
-
-        const compare = typeof aVal === 'string'
-          ? aVal.localeCompare(bVal)
-          : aVal - bVal
-
-        return state.sortDirection === 'asc' ? compare : -compare
-      })
+      
+      return items.map(item => ({
+        ...item,
+        category: this.getCategoryName(item.categoryId)
+      }))
     },
 
     /**
@@ -1064,6 +1088,24 @@ export const useInventoryStore = defineStore('inventory', {
         console.error('Error deleting item:', error);
         throw error;
       }
+    },
+
+    /**
+     * @method handleSearch
+     * @description Handles search query changes
+     */
+    handleSearch() {
+      // Reactive through state, but we can add logging or additional handling here
+      console.log('Search query:', this.searchQuery)
+    },
+
+    /**
+     * @method handleFilters
+     * @description Handles category filter changes
+     */
+    handleFilters() {
+      // Reactive through state, but we can add logging or additional handling here
+      console.log('Category filter:', this.categoryFilter)
     },
   }
 })
