@@ -8,7 +8,6 @@ const inventoryStore = useInventoryStore()
 const $q = useQuasar()
 const { isOnline } = useNetworkStatus()
 const editedItem = computed(() => inventoryStore.editedItem)
-const categories = computed(() => inventoryStore.categories)
 const loading = computed(() => inventoryStore.loading)
 const editMode = computed(() => inventoryStore.editMode)
 const formRef = ref(null)
@@ -83,7 +82,7 @@ const validateAndSave = async () => {
         position: 'top'
       })
     }
-    
+
     // Close dialog and reset form
     inventoryStore.itemDialog = false
     formRef.value.resetValidation()
