@@ -1,6 +1,5 @@
 <script setup>
 import { defineAsyncComponent } from 'vue'
-const ComboChart = defineAsyncComponent(() => import('../components/home/ComboChart.vue'))
 const StockBars = defineAsyncComponent(() => import('../components/home/StockBars.vue'))
 const DailyPnl = defineAsyncComponent(() => import('../components/home/DailyPnl.vue'))
 const DoughnutChart = defineAsyncComponent(() => import('../components/home/DoughnutChart.vue'))
@@ -16,7 +15,6 @@ const SalesChart = defineAsyncComponent(() => import('../components/reports/Sale
           <Suspense>
             <template #default>
               <q-card-section class="q-pa-md">
-                <!-- <ComboChart /> -->
                 <SalesChart />
               </q-card-section>
             </template>
