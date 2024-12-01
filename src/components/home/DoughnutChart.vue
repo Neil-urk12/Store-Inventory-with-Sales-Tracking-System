@@ -1,13 +1,20 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue"
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { Chart, registerables } from "chart.js"
 import { useInventoryStore } from 'src/stores/inventoryStore'
+import { useQuasar } from 'quasar'
 
 Chart.register(...registerables)
 const inventoryStore = useInventoryStore()
+const $q = useQuasar()
 const chartCanvas = ref(null)
 let doughnutChart = null
 const isLoading = ref(true)
+
+// Watch for dark mode changes
+watch(() => $q.dark.isActive, () => {
+  createChart()
+})
 
 const chartData = computed(() => {
   const items = inventoryStore.items || []
@@ -48,22 +55,22 @@ const chartData = computed(() => {
   }
 })
 
-const options = {
+const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
     legend: {
       position: "top",
-      labels: { color: 'white' }
+      labels: { color: $q.dark.isActive ? 'white' : 'black' }
     },
     title: {
       display: true,
       text: "Product Category by Stocks",
-      color: 'white',
+      color: $q.dark.isActive ? 'white' : 'black',
       padding: { top: 10, bottom: 20 }
     }
   }
-}
+}))
 
 async function createChart() {
   console.log('Creating chart...')
@@ -92,7 +99,7 @@ async function createChart() {
     doughnutChart = new Chart(ctx, {
       type: "doughnut",
       data: chartData.value,
-      options
+      options: options.value
     })
     console.log('Chart created successfully')
   } catch (error) {

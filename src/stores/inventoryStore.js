@@ -112,7 +112,7 @@ export const useInventoryStore = defineStore('inventory', {
           item.name,
           item.sku,
           this.getCategoryName(item.categoryId)
-        ].some(field => 
+        ].some(field =>
           String(field).toLowerCase().includes(searchQuery)
         )
 
@@ -142,22 +142,22 @@ export const useInventoryStore = defineStore('inventory', {
         items.sort((a, b) => {
           let aVal = a[state.sortBy]
           let bVal = b[state.sortBy]
-          
+
           // Map categoryId to category name for sorting
           if (state.sortBy === 'category') {
             aVal = this.getCategoryName(a.categoryId)
             bVal = this.getCategoryName(b.categoryId)
           }
-          
+
           if (typeof aVal === 'string') {
-            return state.sortDesc 
-              ? bVal.localeCompare(aVal) 
+            return state.sortDesc
+              ? bVal.localeCompare(aVal)
               : aVal.localeCompare(bVal)
           }
           return state.sortDesc ? bVal - aVal : aVal - bVal
         })
       }
-      
+
       return items.map(item => ({
         ...item,
         category: this.getCategoryName(item.categoryId)
@@ -1106,6 +1106,96 @@ export const useInventoryStore = defineStore('inventory', {
     handleFilters() {
       // Reactive through state, but we can add logging or additional handling here
       console.log('Category filter:', this.categoryFilter)
+    },
+
+    getChartData(timeframe) {
+      const labels = []
+      const salesData = []
+
+      // Sample data generation based on timeframe
+      const now = new Date()
+      let dataPoints = 0
+
+      switch (timeframe) {
+        case 'daily':
+          dataPoints = 7
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setDate(date.getDate() - i)
+            labels.push(formatDate(date, 'MM/DD'))
+            salesData.push(Math.floor(Math.random() * 1000))
+          }
+          break
+        case 'weekly':
+          dataPoints = 4
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setDate(date.getDate() - (i * 7))
+            labels.push(`Week ${dataPoints - i}`)
+            salesData.push(Math.floor(Math.random() * 5000))
+          }
+          break
+        case 'monthly':
+          dataPoints = 12
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setMonth(date.getMonth() - i)
+            labels.push(formatDate(date, 'MMM'))
+            salesData.push(Math.floor(Math.random() * 20000))
+          }
+          break
+        case 'yearly':
+          dataPoints = 5
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setFullYear(date.getFullYear() - i)
+            labels.push(date.getFullYear().toString())
+            salesData.push(Math.floor(Math.random() * 100000))
+          }
+          break
+      }
+
+      return {
+        labels,
+        datasets: [{
+          label: 'Sales',
+          data: salesData,
+          backgroundColor: '#1976D2',
+          borderColor: '#1976D2',
+          borderWidth: 1
+        }]
+      }
+    },
+
+    getChartOptions(textColor) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: textColor + '20'
+            },
+            ticks: {
+              color: textColor
+            }
+          },
+          x: {
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: textColor
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
+      }
     },
   }
 })
