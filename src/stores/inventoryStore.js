@@ -818,6 +818,35 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
+     * @method addCashFlowTransaction
+     * @param {string} paymentMethod - Payment method to add transaction for
+     * @param {Object} transactionData - Transaction data to add
+     * @returns {Promise<boolean>} Success flag
+     * @description Adds a new cash flow transaction
+     */
+    async addCashFlowTransaction(paymentMethod, transactionData) {
+      try {
+        const docRef = await addDoc(collection(fireDb, `cashFlow_${paymentMethod}`), {
+          ...transactionData,
+          date: serverTimestamp()
+        })
+
+        // Update local state
+        this.cashFlowTransactions[paymentMethod].unshift({
+          id: docRef.id,
+          ...transactionData,
+          date: new Date()
+        })
+
+        return true
+      } catch (error) {
+        console.error('Error adding transaction:', error)
+        return false
+      }
+    },
+
+    /**
+     * @async
      * @method repopulateDatabase
      * @returns {Promise<void>}
      * @description Repopulates the database with mock data
