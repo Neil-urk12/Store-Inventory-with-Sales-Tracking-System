@@ -839,13 +839,33 @@ export const useInventoryStore = defineStore('inventory', {
      * @async
      * @method loadCategories
      * @returns {Promise<void>}
-     * @description Loads categories from the database
+     * @description Loads categories from the database and syncs with Firestore
      */
     async loadCategories() {
       try {
-        const categories = await db.categories.toArray()
-        this.categories = categories
+        // Load from local first
+        const localCategories = await db.categories.toArray()
+        this.categories = localCategories
+
+        // Sync with Firestore if online
+        if (isOnline.value) {
+          const categoriesRef = collection(fireDb, 'categories')
+          const querySnapshot = await getDocs(categoriesRef)
+          const firestoreCategories = []
+
+          querySnapshot.forEach((doc) => {
+            firestoreCategories.push({
+              id: doc.id,
+              ...doc.data(),
+              firebaseId: doc.id
+            })
+          })
+
+          // Merge local and Firestore categories
+          await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+        }
       } catch (error) {
+        console.error('Failed to load categories:', error)
         this.error = 'Failed to load categories'
         // Fallback to empty categories array instead of throwing
         this.categories = []
@@ -854,13 +874,72 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
+     * @method mergeCategoriesWithFirestore
+     * @param {Array} localCategories - Local categories to merge
+     * @param {Array} firestoreCategories - Firestore categories to merge
+     * @returns {Promise<void>}
+     * @description Merges local and Firestore categories, resolving conflicts
+     * @private
+     */
+    async mergeCategoriesWithFirestore(localCategories, firestoreCategories) {
+      try {
+        const batch = writeBatch(fireDb)
+        const categoriesRef = collection(fireDb, 'categories')
+
+        // Update local categories with Firestore data
+        for (const firestoreCategory of firestoreCategories) {
+          const localCategory = localCategories.find(
+            local => local.firebaseId === firestoreCategory.firebaseId
+          )
+
+          if (!localCategory) {
+            // Category exists in Firestore but not locally - add to local
+            await db.categories.add({
+              ...firestoreCategory,
+              updatedAt: new Date().toISOString()
+            })
+          }
+        }
+
+        // Sync local categories to Firestore
+        for (const localCategory of localCategories) {
+          if (!localCategory.firebaseId) {
+            // Category exists locally but not in Firestore - add to Firestore
+            const docRef = doc(categoriesRef)
+            batch.set(docRef, {
+              name: localCategory.name,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+
+            // Update local category with Firebase ID
+            await db.categories.update(localCategory.id, {
+              firebaseId: docRef.id
+            })
+          }
+        }
+
+        await batch.commit()
+
+        // Refresh local categories
+        const updatedCategories = await db.categories.toArray()
+        this.categories = updatedCategories
+      } catch (error) {
+        console.error('Error merging categories:', error)
+        throw error
+      }
+    },
+
+    /**
+     * @async
      * @method addCategory
      * @param {string} categoryName - Category name to add
      * @returns {Promise<Object|null>} Added category object or null on error
-     * @description Adds a category to the database
+     * @description Adds a category to the database and syncs with Firestore
      */
     async addCategory(categoryName) {
       try {
+        // Check for duplicates first
         const exists = this.categories.some(
           cat => cat.name.toLowerCase() === categoryName.toLowerCase()
         )
@@ -869,17 +948,48 @@ export const useInventoryStore = defineStore('inventory', {
           return null
         }
 
+        // Add to local DB first
         const newCategory = {
           name: categoryName,
           value: categoryName.charAt(0).toLowerCase() + categoryName.slice(1),
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }
-        const id = await db.categories.add(newCategory)
-        const categoryWithId = { ...newCategory, id }
-        this.categories.push(categoryWithId)
+
+        const localId = await db.categories.add(newCategory)
+
+        if (isOnline.value) {
+          try {
+            // Add to Firestore
+            const docRef = await addDoc(collection(fireDb, 'categories'), {
+              ...newCategory,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+
+            // Update local category with Firebase ID
+            await db.categories.update(localId, { firebaseId: docRef.id })
+
+            const updatedCategory = await db.categories.get(localId)
+            this.categories.push(updatedCategory)
+            this.error = null
+            return updatedCategory
+          } catch (error) {
+            console.error('Firebase error:', error)
+            // Keep local changes even if Firebase sync fails
+            const localCategory = await db.categories.get(localId)
+            this.categories.push(localCategory)
+            this.error = 'Changes saved locally, will sync when online'
+            return localCategory
+          }
+        }
+
+        const localCategory = await db.categories.get(localId)
+        this.categories.push(localCategory)
         this.error = null
-        return categoryWithId
+        return localCategory
       } catch (error) {
+        console.error('Error adding category:', error)
         this.error = error.message || 'Failed to add category'
         return null
       }

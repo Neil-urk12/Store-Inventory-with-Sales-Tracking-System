@@ -2,19 +2,29 @@
  * @fileoverview Utility functions for inventory management
  */
 
+import { useInventoryStore } from 'src/stores/inventoryStore'
+
 /**
  * @function processItem
  * @param {Object} item - Raw item data
  * @returns {Object} Processed item with defaults and type conversions
  * @description Processes raw item data, ensuring all required fields are present and properly typed
  */
-export const processItem = (item) => ({
-  ...item,
-  category: item.category || 'Uncategorized',
-  quantity: Number(item.quantity) || 0,
-  price: Number(item.price) || 0,
-  createdAt: item.createdAt || new Date().toISOString()
-})
+export const processItem = (item) => {
+  const store = useInventoryStore()
+  const category = item.categoryId ?
+    store.categories.find(c => c.id === item.categoryId)?.name || 'Uncategorized' :
+    'Uncategorized'
+
+  return {
+    ...item,
+    category,
+    categoryId: item.categoryId || null,
+    quantity: Number(item.quantity) || 0,
+    price: Number(item.price) || 0,
+    createdAt: item.createdAt || new Date().toISOString()
+  }
+}
 
 /**
  * @function validateItem
