@@ -1,15 +1,23 @@
+/**
+ * @component DashboardTable
+ * @description A table component that displays recently added products.
+ * Features include sorting, pagination, and image display.
+ * Integrates with the inventory store for product data.
+ */
+
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useInventoryStore } from 'src/stores/inventoryStore'
 
 const inventoryStore = useInventoryStore()
+
+/** @type {import('vue').Ref<boolean>} */
 const loading = ref(true)
 
-onMounted(async () => {
-  await inventoryStore.loadInventory()
-  loading.value = false
-})
-
+/**
+ * @type {import('vue').Ref<Object>}
+ * @description Table pagination configuration
+ */
 const pagination = ref({
   sortBy: 'createdAt',
   descending: true,
@@ -17,6 +25,10 @@ const pagination = ref({
   rowsPerPage: 5,
 })
 
+/**
+ * @type {Array<Object>}
+ * @description Table column definitions with sorting and formatting options
+ */
 const columns = [
   {
     name: 'image',
@@ -53,10 +65,20 @@ const columns = [
   }
 ]
 
+/**
+ * @type {import('vue').ComputedRef<Array>}
+ * @description Computed property that returns sorted and sliced products array
+ * @returns {Array} Array of most recently added products, limited to 5 items
+ */
 const products = computed(() => {
   return [...inventoryStore.items]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 5)
+})
+
+onMounted(async () => {
+  await inventoryStore.loadInventory()
+  loading.value = false
 })
 </script>
 

@@ -1,25 +1,75 @@
+/**
+ * @component StockBars
+ * @description A visual component that displays stock levels using colored bars.
+ * Shows the distribution of products across three categories:
+ * - In Stock (green)
+ * - Low Stock (yellow)
+ * - Out of Stock (red)
+ * Supports both light and dark themes.
+ */
+
 <script setup>
 import { computed, onMounted } from 'vue'
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { useQuasar } from 'quasar'
 
+const $q = useQuasar()
+const inventoryStore = useInventoryStore()
+
+/** @type {number} The threshold below which stock is considered "low" */
+const lowStockThreshold = 8
+
+/**
+ * @type {import('vue').ComputedRef<string>}
+ * @description Computes text color based on current theme
+ */
+const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
+
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the total quantity of all items in stock
+ */
+const totalStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + item.quantity, 0))
+
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the quantity of items with normal stock levels
+ */
+const inStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, item.quantity), 0))
+
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the quantity of items with low stock (below threshold)
+ */
+const lowStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(item.quantity, lowStockThreshold)), 0))
+
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the quantity of items out of stock
+ */
+const noStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(0, item.quantity)), 0))
+
+/**
+ * @type {import('vue').ComputedRef<string>}
+ * @description Computes the width percentage for the in-stock bar
+ */
+const inStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(inStock.value / totalStock.value) * 100}%`)
+
+/**
+ * @type {import('vue').ComputedRef<string>}
+ * @description Computes the width percentage for the low-stock bar
+ */
+const lowStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(lowStock.value / totalStock.value) * 100}%`)
+
+/**
+ * @type {import('vue').ComputedRef<string>}
+ * @description Computes the width percentage for the no-stock bar
+ */
+const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock.value / totalStock.value) * 100}%`)
+
 onMounted(() => {
   inventoryStore.loadInventory()
 })
-const $q = useQuasar()
-const inventoryStore = useInventoryStore()
-const lowStockThreshold = 8
-const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
-
-const totalStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + item.quantity, 0))
-
-const inStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, item.quantity), 0))
-const lowStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(item.quantity, lowStockThreshold)), 0))
-const noStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(0, item.quantity)), 0))
-
-const inStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(inStock.value / totalStock.value) * 100}%`)
-const lowStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(lowStock.value / totalStock.value) * 100}%`)
-const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock.value / totalStock.value) * 100}%`)
 </script>
 
 <template>
