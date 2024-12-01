@@ -25,6 +25,7 @@ export default route(function (/* { store, ssrContext } */) {
         children: [
           { path: '/', name: 'home', component: () => import('pages/HomeView.vue'), meta: { requiresAuth: false } },
           { path: '/inventory', component: () => import('pages/InventoryView.vue'), meta: { requiresAuth: false } },
+          { path: '/sales', component: () => import('pages/SalesView.vue'), meta: { requiresAuth: false } },
           { path: '/reports', component: () => import('pages/ReportsView.vue'), meta: { requiresAuth: false } },
           { path: '/contacts', component: () => import('pages/ContactsView.vue'), meta: { requiresAuth: false } },
           { path: '/profile', component: () => import('pages/ProfileView.vue'), meta: { requiresAuth: false } },
