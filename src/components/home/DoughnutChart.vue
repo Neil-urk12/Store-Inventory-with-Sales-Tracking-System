@@ -1,3 +1,10 @@
+/**
+ * @component DoughnutChart
+ * @description A doughnut chart component that visualizes inventory data by product categories.
+ * Uses Chart.js for rendering and integrates with the inventory store for data management.
+ * Supports both light and dark themes.
+ */
+
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { Chart, registerables } from "chart.js"
@@ -7,15 +14,22 @@ import { useQuasar } from 'quasar'
 Chart.register(...registerables)
 const inventoryStore = useInventoryStore()
 const $q = useQuasar()
+
+/** @type {import('vue').Ref<HTMLCanvasElement|null>} */
 const chartCanvas = ref(null)
+
+/** @type {Chart|null} */
 let doughnutChart = null
+
+/** @type {import('vue').Ref<boolean>} */
 const isLoading = ref(true)
 
-// Watch for dark mode changes
-watch(() => $q.dark.isActive, () => {
-  createChart()
-})
-
+/**
+ * @type {import('vue').ComputedRef<Object>}
+ * @description Computes the chart data from the inventory store.
+ * Processes items to group them by category and calculate quantities.
+ * @returns {Object} Chart.js compatible data object with labels and datasets
+ */
 const chartData = computed(() => {
   const items = inventoryStore.items || []
   console.log('Chart data items:', items)
@@ -55,6 +69,11 @@ const chartData = computed(() => {
   }
 })
 
+/**
+ * @type {import('vue').ComputedRef<Object>}
+ * @description Computes the chart options based on current theme.
+ * @returns {Object} Chart.js configuration options
+ */
 const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -72,6 +91,13 @@ const options = computed(() => ({
   }
 }))
 
+/**
+ * @async
+ * @function createChart
+ * @description Creates or recreates the doughnut chart with current data and options.
+ * Handles chart cleanup and canvas context initialization.
+ * @returns {Promise<void>}
+ */
 async function createChart() {
   console.log('Creating chart...')
 
@@ -106,6 +132,11 @@ async function createChart() {
     console.error('Error creating chart:', error)
   }
 }
+
+// Watch for dark mode changes
+watch(() => $q.dark.isActive, () => {
+  createChart()
+})
 
 onMounted(async () => {
   console.log('Component mounted')
