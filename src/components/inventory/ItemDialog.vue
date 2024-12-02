@@ -45,9 +45,9 @@ const checkImage = async (url) => {
 
 // Watch for image URL changes
 watch(() => editedItem.value.image, (newUrl) => {
-  if (newUrl) {
+  if (newUrl)
     checkImage(newUrl)
-  } else {
+  else {
     imagePreviewUrl.value = ''
     imageError.value = false
   }
@@ -181,7 +181,7 @@ const validateAndSave = async () => {
             ]"
             dense
             outlined
-            prefix="$"
+            prefix="₱"
           />
 
           <div class="column q-gutter-y-sm">
@@ -208,7 +208,7 @@ const validateAndSave = async () => {
               </template>
             </q-input>
 
-            <div v-if="imagePreviewUrl" class="image-preview">
+            <div v-if="imagePreviewUrl" class="image-preview q-mt-md flex justify-center items-center">
               <q-img
                 :src="imagePreviewUrl"
                 style="max-width: 200px; max-height: 200px"
@@ -258,7 +258,5 @@ const validateAndSave = async () => {
   border: 1px solid #ddd;
   border-radius: 4px;
   padding: 8px;
-  display: flex;
-  justify-content: center;
 }
 </style>

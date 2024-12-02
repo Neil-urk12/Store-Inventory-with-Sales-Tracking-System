@@ -9,22 +9,10 @@ const loading = ref(false)
 
 const items = computed(() => inventoryStore.sortedItems)
 
-const categoryOptions = [
-  'Electronics',
-  'Clothing',
-  'Books',
-  'Food',
-  'Toys',
-  'Sports',
-  'Home',
-  'Other'
-]
-
-const formatPrice = (price) => {
-  return `$${Number(price).toFixed(2)}`
-}
+const formatPrice = (price) => `₱${Number(price).toFixed(2)}`
 
 const columns = [
+  { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
   {
     name: 'image',
     label: 'Image',
@@ -40,7 +28,6 @@ const columns = [
     style: 'position: sticky; left: 0; z-index: 2; box-shadow: 4px 0 4px rgba(0,0,0,0.1);',
     headerStyle: 'position: sticky; left: 0; z-index: 3; box-shadow: 4px 0 4px rgba(0,0,0,0.1);'
   },
-  { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
   { name: 'category', label: 'Category', field: 'category', align: 'left', sortable: true },
   { name: 'quantity', label: 'Stock', field: 'quantity', align: 'left', sortable: true },
   { name: 'price', label: 'Price', field: 'price', align: 'left', sortable: true },
