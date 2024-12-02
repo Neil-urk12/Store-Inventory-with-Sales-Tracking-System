@@ -277,12 +277,20 @@ export const useInventoryStore = defineStore('inventory', {
     async initializeDb() {
       try {
         const existingItems = await db.items.count()
-        if (existingItems === 0) {
+
+        // Always try to sync with Firestore when online, not just when empty
           if (isOnline.value) {
             await this.syncWithFirestore()
             await syncQueue.processQueue()
           }
+
+        // If we're still empty after sync attempt, and we're offline,
+        // we'll wait for online status to try again
+        if (existingItems === 0 && !isOnline.value) {
+          console.log('No local data and offline. Will sync when online.')
+          this.error = 'No local data available. Waiting for network connection...'
         }
+
         await this.loadInventory()
       } catch (error) {
         this.error = handleError(error, 'Failed to initialize database')
@@ -304,10 +312,16 @@ export const useInventoryStore = defineStore('inventory', {
         const localItems = await db.getAllItems()
         this.items = localItems.map(processItem)
 
-        // Sync with Firestore if online
-        if (isOnline.value) {
+        // If we have no items locally and we're online, force a sync
+        if (localItems.length === 0 && isOnline.value) {
+          console.log('No local items found, syncing with Firestore...')
           await this.syncWithFirestore()
+          const updatedItems = await db.getAllItems()
+          this.items = updatedItems.map(processItem)
         }
+
+        else if (isOnline.value) await this.syncWithFirestore()
+
       } catch (error) {
         this.error = handleError(error, 'Failed to load inventory')
       } finally {
@@ -479,13 +493,8 @@ export const useInventoryStore = defineStore('inventory', {
       if (!isOnline.value) return
 
       try {
-        // Get all local items that have been synced before
-        const localItems = await db.items
-          .where('syncStatus')
-          .equals('synced')
-          .toArray()
+        const localItems = await db.items.toArray()
 
-        // Get all Firestore items
         const firestoreSnapshot = await getDocs(
           query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
         )
@@ -494,7 +503,20 @@ export const useInventoryStore = defineStore('inventory', {
           firebaseId: doc.id
         }))
 
+        for (const firestoreItem of firestoreItems) {
+          const existingItem = localItems.find(
+            item => item.firebaseId === firestoreItem.firebaseId
+          )
+
+          if (!existingItem) {
+            await db.items.add({
+              ...firestoreItem,
+              syncStatus: 'synced'
+            })
+          }
+        }
         await this.mergeChanges(localItems, firestoreItems)
+        this.items = await db.getAllItems()
       } catch (error) {
         console.error('Error syncing with Firestore:', error)
         throw error

@@ -84,7 +84,7 @@ class AppDatabase extends Dexie {
     if (typeof item.price !== 'number' || item.price < 0) {
       throw new Error('Valid price is required');
     }
-    
+
     // Sanitize and prepare item data
     const newItem = {
       ...item,
@@ -106,7 +106,7 @@ class AppDatabase extends Dexie {
           throw new Error(`Item with SKU ${newItem.sku} already exists`);
         }
       }
-      
+
       return await this.items.add(newItem);
     } catch (error) {
       console.error('Database error creating item:', error);
