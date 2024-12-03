@@ -422,27 +422,18 @@ const contactCategories = computed(() => contactsStore.contactCategories);
   height: 100%;
   transition: all 0.3s ease;
 }
-
 .category-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
-
 .contact-item {
   transition: all 0.2s ease;
   border: 1px solid transparent;
 }
-
 .contact-item:hover {
   background: rgba(0, 0, 0, 0.03);
   border-color: var(--q-primary);
 }
-
-.dark .contact-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.dark .category-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
+.dark .contact-item:hover {background: rgba(255, 255, 255, 0.1)}
+.dark .category-card:hover {box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3)}
 </style>
