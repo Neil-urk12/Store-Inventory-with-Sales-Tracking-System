@@ -18,6 +18,9 @@ import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
 
+
+const { isOnline } = useNetworkStatus()
+
 /**
  * @const {Store} useContactsStore
  * @description Pinia store for managing contacts and contact categories
@@ -73,7 +76,6 @@ export const useContactsStore = defineStore('contacts', {
       try {
         const existingContactCategories = await db.getAllContactCategories()
         if (existingContactCategories.length === 0) {
-          const { isOnline } = useNetworkStatus()
           if (isOnline.value) {
             await this.syncWithFirestore()
             await syncQueue.processQueue()
@@ -116,9 +118,15 @@ export const useContactsStore = defineStore('contacts', {
      * @throws {Error} If adding contact fails
      */
     async addContact(contact) {
+
+      if(!contact.name?.trim()) throw new Error('Contact name is required')
+      if(!contact.email?.trim()) throw new Error('Contact email is required')
+      if(!contact.phone?.trim()) throw new Error('Contact phone is required')
+      if(!contact.categoryId) throw new Error('Contact category is required')
+      if(contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) throw new Error('Invalid email format')
+
       try {
         const id = await db.addContact(contact)
-        const { isOnline } = useNetworkStatus()
 
         if (isOnline.value) {
           await syncQueue.addToQueue({
@@ -149,7 +157,6 @@ export const useContactsStore = defineStore('contacts', {
     async addContactCategory(contactCategory) {
       try {
         const id = await db.addContactCategory(contactCategory)
-        const { isOnline } = useNetworkStatus()
 
         if (isOnline.value) {
           await syncQueue.addToQueue({
@@ -181,8 +188,6 @@ export const useContactsStore = defineStore('contacts', {
     async updateContactCategory(id, changes) {
       try {
         await db.updateContactCategory(id, changes)
-        const { isOnline } = useNetworkStatus()
-
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'update',
@@ -212,7 +217,6 @@ export const useContactsStore = defineStore('contacts', {
     async deleteContactCategory(id) {
       try {
         await db.deleteContactCategory(id)
-        const { isOnline } = useNetworkStatus()
 
         if (isOnline.value) {
           await syncQueue.addToQueue({
@@ -310,11 +314,9 @@ export const useContactsStore = defineStore('contacts', {
         this.contactsSyncStatus.inProgress = true
         this.contactsSyncStatus.error = null
 
-        // Get local data
         const localContactCategories = await db.getAllContactCategories()
         const localContacts = await db.getAllContacts()
 
-        // Get Firestore data
         const contactCategoriesSnapshot = await getDocs(query(collection(fireDb, 'contactCategories')))
         const contactsListSnapshot = await getDocs(query(collection(fireDb, 'contactsList')))
 
@@ -330,14 +332,11 @@ export const useContactsStore = defineStore('contacts', {
         }))
 
         if (firestoreContactCategories.length > 0 || firestoreContactsList.length > 0) {
-          // Merge changes
           const mergedContactCategories = await this.mergeChanges(localContactCategories, firestoreContactCategories, 'name')
           const mergedContacts = await this.mergeChanges(localContacts, firestoreContactsList, 'email')
 
-          // Update Firestore in batches
           const batchSize = 500
 
-          // Update contact categories
           if (mergedContactCategories.length > 0) {
             const contactCategoriesRef = collection(fireDb, 'contactCategories')
             for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
@@ -365,7 +364,6 @@ export const useContactsStore = defineStore('contacts', {
                 await batch.commit()
               } catch (error) {
                 console.error('Contact category batch update failed:', error)
-                // Continue with next batch
               }
             }
           }
@@ -398,24 +396,20 @@ export const useContactsStore = defineStore('contacts', {
                 await batch.commit()
               } catch (error) {
                 console.error('Contact batch update failed:', error)
-                // Continue with next batch
               }
             }
           }
 
-          // Update local database
-          if (mergedContactCategories.length > 0) {
+          if (mergedContactCategories.length > 0)
             await db.syncWithFirestoreSimple(mergedContactCategories, 'contactCategories')
-          }
-          if (mergedContacts.length > 0) {
+
+          if (mergedContacts.length > 0)
             await db.syncWithFirestoreSimple(mergedContacts, 'contactsList')
-          }
+
         } else {
-          // Firestore is empty, push local data
           const contactCategoriesRef = collection(fireDb, 'contactCategories')
           const contactsRef = collection(fireDb, 'contactsList')
 
-          // Upload contact categories
           if (localContactCategories.length > 0) {
             const batch = writeBatch(fireDb)
             let batchCount = 0
@@ -484,7 +478,6 @@ export const useContactsStore = defineStore('contacts', {
           }
         }
 
-        // Reload data
         await this.loadContactCategories()
 
         this.contactsSyncStatus.lastSync = new Date().toISOString()
@@ -492,7 +485,6 @@ export const useContactsStore = defineStore('contacts', {
       } catch (error) {
         console.error('Error in sync process:', error)
         this.contactsSyncStatus.error = error.message
-        // Don't throw, let the app continue
       } finally {
         this.contactsSyncStatus.inProgress = false
       }
@@ -514,13 +506,11 @@ export const useContactsStore = defineStore('contacts', {
         firestoreItems.map(item => [item[uniqueField], item])
       )
 
-      // Process local items first
       for (const localItem of localItems) {
         try {
           const firestoreItem = firestoreMap.get(localItem[uniqueField])
 
           if (firestoreItem) {
-            // Item exists in both - compare timestamps
             const localDate = new Date(localItem.updatedAt)
             const firestoreDate = new Date(firestoreItem.updatedAt)
 
@@ -529,22 +519,17 @@ export const useContactsStore = defineStore('contacts', {
                 ? { ...localItem, id: firestoreItem.id }
                 : firestoreItem
             )
-          } else {
-            // Only in local - add as new
+          } else
             merged.set(localItem[uniqueField], localItem)
-          }
         } catch (error) {
           console.error('Error merging item:', error)
-          // Skip problematic item but continue merging
           continue
         }
       }
 
-      // Add Firestore-only items
       for (const firestoreItem of firestoreItems) {
-        if (!merged.has(firestoreItem[uniqueField])) {
+        if (!merged.has(firestoreItem[uniqueField]))
           merged.set(firestoreItem[uniqueField], firestoreItem)
-        }
       }
 
       return Array.from(merged.values())

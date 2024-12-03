@@ -1,12 +1,22 @@
 /**
- * @fileoverview This file contains functions for syncing data with firebase.
-*/
+ * @fileoverview Service for handling offline data synchronization with Firebase
+ * @module syncService
+ * @description Provides functionality for queuing and processing operations when offline,
+ * and syncing them with Firebase when the connection is restored. Uses Dexie for IndexedDB
+ * storage and supports background sync via Service Workers.
+ */
 
 import { useNetworkStatus } from './networkStatus'
 import Dexie from 'dexie'
 
 /**
- * Create a new Dexie database instance for offline sync.
+ * @type {Dexie}
+ * @description Dexie database instance for storing offline operations
+ * Schema:
+ * - pendingRequests: Stores operations to be synced
+ *   - id: Auto-incrementing primary key
+ *   - type: Operation type (create/update/delete)
+ *   - timestamp: When the operation was queued
  */
 const db = new Dexie('offlineSync')
 db.version(1).stores({
@@ -14,11 +24,24 @@ db.version(1).stores({
 })
 
 /**
- * Queue a new operation to be processed later.
  * @async
- * @param {Object} operation - The operation to be queued.
- * @description This function adds a new operation to the pendingRequests table.
-*/
+ * @function queueOperation
+ * @param {Object} operation - The operation to be queued
+ * @param {string} operation.type - Operation type ('create', 'update', or 'delete')
+ * @param {string} operation.url - The API endpoint URL
+ * @param {Object} operation.headers - Request headers
+ * @param {Object} [operation.data] - Request payload (for create/update)
+ * @returns {Promise<void>}
+ * @description Adds an operation to the pending requests queue for later processing.
+ * Each operation is timestamped when added to the queue.
+ * @example
+ * await queueOperation({
+ *   type: 'create',
+ *   url: '/api/items',
+ *   headers: { 'Content-Type': 'application/json' },
+ *   data: { name: 'New Item' }
+ * })
+ */
 export const queueOperation = async (operation) => {
   await db.pendingRequests.add({
     ...operation,
@@ -28,8 +51,13 @@ export const queueOperation = async (operation) => {
 
 /**
  * @async
- * @description Process all queued operations.
-*/
+ * @function processQueue
+ * @returns {Promise<void>}
+ * @description Processes all queued operations when online.
+ * Operations are processed in order and removed from the queue when successful.
+ * Failed operations remain in the queue for retry.
+ * @throws {Error} Logs errors for failed operations but doesn't stop processing
+ */
 export const processQueue = async () => {
   const { isOnline } = useNetworkStatus()
   if (!isOnline.value) return
@@ -72,8 +100,14 @@ export const processQueue = async () => {
 
 /**
  * @async
- * @description Register the service worker for background sync
-*/
+ * @function registerBackgroundSync
+ * @returns {Promise<void>}
+ * @description Registers a background sync task with the Service Worker.
+ * This enables automatic sync attempts when the browser regains connectivity,
+ * even if the app is not open.
+ * @requires ServiceWorker API
+ * @requires Background Sync API
+ */
 export const registerBackgroundSync = async () => {
   if ('serviceWorker' in navigator && 'sync' in window.registration) {
     try {
@@ -85,8 +119,12 @@ export const registerBackgroundSync = async () => {
 }
 
 /**
- * @description Initialize background sync when online.
-*/
+ * @function initBackgroundSync
+ * @description Initializes the background sync functionality.
+ * Sets up event listeners for online/offline status and triggers
+ * initial sync if online.
+ * @listens window#online
+ */
 export const initBackgroundSync = () => {
   const { isOnline } = useNetworkStatus()
 

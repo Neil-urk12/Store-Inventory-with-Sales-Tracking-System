@@ -25,6 +25,9 @@ import { formatDate } from '../utils/dateUtils'
 import { date } from 'quasar'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 
+// Get network status at the store level
+const { isOnline } = useNetworkStatus()
+
 // Constants
 const BATCH_SIZE = 500
 const DEFAULT_SORT = 'name'
@@ -97,16 +100,36 @@ export const useInventoryStore = defineStore('inventory', {
   getters: {
     /**
      * @getter
-     * @returns {Array} Filtered and sorted items based on search query and category
+     * @returns {Array} Filtered items based on search query and category
      */
     filteredItems(state) {
       return state.items.filter(item => {
-        const matchesSearch = !state.searchQuery ||
-          item.name.toLowerCase().includes(state.searchQuery.toLowerCase())
-        const matchesCategory = !state.categoryFilter ||
-          item.category === state.categoryFilter
+        const searchQuery = state.searchQuery?.toLowerCase() || ''
+        const categoryFilter = state.categoryFilter
+
+        // Search in multiple fields
+        const matchesSearch = !searchQuery || [
+          item.name,
+          item.sku,
+          this.getCategoryName(item.categoryId)
+        ].some(field =>
+          String(field).toLowerCase().includes(searchQuery)
+        )
+
+        // Category filter
+        const matchesCategory = !categoryFilter || item.categoryId === categoryFilter
+
         return matchesSearch && matchesCategory
       })
+    },
+
+    /**
+     * @getter
+     * @returns {Function} Function to get category name from ID
+     */
+    getCategoryName: (state) => (categoryId) => {
+      const category = state.categories.find(cat => cat.id === categoryId)
+      return category ? category.name : 'Uncategorized'
     },
 
     /**
@@ -114,27 +137,31 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Array} Sorted items based on the current sort options
      */
     sortedItems(state) {
-      const items = [...state.filteredItems]
+      const items = this.filteredItems
+      if (state.sortBy) {
+        items.sort((a, b) => {
+          let aVal = a[state.sortBy]
+          let bVal = b[state.sortBy]
 
-      if (!state.sortBy || !SORT_OPTIONS.some(opt => opt.value === state.sortBy)) {
-        return items
+          // Map categoryId to category name for sorting
+          if (state.sortBy === 'category') {
+            aVal = this.getCategoryName(a.categoryId)
+            bVal = this.getCategoryName(b.categoryId)
+          }
+
+          if (typeof aVal === 'string') {
+            return state.sortDesc
+              ? bVal.localeCompare(aVal)
+              : aVal.localeCompare(bVal)
+          }
+          return state.sortDesc ? bVal - aVal : aVal - bVal
+        })
       }
 
-      const getValue = (item) => {
-        const value = item[state.sortBy]
-        return value == null ? '' : value
-      }
-
-      return items.sort((a, b) => {
-        const aVal = getValue(a)
-        const bVal = getValue(b)
-
-        const compare = typeof aVal === 'string'
-          ? aVal.localeCompare(bVal)
-          : aVal - bVal
-
-        return state.sortDirection === 'asc' ? compare : -compare
-      })
+      return items.map(item => ({
+        ...item,
+        category: this.getCategoryName(item.categoryId)
+      }))
     },
 
     /**
@@ -235,7 +262,7 @@ export const useInventoryStore = defineStore('inventory', {
     formattedCategories(state) {
       return state.categories.map(category => ({
         label: category.name,
-        value: category.value
+        value: category.id
       }))
     },
   },
@@ -250,13 +277,20 @@ export const useInventoryStore = defineStore('inventory', {
     async initializeDb() {
       try {
         const existingItems = await db.items.count()
-        if (existingItems === 0) {
-          const { isOnline } = useNetworkStatus()
+
+        // Always try to sync with Firestore when online, not just when empty
           if (isOnline.value) {
             await this.syncWithFirestore()
             await syncQueue.processQueue()
           }
+
+        // If we're still empty after sync attempt, and we're offline,
+        // we'll wait for online status to try again
+        if (existingItems === 0 && !isOnline.value) {
+          console.log('No local data and offline. Will sync when online.')
+          this.error = 'No local data available. Waiting for network connection...'
         }
+
         await this.loadInventory()
       } catch (error) {
         this.error = handleError(error, 'Failed to initialize database')
@@ -278,11 +312,16 @@ export const useInventoryStore = defineStore('inventory', {
         const localItems = await db.getAllItems()
         this.items = localItems.map(processItem)
 
-        // Sync with Firestore if online
-        const { isOnline } = useNetworkStatus()
-        if (isOnline.value) {
+        // If we have no items locally and we're online, force a sync
+        if (localItems.length === 0 && isOnline.value) {
+          console.log('No local items found, syncing with Firestore...')
           await this.syncWithFirestore()
+          const updatedItems = await db.getAllItems()
+          this.items = updatedItems.map(processItem)
         }
+
+        else if (isOnline.value) await this.syncWithFirestore()
+
       } catch (error) {
         this.error = handleError(error, 'Failed to load inventory')
       } finally {
@@ -292,114 +331,123 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method saveItem
-     * @param {Object} item - Item to save
-     * @returns {Promise<string>} Saved item ID
-     * @description Saves an item to the local database and queues for sync
+     * @method createNewItem
+     * @param {Object} item - New item to create
+     * @returns {Promise<Object>} Created item result
      */
-    async saveItem(item) {
-      const errors = validateItem(item)
-      if (errors.length > 0) {
+    async createNewItem(item) {
+      this.loading = true;
+
+      try {
+        // Validate item before saving
+        const errors = validateItem(item);
+        if (errors.length > 0) {
         throw new Error(`Validation failed: ${errors.join(', ')}`)
-      }
-
-      const processedItem = processItem(item)
-      let savedId
-
-      // Always save to local DB first
-      await db.transaction('rw', db.items, async () => {
-        try {
-          // Save to local DB
-          savedId = await db.items.add({
-            ...processedItem,
-            syncStatus: 'pending',
-            firebaseId: null,
-            updatedAt: new Date().toISOString(),
-            createdAt: new Date().toISOString()
-          })
-
-          // Queue for sync
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'items',
-            data: {
-              ...processedItem,
-              id: savedId
-            }
-          })
-        } catch (error) {
-          console.error('Error saving item locally:', error)
-          throw error
         }
-      })
 
-      return savedId
+        // Process item (format data, set defaults, etc.)
+        const processedItem = processItem(item)
+        const result = await db.createItem(processedItem)
+
+        if (isOnline.value) {
+          try {
+            // Add to Firestore if online
+            const docRef = await addDoc(collection(fireDb, 'items'), {
+              ...processedItem,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await db.updateItem(result, { firebaseId: docRef.id });
+            return { id: result, offline: false };
+          } catch (firebaseError) {
+            console.error('Firebase error:', firebaseError);
+            // If Firebase fails, queue for sync
+            await this.queueForSync('create', processedItem, result);
+            return { id: result, offline: true };
+          }
+        }
+
+        // Queue for sync if offline
+        await this.queueForSync('create', processedItem, result);
+        await this.loadInventory();
+        return { id: result, offline: true };
+      } catch (error) {
+        console.error('Error creating item:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
     },
 
     /**
      * @async
-     * @method updateItem
+     * @method updateExistingItem
      * @param {string} id - Item ID to update
-     * @param {Object} changes - Changes to apply to the item
-     * @returns {Promise<string>} Updated item ID
-     * @description Updates an item in the local database and queues for sync
+     * @param {Object} changes - Changes to apply
+     * @returns {Promise<Object>} Update result
      */
-    async updateItem(id, changes) {
-      const item = await db.items.get(id)
-      if (!item) throw new Error('Item not found')
+    async updateExistingItem(id, changes) {
+      this.loading = true;
 
-      const updatedItem = { ...item, ...changes }
-      const errors = validateItem(updatedItem)
-      if (errors.length > 0) {
-        throw new Error(`Validation failed: ${errors.join(', ')}`)
-      }
-
-      // Add version tracking
-      const version = (item.version || 0) + 1
-      const timestamp = new Date().toISOString()
-
-      // Always update local DB first with transaction
-      return await db.transaction('rw', db.items, async () => {
-        try {
-          // Check if item was modified during our operation
-          const currentItem = await db.items.get(id)
-          if (currentItem.version !== item.version) {
-            throw new Error('Item was modified by another process')
-          }
-
-          // Update local DB
-          await db.items.update(id, {
-            ...changes,
-            version,
-            syncStatus: 'pending',
-            updatedAt: timestamp
-          })
-
-          // Queue for sync
-          await syncQueue.addToQueue({
-            type: 'update',
-            collection: 'items',
-            data: {
-              ...changes,
-              id,
-              version,
-              updatedAt: timestamp
-            }
-          })
-
-          return id
-        } catch (error) {
-          // Attempt to rollback the local update
-          if (error.message !== 'Item was modified by another process') {
-            try {
-              await db.items.update(id, item)
-            } catch (rollbackError) {
-              console.error('Failed to rollback local update:', rollbackError)
-            }
-          }
-          throw error
+      try {
+        // Validate changes before updating
+        const errors = validateItem({ ...changes, id });
+        if (errors.length > 0) {
+          throw new Error(`Validation failed: ${errors.join(', ')}`);
         }
-      })
+
+        // Process changes
+        const processedChanges = processItem(changes);
+        const result = await db.updateExistingItem(id, processedChanges);
+
+        if (isOnline.value) {
+          const item = await db.items.get(id);
+          if (item?.firebaseId) {
+            try {
+              await updateDoc(doc(fireDb, 'items', item.firebaseId), {
+                ...processedChanges,
+                updatedAt: serverTimestamp()
+              });
+              return { id, offline: false };
+            } catch (firebaseError) {
+              console.error('Firebase error:', firebaseError);
+              // If Firebase fails, queue for sync
+              await this.queueForSync('update', processedChanges, id);
+              return { id, offline: true };
+            }
+          }
+        }
+
+        // Queue for sync if offline
+        await this.queueForSync('update', processedChanges, id);
+        await this.loadInventory();
+        return { id, offline: true };
+      } catch (error) {
+        console.error('Error updating item:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /**
+     * @async
+     * @method queueForSync
+     * @param {string} type - Operation type ('create' or 'update')
+     * @param {Object} data - Data to sync
+     * @param {string} docId - Document ID
+     * @private
+     */
+    async queueForSync(type, data, docId) {
+      await syncQueue.add({
+        type,
+        collection: 'items',
+        data,
+        docId,
+        timestamp: new Date().toISOString(),
+        attempts: 0,
+        status: 'pending'
+      });
     },
 
     /**
@@ -442,17 +490,11 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Syncs local database with Firestore
      */
     async syncWithFirestore() {
-      const { isOnline } = useNetworkStatus()
       if (!isOnline.value) return
 
       try {
-        // Get all local items that have been synced before
-        const localItems = await db.items
-          .where('syncStatus')
-          .equals('synced')
-          .toArray()
+        const localItems = await db.items.toArray()
 
-        // Get all Firestore items
         const firestoreSnapshot = await getDocs(
           query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
         )
@@ -461,7 +503,20 @@ export const useInventoryStore = defineStore('inventory', {
           firebaseId: doc.id
         }))
 
+        for (const firestoreItem of firestoreItems) {
+          const existingItem = localItems.find(
+            item => item.firebaseId === firestoreItem.firebaseId
+          )
+
+          if (!existingItem) {
+            await db.items.add({
+              ...firestoreItem,
+              syncStatus: 'synced'
+            })
+          }
+        }
         await this.mergeChanges(localItems, firestoreItems)
+        this.items = await db.getAllItems()
       } catch (error) {
         console.error('Error syncing with Firestore:', error)
         throw error
@@ -538,8 +593,6 @@ export const useInventoryStore = defineStore('inventory', {
     async addItem(item) {
       try {
         const id = await db.addItem(item)
-        const { isOnline } = useNetworkStatus()
-
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'add',
@@ -787,6 +840,35 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
+     * @method addCashFlowTransaction
+     * @param {string} paymentMethod - Payment method to add transaction for
+     * @param {Object} transactionData - Transaction data to add
+     * @returns {Promise<boolean>} Success flag
+     * @description Adds a new cash flow transaction
+     */
+    async addCashFlowTransaction(paymentMethod, transactionData) {
+      try {
+        const docRef = await addDoc(collection(fireDb, `cashFlow_${paymentMethod}`), {
+          ...transactionData,
+          date: serverTimestamp()
+        })
+
+        // Update local state
+        this.cashFlowTransactions[paymentMethod].unshift({
+          id: docRef.id,
+          ...transactionData,
+          date: new Date()
+        })
+
+        return true
+      } catch (error) {
+        console.error('Error adding transaction:', error)
+        return false
+      }
+    },
+
+    /**
+     * @async
      * @method repopulateDatabase
      * @returns {Promise<void>}
      * @description Repopulates the database with mock data
@@ -808,13 +890,33 @@ export const useInventoryStore = defineStore('inventory', {
      * @async
      * @method loadCategories
      * @returns {Promise<void>}
-     * @description Loads categories from the database
+     * @description Loads categories from the database and syncs with Firestore
      */
     async loadCategories() {
       try {
-        const categories = await db.categories.toArray()
-        this.categories = categories
+        // Load from local first
+        const localCategories = await db.categories.toArray()
+        this.categories = localCategories
+
+        // Sync with Firestore if online
+        if (isOnline.value) {
+          const categoriesRef = collection(fireDb, 'categories')
+          const querySnapshot = await getDocs(categoriesRef)
+          const firestoreCategories = []
+
+          querySnapshot.forEach((doc) => {
+            firestoreCategories.push({
+              id: doc.id,
+              ...doc.data(),
+              firebaseId: doc.id
+            })
+          })
+
+          // Merge local and Firestore categories
+          await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+        }
       } catch (error) {
+        console.error('Failed to load categories:', error)
         this.error = 'Failed to load categories'
         // Fallback to empty categories array instead of throwing
         this.categories = []
@@ -823,13 +925,72 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
+     * @method mergeCategoriesWithFirestore
+     * @param {Array} localCategories - Local categories to merge
+     * @param {Array} firestoreCategories - Firestore categories to merge
+     * @returns {Promise<void>}
+     * @description Merges local and Firestore categories, resolving conflicts
+     * @private
+     */
+    async mergeCategoriesWithFirestore(localCategories, firestoreCategories) {
+      try {
+        const batch = writeBatch(fireDb)
+        const categoriesRef = collection(fireDb, 'categories')
+
+        // Update local categories with Firestore data
+        for (const firestoreCategory of firestoreCategories) {
+          const localCategory = localCategories.find(
+            local => local.firebaseId === firestoreCategory.firebaseId
+          )
+
+          if (!localCategory) {
+            // Category exists in Firestore but not locally - add to local
+            await db.categories.add({
+              ...firestoreCategory,
+              updatedAt: new Date().toISOString()
+            })
+          }
+        }
+
+        // Sync local categories to Firestore
+        for (const localCategory of localCategories) {
+          if (!localCategory.firebaseId) {
+            // Category exists locally but not in Firestore - add to Firestore
+            const docRef = doc(categoriesRef)
+            batch.set(docRef, {
+              name: localCategory.name,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+
+            // Update local category with Firebase ID
+            await db.categories.update(localCategory.id, {
+              firebaseId: docRef.id
+            })
+          }
+        }
+
+        await batch.commit()
+
+        // Refresh local categories
+        const updatedCategories = await db.categories.toArray()
+        this.categories = updatedCategories
+      } catch (error) {
+        console.error('Error merging categories:', error)
+        throw error
+      }
+    },
+
+    /**
+     * @async
      * @method addCategory
      * @param {string} categoryName - Category name to add
      * @returns {Promise<Object|null>} Added category object or null on error
-     * @description Adds a category to the database
+     * @description Adds a category to the database and syncs with Firestore
      */
     async addCategory(categoryName) {
       try {
+        // Check for duplicates first
         const exists = this.categories.some(
           cat => cat.name.toLowerCase() === categoryName.toLowerCase()
         )
@@ -838,17 +999,48 @@ export const useInventoryStore = defineStore('inventory', {
           return null
         }
 
+        // Add to local DB first
         const newCategory = {
           name: categoryName,
           value: categoryName.charAt(0).toLowerCase() + categoryName.slice(1),
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }
-        const id = await db.categories.add(newCategory)
-        const categoryWithId = { ...newCategory, id }
-        this.categories.push(categoryWithId)
+
+        const localId = await db.categories.add(newCategory)
+
+        if (isOnline.value) {
+          try {
+            // Add to Firestore
+            const docRef = await addDoc(collection(fireDb, 'categories'), {
+              ...newCategory,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+
+            // Update local category with Firebase ID
+            await db.categories.update(localId, { firebaseId: docRef.id })
+
+            const updatedCategory = await db.categories.get(localId)
+            this.categories.push(updatedCategory)
+            this.error = null
+            return updatedCategory
+          } catch (error) {
+            console.error('Firebase error:', error)
+            // Keep local changes even if Firebase sync fails
+            const localCategory = await db.categories.get(localId)
+            this.categories.push(localCategory)
+            this.error = 'Changes saved locally, will sync when online'
+            return localCategory
+          }
+        }
+
+        const localCategory = await db.categories.get(localId)
+        this.categories.push(localCategory)
         this.error = null
-        return categoryWithId
+        return localCategory
       } catch (error) {
+        console.error('Error adding category:', error)
         this.error = error.message || 'Failed to add category'
         return null
       }
@@ -1040,22 +1232,130 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async handleDeleteConfirm() {
       if (!this.itemToDelete) return;
-      
+
       try {
         const itemId = this.itemToDelete.id;
         await this.deleteItem(itemId);
-        
+
         // Remove item from local state
         const index = this.items.findIndex(item => item.id === itemId);
         if (index !== -1) {
           this.items.splice(index, 1);
         }
-        
+
         this.deleteDialog = false;
         this.itemToDelete = null;
       } catch (error) {
         console.error('Error deleting item:', error);
         throw error;
+      }
+    },
+
+    /**
+     * @method handleSearch
+     * @description Handles search query changes
+     */
+    handleSearch() {
+      // Reactive through state, but we can add logging or additional handling here
+      console.log('Search query:', this.searchQuery)
+    },
+
+    /**
+     * @method handleFilters
+     * @description Handles category filter changes
+     */
+    handleFilters() {
+      // Reactive through state, but we can add logging or additional handling here
+      console.log('Category filter:', this.categoryFilter)
+    },
+
+    getChartData(timeframe) {
+      const labels = []
+      const salesData = []
+
+      // Sample data generation based on timeframe
+      const now = new Date()
+      let dataPoints = 0
+
+      switch (timeframe) {
+        case 'daily':
+          dataPoints = 7
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setDate(date.getDate() - i)
+            labels.push(formatDate(date, 'MM/DD'))
+            salesData.push(Math.floor(Math.random() * 1000))
+          }
+          break
+        case 'weekly':
+          dataPoints = 4
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setDate(date.getDate() - (i * 7))
+            labels.push(`Week ${dataPoints - i}`)
+            salesData.push(Math.floor(Math.random() * 5000))
+          }
+          break
+        case 'monthly':
+          dataPoints = 12
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setMonth(date.getMonth() - i)
+            labels.push(formatDate(date, 'MMM'))
+            salesData.push(Math.floor(Math.random() * 20000))
+          }
+          break
+        case 'yearly':
+          dataPoints = 5
+          for (let i = dataPoints - 1; i >= 0; i--) {
+            const date = new Date(now)
+            date.setFullYear(date.getFullYear() - i)
+            labels.push(date.getFullYear().toString())
+            salesData.push(Math.floor(Math.random() * 100000))
+          }
+          break
+      }
+
+      return {
+        labels,
+        datasets: [{
+          label: 'Sales',
+          data: salesData,
+          backgroundColor: '#1976D2',
+          borderColor: '#1976D2',
+          borderWidth: 1
+        }]
+      }
+    },
+
+    getChartOptions(textColor) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: textColor + '20'
+            },
+            ticks: {
+              color: textColor
+            }
+          },
+          x: {
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: textColor
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
       }
     },
   }

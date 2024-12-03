@@ -6,36 +6,43 @@
     transition-hide="slide-down"
   >
     <q-card class="column">
-      <q-card-section class="row items-center q-pb-none">
-        <div class="text-h6">{{ selectedPaymentMethod }} Transactions</div>
-        <q-space />
-        <div class="text-h6 q-mr-md">
-          Balance: {{ inventoryStore.formatCurrency(totalBalance) }}
+      <q-card-section class="column q-pb-none">
+        <div class="row items-center justify-between q-mb-sm">
+          <div class="text-h6">{{ selectedPaymentMethod }} Transactions</div>
+          <q-btn
+            icon="close"
+            flat
+            round
+            dense
+            v-close-popup
+            :disable="loading"
+          />
         </div>
-        <q-btn
-          color="primary"
-          icon="add"
-          label="Add Transaction"
-          @click="showAddDialog = true"
-          class="q-mr-sm"
-          :disable="loading"
-        />
-        <q-btn
-          color="primary"
-          icon="file_download"
-          label="Export CSV"
-          @click="exportTransactions"
-          class="q-mr-sm"
-          :disable="loading || !transactions.length"
-        />
-        <q-btn
-          icon="close"
-          flat
-          round
-          dense
-          v-close-popup
-          :disable="loading"
-        />
+        <div class="row items-center justify-between q-mb-sm">
+          <div class="text-h6">
+            Balance: {{ inventoryStore.formatCurrency(totalBalance) }}
+          </div>
+        </div>
+        <div class="row items-center justify-start q-gutter-sm">
+          <q-btn
+            color="primary"
+            icon="add"
+            :label="$q.screen.gt.xs ? 'Add Transaction' : ''"
+            @click="showAddDialog = true"
+            :disable="loading"
+          >
+            <q-tooltip v-if="!$q.screen.gt.xs">Add Transaction</q-tooltip>
+          </q-btn>
+          <q-btn
+            color="primary"
+            icon="file_download"
+            :label="$q.screen.gt.xs ? 'Export CSV' : ''"
+            @click="exportTransactions"
+            :disable="loading || !transactions.length"
+          >
+            <q-tooltip v-if="!$q.screen.gt.xs">Export CSV</q-tooltip>
+          </q-btn>
+        </div>
       </q-card-section>
 
       <q-card-section class="col q-pa-md">
@@ -48,14 +55,15 @@
           flat
           :rows-per-page-options="[10, 20, 50]"
           :loading="loading"
+          :grid="$q.screen.lt.sm"
         >
           <template #top-right>
             <q-input
-              borderless
               dense
               debounce="300"
               v-model="filter"
               placeholder="Search"
+              class="q-mb-sm"
             >
               <template #append>
                 <q-icon name="search" />
@@ -63,7 +71,53 @@
             </q-input>
           </template>
 
-          <template #body="props">
+          <template #item="props" v-if="$q.screen.lt.sm">
+            <div class="q-pa-xs col-xs-12 col-sm-6 col-md-4">
+              <q-card flat bordered>
+                <q-card-section>
+                  <div class="row items-center justify-between">
+                    <div class="text-subtitle2">{{ props.row.description }}</div>
+                    <q-badge
+                      :color="props.row.type === 'in' ? 'positive' : 'negative'"
+                      text-color="white"
+                    >
+                      {{ props.row.type.toUpperCase() }}
+                    </q-badge>
+                  </div>
+                  <div class="row items-center justify-between q-mt-sm">
+                    <div>{{ inventoryStore.formatCurrency(props.row.value) }}</div>
+                    <div>{{ props.row.date }}</div>
+                  </div>
+                  <div class="row items-center justify-end q-mt-sm">
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="primary"
+                      icon="edit"
+                      @click="editTransaction(props.row)"
+                      :disable="loading"
+                    >
+                      <q-tooltip>Edit Transaction</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="negative"
+                      icon="delete"
+                      @click="confirmDelete(props.row)"
+                      :disable="loading"
+                    >
+                      <q-tooltip>Delete Transaction</q-tooltip>
+                    </q-btn>
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+          </template>
+
+          <template #body="props" v-else>
             <q-tr :props="props">
               <q-td
                 v-for="col in props.cols"

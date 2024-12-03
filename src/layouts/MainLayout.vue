@@ -84,6 +84,7 @@ async function logout (){
 
 const linksList = [
   { title: 'Dashboard', icon: 'dashboard', link: '/' },
+  { title: 'Sales', icon: 'point_of_sale', link: '/sales' },
   { title: 'Inventory', icon: 'inventory', link: '/inventory' },
   { title: 'Reports', icon: 'analytics', link: '/reports' },
   { title: 'Contacts', icon: 'contacts', link: '/contacts' },

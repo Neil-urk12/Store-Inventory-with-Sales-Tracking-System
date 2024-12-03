@@ -8,7 +8,6 @@ const inventoryStore = useInventoryStore()
 const $q = useQuasar()
 const { isOnline } = useNetworkStatus()
 const editedItem = computed(() => inventoryStore.editedItem)
-const categories = computed(() => inventoryStore.categories)
 const loading = computed(() => inventoryStore.loading)
 const editMode = computed(() => inventoryStore.editMode)
 const formRef = ref(null)
@@ -46,9 +45,9 @@ const checkImage = async (url) => {
 
 // Watch for image URL changes
 watch(() => editedItem.value.image, (newUrl) => {
-  if (newUrl) {
+  if (newUrl)
     checkImage(newUrl)
-  } else {
+  else {
     imagePreviewUrl.value = ''
     imageError.value = false
   }
@@ -61,7 +60,9 @@ const validateAndSave = async () => {
     const isValid = await formRef.value.validate()
     if (!isValid) return
 
-    const result = await inventoryStore.saveItem()
+    const result = editMode.value
+      ? await inventoryStore.updateExistingItem(editedItem.value.id, editedItem.value)
+      : await inventoryStore.createNewItem(editedItem.value)
 
     const action = editMode.value ? 'updated' : 'added'
     if (result.offline) {
@@ -81,6 +82,11 @@ const validateAndSave = async () => {
         position: 'top'
       })
     }
+
+    // Close dialog and reset form
+    inventoryStore.itemDialog = false
+    formRef.value.resetValidation()
+    await inventoryStore.loadInventory() // Refresh the inventory list
   } catch (err) {
     console.error('Save error:', err)
     $q.notify({
@@ -141,7 +147,7 @@ const validateAndSave = async () => {
           />
 
           <q-select
-            v-model="editedItem.category"
+            v-model="editedItem.categoryId"
             :options="inventoryStore.formattedCategories"
             label="Category"
             :rules="[val => !!val || 'Category is required']"
@@ -175,7 +181,7 @@ const validateAndSave = async () => {
             ]"
             dense
             outlined
-            prefix="$"
+            prefix="₱"
           />
 
           <div class="column q-gutter-y-sm">
@@ -202,7 +208,7 @@ const validateAndSave = async () => {
               </template>
             </q-input>
 
-            <div v-if="imagePreviewUrl" class="image-preview">
+            <div v-if="imagePreviewUrl" class="image-preview q-mt-md flex justify-center items-center">
               <q-img
                 :src="imagePreviewUrl"
                 style="max-width: 200px; max-height: 200px"
@@ -252,7 +258,5 @@ const validateAndSave = async () => {
   border: 1px solid #ddd;
   border-radius: 4px;
   padding: 8px;
-  display: flex;
-  justify-content: center;
 }
 </style>

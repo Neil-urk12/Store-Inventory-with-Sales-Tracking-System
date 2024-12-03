@@ -1,14 +1,35 @@
+/**
+ * @component DoughnutChart
+ * @description A doughnut chart component that visualizes inventory data by product categories.
+ * Uses Chart.js for rendering and integrates with the inventory store for data management.
+ * Supports both light and dark themes.
+ */
+
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue"
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { Chart, registerables } from "chart.js"
 import { useInventoryStore } from 'src/stores/inventoryStore'
+import { useQuasar } from 'quasar'
 
 Chart.register(...registerables)
 const inventoryStore = useInventoryStore()
+const $q = useQuasar()
+
+/** @type {import('vue').Ref<HTMLCanvasElement|null>} */
 const chartCanvas = ref(null)
+
+/** @type {Chart|null} */
 let doughnutChart = null
+
+/** @type {import('vue').Ref<boolean>} */
 const isLoading = ref(true)
 
+/**
+ * @type {import('vue').ComputedRef<Object>}
+ * @description Computes the chart data from the inventory store.
+ * Processes items to group them by category and calculate quantities.
+ * @returns {Object} Chart.js compatible data object with labels and datasets
+ */
 const chartData = computed(() => {
   const items = inventoryStore.items || []
   console.log('Chart data items:', items)
@@ -48,23 +69,35 @@ const chartData = computed(() => {
   }
 })
 
-const options = {
+/**
+ * @type {import('vue').ComputedRef<Object>}
+ * @description Computes the chart options based on current theme.
+ * @returns {Object} Chart.js configuration options
+ */
+const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
     legend: {
       position: "top",
-      labels: { color: 'white' }
+      labels: { color: $q.dark.isActive ? 'white' : 'black' }
     },
     title: {
       display: true,
       text: "Product Category by Stocks",
-      color: 'white',
+      color: $q.dark.isActive ? 'white' : 'black',
       padding: { top: 10, bottom: 20 }
     }
   }
-}
+}))
 
+/**
+ * @async
+ * @function createChart
+ * @description Creates or recreates the doughnut chart with current data and options.
+ * Handles chart cleanup and canvas context initialization.
+ * @returns {Promise<void>}
+ */
 async function createChart() {
   console.log('Creating chart...')
 
@@ -92,13 +125,18 @@ async function createChart() {
     doughnutChart = new Chart(ctx, {
       type: "doughnut",
       data: chartData.value,
-      options
+      options: options.value
     })
     console.log('Chart created successfully')
   } catch (error) {
     console.error('Error creating chart:', error)
   }
 }
+
+// Watch for dark mode changes
+watch(() => $q.dark.isActive, () => {
+  createChart()
+})
 
 onMounted(async () => {
   console.log('Component mounted')

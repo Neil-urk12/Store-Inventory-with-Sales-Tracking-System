@@ -268,214 +268,172 @@ const contactCategories = computed(() => contactsStore.contactCategories);
 </script>
 
 <template>
-  <q-page class="q-pa-xs">
-    <div class="row q-mb-md items-center justify-between">
-      <div class="text-h5">Contact Management</div>
-      <div>
-        <q-btn
-          color="primary"
-          icon="add"
-          label="Add Contact Category"
-          @click="addContactCategory"
-          class="q-mr-sm"
-        />
+  <q-page class="q-pa-md">
+    <!-- Header Section -->
+    <div class="row q-mb-lg items-center justify-between">
+      <div class="text-h4 text-weight-bold">Contact Management</div>
+      <q-btn
+        color="primary"
+        icon="add_circle"
+        label="ADD CONTACT CATEGORY"
+        @click="addContactCategory"
+        class="q-px-md"
+      />
+    </div>
+
+    <!-- Contact Categories Grid -->
+    <div class="row q-col-gutter-md">
+      <div v-for="category in contactCategories" :key="category.id" class="col-12 col-sm-6 col-md-4">
+        <q-card flat bordered class="category-card">
+          <q-card-section class="bg-primary text-white">
+            <div class="row items-center justify-between">
+              <div class="text-h6">{{ category.name }}</div>
+              <div>
+                <q-btn flat round dense icon="edit" @click="editContactCategory(category)" />
+                <q-btn flat round dense icon="delete" @click="deleteContactCategory(category)" />
+              </div>
+            </div>
+          </q-card-section>
+
+          <q-card-section>
+            <div class="row q-col-gutter-sm">
+              <div v-for="contact in category.contacts" :key="contact.id" class="col-12">
+                <q-item class="contact-item q-pa-sm rounded-borders">
+                  <q-item-section avatar>
+                    <q-avatar>
+                      <img :src="contact.avatar" loading="lazy"
+                    </q-avatar>
+                  </q-item-section>
+
+                  <q-item-section>
+                    <q-item-label class="text-weight-bold">{{ contact.name }}</q-item-label>
+                    <q-item-label caption>
+                      <div class="row items-center">
+                        <q-icon name="email" size="xs" class="q-mr-xs" />
+                        {{ contact.email }}
+                      </div>
+                      <div class="row items-center">
+                        <q-icon name="phone" size="xs" class="q-mr-xs" />
+                        {{ contact.phone }}
+                      </div>
+                    </q-item-label>
+                  </q-item-section>
+
+                  <q-item-section side>
+                    <div class="row q-gutter-sm">
+                      <q-btn flat round dense color="primary" icon="phone" @click="callContact(contact.phone)" />
+                      <q-btn flat round dense color="primary" icon="email" @click="emailContact(contact.email)" />
+                      <q-btn flat round dense color="primary" icon="edit" @click="editContact(category, contact)" />
+                      <q-btn flat round dense color="negative" icon="delete" @click="deleteContact(category, contact)" />
+                    </div>
+                  </q-item-section>
+                </q-item>
+              </div>
+            </div>
+
+            <div class="text-center q-mt-md">
+              <q-btn
+                color="primary"
+                outline
+                icon="person_add"
+                label="Add Contact"
+                @click="addContact(category)"
+                class="full-width"
+              />
+            </div>
+          </q-card-section>
+        </q-card>
       </div>
     </div>
-    <q-list>
-      <q-expansion-item
-        class="contact-category-header bg-transparent q-mb-sm"
-        v-for="contactCategory in contactCategories"
-        :key="contactCategory.id"
-        dense
-        :dark="isDark"
-        group="contact-categories"
-        icon="folder"
-        :label="contactCategory.name"
-      >
-        <template v-slot:header-right>
-          <div class="row items-center">
-            <q-btn
-              icon="edit"
-              color="primary"
-              flat
-              round
-              dense
-              @click.stop="editContactCategory(contactCategory)"
-            >
-              <q-tooltip>Edit Contact Category</q-tooltip>
-            </q-btn>
-            <q-btn
-              icon="delete"
-              color="negative"
-              flat
-              round
-              dense
-              @click.stop="deleteContactCategory(contactCategory)"
-            >
-              <q-tooltip>Delete Contact Category</q-tooltip>
-            </q-btn>
-          </div>
-        </template>
-        <q-list>
-          <q-item
-            v-for="contactPerson in contactCategory.contacts"
-            :key="contactPerson.id"
-            class="q-mb-md contact-card"
-          >
-            <q-item-section avatar>
-              <q-avatar>
-                <img :src="contactPerson.avatar" />
-              </q-avatar>
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>{{ contactPerson.name }}</q-item-label>
-              <q-item-label caption>{{ contactPerson.email }}</q-item-label>
-              <q-item-label caption>{{ contactPerson.phone }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-btn
-                icon="phone"
-                color="primary"
-                flat
-                round
-                @click="callContact(contactPerson.phone)"
-              />
-              <q-btn
-                icon="email"
-                color="primary"
-                flat
-                round
-                @click="emailContact(contactPerson.email)"
-              />
-              <q-btn
-                icon="edit"
-                color="accent"
-                flat
-                round
-                @click="editContact(contactCategory, contactPerson)"
-              />
-              <q-btn
-                icon="delete"
-                color="negative"
-                flat
-                round
-                @click="deleteContact(contactCategory, contactPerson)"
-              />
-            </q-item-section>
-          </q-item>
-          <q-separator />
-          <q-item>
-            <q-item-section>
-              <q-btn color="primary" @click="addContact(contactCategory)">
-                Add Contact
-              </q-btn>
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-expansion-item>
-    </q-list>
+
+    <!-- Contact Category Modal -->
     <q-dialog v-model="showContactCategoryModal">
-      <q-card style="width: 300px">
-        <q-card-section>
+      <q-card style="min-width: 400px">
+        <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">{{ contactCategoryModalTitle }}</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
+
         <q-card-section>
-          <q-form @submit="saveContactCategory">
-            <q-input
-              v-model="newContactCategory.name"
-              label="Contact Category Name"
-              required
-            />
-            <div class="row justify-end q-mt-md">
-              <q-btn color="primary" type="submit">Save</q-btn>
-              <q-btn color="negative" flat @click="showContactCategoryModal = false"
-                >Cancel</q-btn
-              >
-            </div>
-          </q-form>
+          <q-input
+            v-model="newContactCategory.name"
+            label="Category Name"
+            filled
+            :rules="[val => !!val || 'Category name is required']"
+          />
         </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" color="primary" v-close-popup />
+          <q-btn label="Save" color="primary" @click="saveContactCategory" />
+        </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Contact Entry Modal -->
     <q-dialog v-model="contactEntryModalOpen">
-      <q-card style="min-width: 350px">
-        <q-card-section>
+      <q-card style="min-width: 400px">
+        <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">{{ contactEntryModalTitle }}</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
+
         <q-card-section>
-          <q-form @submit="saveContact">
-            <q-input v-model="newContact.name" label="Name" required />
-            <q-input v-model="newContact.email" label="Email" type="email" />
+          <div class="q-gutter-md">
+            <q-input
+              v-model="newContact.name"
+              label="Name"
+              filled
+              :rules="[val => !!val || 'Name is required']"
+            />
+            <q-input
+              v-model="newContact.email"
+              label="Email"
+              filled
+              type="email"
+              :rules="[
+                val => !!val || 'Email is required',
+                val => /^[^@]+@[^@]+\.[^@]+$/.test(val) || 'Invalid email format'
+              ]"
+            />
             <q-input
               v-model="newContact.phone"
               label="Phone"
+              filled
               type="tel"
-              required
+              :rules="[val => !!val || 'Phone is required']"
             />
-            <q-input
-              v-model="newContact.avatar"
-              label="Avatar URL"
-              type="url"
-            />
-            <div class="row justify-end q-mt-md">
-              <q-btn color="primary" type="submit"> Save </q-btn>
-              <q-btn color="negative" flat @click="contactEntryModalOpen = false"
-                >Cancel</q-btn
-              >
-            </div>
-          </q-form>
+          </div>
         </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" color="primary" v-close-popup />
+          <q-btn label="Save" color="primary" @click="saveContact" />
+        </q-card-actions>
       </q-card>
     </q-dialog>
   </q-page>
 </template>
 
 <style scoped>
-.contact-category-header {
-  font-size: 1.2rem;
-  padding: 16px;
+.category-card {
+  height: 100%;
+  transition: all 0.3s ease;
 }
-.contact-card {
-  margin: 12px 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-}
-.contact-card:hover {
+.category-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
-.q-expansion-item :deep(.q-expansion-item__toggle-icon) {
-  margin-right: 8px;
+.contact-item {
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
 }
-.q-expansion-item :deep(.q-item__section--right) {
-  margin-left: auto;
+.contact-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: var(--q-primary);
 }
-.q-item {
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 12px;
-  overflow: auto;
-}
-
-.q-item .q-item__section--avatar {
-  margin-right: 16px;
-}
-.q-item .q-item__section--side {
-  flex-grow: 1;
-  display: flex;
-  align-items: center;
-  display: flex;
-  align-items: center;
-}
-.q-item .q-btn {
-  margin-left: 8px;
-}
-.q-expansion-item__container {
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-.q-expansion-item__content {
-  padding: 16px;
-  background: #f9f9f9;
-}
+.dark .contact-item:hover {background: rgba(255, 255, 255, 0.1)}
+.dark .category-card:hover {box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3)}
 </style>

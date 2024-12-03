@@ -1,3 +1,10 @@
+/**
+ * @component DailyPnl
+ * @description A component that displays daily profit and loss information.
+ * Shows today's profit and expenses with color-coded values and loading states.
+ * Integrates with the inventory store for financial data.
+ */
+
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useInventoryStore } from 'src/stores/inventoryStore'
@@ -5,8 +12,15 @@ import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
+
+/** @type {import('vue').Ref<boolean>} */
 const isLoading = ref(true)
 
+/**
+ * @type {import('vue').ComputedRef<string>}
+ * @description Computes the text color based on the current theme
+ * @returns {string} Hex color code for text
+ */
 const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 
 onMounted(async () => {
@@ -17,6 +31,11 @@ onMounted(async () => {
   }
 })
 
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the daily profit from the inventory store
+ * @returns {number} Daily profit value, defaults to 0 if error occurs
+ */
 const dailyProfit = computed(() => {
   try {
     return inventoryStore.getDailyProfit || 0
@@ -26,6 +45,11 @@ const dailyProfit = computed(() => {
   }
 })
 
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the daily expenses from the inventory store
+ * @returns {number} Daily expense value, defaults to 0 if error occurs
+ */
 const dailyExpense = computed(() => {
   try {
     return inventoryStore.getDailyExpense || 0
