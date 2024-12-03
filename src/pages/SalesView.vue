@@ -167,6 +167,7 @@ onMounted(() => {
                     :src="product.image || 'https://cdn.quasar.dev/img/parallax2.jpg'"
                     :ratio="1"
                     basic
+                    loading="lazy"
                   >
                     <div class="absolute-bottom text-subtitle2 text-center bg-primary text-bold">
                       {{ product.name }}
