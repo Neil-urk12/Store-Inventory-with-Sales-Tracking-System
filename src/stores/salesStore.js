@@ -43,56 +43,52 @@ export const useSalesStore = defineStore('sales', {
 
     updateCartQuantity(item, change) {
       const product = this.getProducts.find(p => p.id === item.id)
-      if (!product) return
+      if (!product) return { success: false }
 
       const existingItem = this.cart.find(i => i.id === item.id)
-      if (!existingItem) return
+      if (!existingItem) return { success: false }
 
       const newQuantity = existingItem.quantity + change
 
-      if (newQuantity <= 0)
+      if (newQuantity <= 0) {
         this.removeFromCart(item)
-      else if (newQuantity <= product.quantity)
+        return { success: true }
+      }
+
+      if (newQuantity <= product.quantity) {
         existingItem.quantity = newQuantity
-      else
-        $q.notify({
-          type: 'warning',
-          message: 'Cannot add more than available stock'
-        })
+        return { success: true }
+      }
+
+      return { success: false, error: 'Cannot add more than available stock' }
     },
 
     removeFromCart(item) {
       const index = this.cart.findIndex(i => i.id === item.id)
       if (index > -1)
         this.cart.splice(index, 1)
+      return { success: true }
     },
 
     addToCart(product) {
       if (product.quantity <= 0) {
-        $q.notify({
-          type: 'negative',
-          message: 'Product is out of stock'
-        })
-        return
+        return { success: false, error: 'Product is out of stock' }
       }
 
       const existingItem = this.cart.find(item => item.id === product.id)
       if (existingItem) {
-
-        if (existingItem.quantity < product.quantity)
+        if (existingItem.quantity < product.quantity) {
           existingItem.quantity++
-        else
-          $q.notify({
-            type: 'warning',
-            message: 'Cannot add more than available stock'
-          })
-
-      } else
-        this.cart.push({
-          ...product,
-          quantity: 1
-        })
+          return { success: true }
+        }
+        return { success: false, error: 'Cannot add more than available stock' }
       }
+
+      this.cart.push({
+        ...product,
+        quantity: 1
+      })
+      return { success: true }
     },
 
     setSearchQuery(query) {
@@ -115,6 +111,7 @@ export const useSalesStore = defineStore('sales', {
       this.cart = []
       this.showCheckoutDialog = false
       this.selectedPaymentMethod = null
+      return { success: true }
     }
   }
-)
+})

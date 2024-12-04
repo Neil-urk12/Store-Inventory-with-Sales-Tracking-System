@@ -24,11 +24,17 @@ const subtotal = computed(() =>
 
 const total = computed(() => subtotal.value)
 
-const updateCartQuantity = (item, change) => {
-  salesStore.updateCartQuantity(item, change)
+const handleUpdateCartQuantity = (item, change) => {
+  const result = salesStore.updateCartQuantity(item, change)
+  if (!result.success) {
+    $q.notify({
+      type: 'warning',
+      message: result.error
+    })
+  }
 }
 
-const removeFromCart = (item) => salesStore.removeFromCart(item)
+const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
 
 // const removeFromCart = (item) => (salesStore.cart.value.indexOf(item) > -1) ? salesStore.cart.value.splice(index, 1) : null //Final immutable optimization
   // const index = cart.value.indexOf(item)   //initial
@@ -36,11 +42,13 @@ const removeFromCart = (item) => salesStore.removeFromCart(item)
   // if(cart.value.indexOf(item) > -1) cart.value.splice(index, 1)  //optimized 1
 
 const processCheckout = () => {
-  $q.notify({
-    type: 'positive',
-    message: 'Purchase completed successfully!'
-  })
-  salesStore.clearCart()
+  const result = salesStore.clearCart()
+  if (result.success) {
+    $q.notify({
+      type: 'positive',
+      message: 'Purchase completed successfully!'
+    })
+  }
 }
 
 onMounted(() => {
@@ -105,33 +113,28 @@ onMounted(() => {
                 </q-item-section>
                 <q-item-section side>
                   <div class="row items-center q-gutter-sm">
-                    <q-btn-group flat>
-                      <q-btn
-                        flat
-                        dense
-                        icon="remove"
-                        @click="updateCartQuantity(item, -1)"
-                      />
-                      <q-btn
-                        flat
-                        dense
-                        :label="item.quantity.toString()"
-                        style="min-width: 40px"
-                      />
-                      <q-btn
-                        flat
-                        dense
-                        icon="add"
-                        @click="updateCartQuantity(item, 1)"
-                      />
-                    </q-btn-group>
                     <q-btn
                       flat
-                      dense
                       round
-                      color="negative"
+                      dense
+                      icon="remove"
+                      @click.stop="handleUpdateCartQuantity(item, -1)"
+                    />
+                    <span class="text-subtitle1">{{ item.quantity }}</span>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      icon="add"
+                      @click.stop="handleUpdateCartQuantity(item, 1)"
+                    />
+                    <q-btn
+                      flat
+                      round
+                      dense
                       icon="delete"
-                      @click="removeFromCart(item)"
+                      color="negative"
+                      @click.stop="handleRemoveFromCart(item)"
                     />
                   </div>
                 </q-item-section>

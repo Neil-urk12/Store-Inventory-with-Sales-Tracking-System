@@ -10,6 +10,16 @@ const salesStore = useSalesStore()
 const inventoryStore = useInventoryStore()
 const filteredProducts = computed(() => salesStore.filteredProducts)
 
+const handleAddToCart = (product) => {
+  const result = salesStore.addToCart(product)
+  if (!result.success) {
+    $q.notify({
+      type: 'negative',
+      message: result.error
+    })
+  }
+}
+
 onMounted( () => inventoryStore.loadInventory())
 </script>
 
@@ -22,7 +32,7 @@ onMounted( () => inventoryStore.loadInventory())
     >
       <q-card
         class="product-card cursor-pointer"
-        @click="salesStore.addToCart(product)"
+        @click="handleAddToCart(product)"
         :class="{ 'out-of-stock': product.quantity <= 0 }"
       >
         <q-img
