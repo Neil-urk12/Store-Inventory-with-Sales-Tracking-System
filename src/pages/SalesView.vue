@@ -11,13 +11,13 @@ const salesStore = useSalesStore()
 
 const paymentMethods = [ 'Cash', 'GCash', 'Growsari']
 
-const categories = computed(() => {
-  // const uniqueCategories = [...new Set(salesStore.products.map(p => p.category))]
-  return [...new Set(salesStore.products.map(p => p.category))].map(cat => ({ label: cat, value: cat}))
-  // const uniqueCategories = [...new Set(products.value.map(p => p.category))]
-  // return uniqueCategories.map(cat => ({ label: cat, value: cat }))
-})
-
+// const categories = computed(() => {
+//   // const uniqueCategories = [...new Set(salesStore.products.map(p => p.category))]
+//   return [...new Set(salesStore.products.map(p => p.category))].map(cat => ({ label: cat, value: cat}))
+//   // const uniqueCategories = [...new Set(products.value.map(p => p.category))]
+//   // return uniqueCategories.map(cat => ({ label: cat, value: cat }))
+// })
+const categories = computed(() => inventoryStore.formattedCategories)
 const subtotal = computed(() =>
   salesStore.getCart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
 )
@@ -53,6 +53,7 @@ const processCheckout = () => {
 
 onMounted(() => {
   inventoryStore.loadInventory()
+  inventoryStore.loadCategories()
 })
 </script>
 
@@ -80,6 +81,7 @@ onMounted(() => {
                 <q-select
                   v-model="salesStore.selectedCategory"
                   :options="categories"
+                  label="Category"
                   dense
                   outlined
                   emit-value
