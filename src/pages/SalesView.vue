@@ -5,8 +5,6 @@ import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
-
-// Search and filter
 const searchQuery = ref('')
 const selectedCategory = ref(null)
 
@@ -16,14 +14,12 @@ const cart = ref([])
 const selectedPaymentMethod = ref(null)
 const showCheckoutDialog = ref(false)
 
-// Payment methods
 const paymentMethods = [
   'Cash',
   'GCash',
   'Growsari'
 ]
 
-// Computed properties
 const categories = computed(() => {
   const uniqueCategories = [...new Set(products.value.map(p => p.category))]
   return uniqueCategories.map(cat => ({ label: cat, value: cat }))
@@ -46,9 +42,7 @@ const subtotal = computed(() => {
 const total = computed(() => subtotal.value)
 
 // Methods
-const formatPrice = (price) => {
-  return price.toFixed(2)
-}
+const formatPrice = (price) => price.toFixed(2)
 
 const addToCart = (product) => {
   if (product.quantity <= 0) {
@@ -61,9 +55,9 @@ const addToCart = (product) => {
 
   const existingItem = cart.value.find(item => item.id === product.id)
   if (existingItem) {
-    if (existingItem.quantity < product.quantity) {
+    if (existingItem.quantity < product.quantity)
       existingItem.quantity++
-    } else {
+    else {
       $q.notify({
         type: 'warning',
         message: 'Cannot add more than available stock'
@@ -81,11 +75,11 @@ const updateCartQuantity = (item, change) => {
   const product = mockProducts.find(p => p.id === item.id)
   const newQuantity = item.quantity + change
 
-  if (newQuantity <= 0) {
+  if (newQuantity <= 0)
     removeFromCart(item)
-  } else if (newQuantity <= product.quantity) {
+  else if (newQuantity <= product.quantity)
     item.quantity = newQuantity
-  } else {
+  else {
     $q.notify({
       type: 'warning',
       message: 'Cannot add more than available stock'
@@ -95,13 +89,10 @@ const updateCartQuantity = (item, change) => {
 
 const removeFromCart = (item) => {
   const index = cart.value.indexOf(item)
-  if (index > -1) {
-    cart.value.splice(index, 1)
-  }
+  if (index > -1) cart.value.splice(index, 1)
 }
 
 const processCheckout = () => {
-  // Mock checkout process
   $q.notify({
     type: 'positive',
     message: 'Purchase completed successfully!'
@@ -112,11 +103,10 @@ const processCheckout = () => {
 
 onMounted(() => {
   inventoryStore.loadInventory()
-  console.log(inventoryStore.items)
 })
 </script>
 
-<template>
+<template>z
   <q-page padding>
     <div class="row q-col-gutter-md">
       <!-- Left Side - Product Selection and Cart -->
