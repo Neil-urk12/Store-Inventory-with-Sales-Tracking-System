@@ -213,6 +213,8 @@ const validateAndSave = async () => {
                 :src="imagePreviewUrl"
                 style="max-width: 200px; max-height: 200px"
                 fit="contain"
+                loading="lazy"
+                @error="imageError = true"
               >
                 <template v-slot:loading>
                   <q-spinner-dots color="white" />

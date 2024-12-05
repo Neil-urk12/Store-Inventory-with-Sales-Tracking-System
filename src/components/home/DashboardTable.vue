@@ -97,6 +97,7 @@ onMounted(async () => {
       <q-tr :props="props">
         <q-td key="image" :props="props">
           <q-img
+            loading="lazy"
             :src="props.row.image"
             :alt="props.row.name"
             style="width: 50px; height: 50px; object-fit: cover"

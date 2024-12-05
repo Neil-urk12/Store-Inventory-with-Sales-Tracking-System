@@ -1,118 +1,59 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { useSalesStore } from 'src/stores/salesStore';
 import { useQuasar } from 'quasar'
+const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'));
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
+const salesStore = useSalesStore()
 
-// Search and filter
-const searchQuery = ref('')
-const selectedCategory = ref(null)
+const paymentMethods = [ 'Cash', 'GCash', 'Growsari']
 
-const products = computed(() => inventoryStore.sortedItems)
-
-const cart = ref([])
-const selectedPaymentMethod = ref(null)
-const showCheckoutDialog = ref(false)
-
-// Payment methods
-const paymentMethods = [
-  'Cash',
-  'GCash',
-  'Growsari'
-]
-
-// Computed properties
-const categories = computed(() => {
-  const uniqueCategories = [...new Set(products.value.map(p => p.category))]
-  return uniqueCategories.map(cat => ({ label: cat, value: cat }))
-})
-
-const filteredProducts = computed(() => {
-  return products.value.filter(product => {
-    const matchesSearch = searchQuery.value === '' ||
-      product.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesCategory = !selectedCategory.value ||
-      product.category === selectedCategory.value
-    return matchesSearch && matchesCategory
-  })
-})
-
-const subtotal = computed(() => {
-  return cart.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-})
+// const categories = computed(() => {
+//   // const uniqueCategories = [...new Set(salesStore.products.map(p => p.category))]
+//   return [...new Set(salesStore.products.map(p => p.category))].map(cat => ({ label: cat, value: cat}))
+//   // const uniqueCategories = [...new Set(products.value.map(p => p.category))]
+//   // return uniqueCategories.map(cat => ({ label: cat, value: cat }))
+// })
+const categories = computed(() => inventoryStore.formattedCategories)
+const subtotal = computed(() =>
+  salesStore.getCart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+)
 
 const total = computed(() => subtotal.value)
 
-// Methods
-const formatPrice = (price) => {
-  return price.toFixed(2)
-}
-
-const addToCart = (product) => {
-  if (product.quantity <= 0) {
-    $q.notify({
-      type: 'negative',
-      message: 'Product is out of stock'
-    })
-    return
-  }
-
-  const existingItem = cart.value.find(item => item.id === product.id)
-  if (existingItem) {
-    if (existingItem.quantity < product.quantity) {
-      existingItem.quantity++
-    } else {
-      $q.notify({
-        type: 'warning',
-        message: 'Cannot add more than available stock'
-      })
-    }
-  } else {
-    cart.value.push({
-      ...product,
-      quantity: 1
-    })
-  }
-}
-
-const updateCartQuantity = (item, change) => {
-  const product = mockProducts.find(p => p.id === item.id)
-  const newQuantity = item.quantity + change
-
-  if (newQuantity <= 0) {
-    removeFromCart(item)
-  } else if (newQuantity <= product.quantity) {
-    item.quantity = newQuantity
-  } else {
+const handleUpdateCartQuantity = (item, change) => {
+  const result = salesStore.updateCartQuantity(item, change)
+  if (!result.success) {
     $q.notify({
       type: 'warning',
-      message: 'Cannot add more than available stock'
+      message: result.error
     })
   }
 }
 
-const removeFromCart = (item) => {
-  const index = cart.value.indexOf(item)
-  if (index > -1) {
-    cart.value.splice(index, 1)
-  }
-}
+const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
+
+// const removeFromCart = (item) => (salesStore.cart.value.indexOf(item) > -1) ? salesStore.cart.value.splice(index, 1) : null //Final immutable optimization
+  // const index = cart.value.indexOf(item)   //initial
+  // if (index > -1) cart.value.splice(index, 1)
+  // if(cart.value.indexOf(item) > -1) cart.value.splice(index, 1)  //optimized 1
 
 const processCheckout = () => {
-  // Mock checkout process
-  $q.notify({
-    type: 'positive',
-    message: 'Purchase completed successfully!'
-  })
-  cart.value = []
-  showCheckoutDialog.value = false
+  const result = salesStore.clearCart()
+  if (result.success) {
+    $q.notify({
+      type: 'positive',
+      message: 'Purchase completed successfully!'
+    })
+  }
 }
 
 onMounted(() => {
   inventoryStore.loadInventory()
-  console.log(inventoryStore.items)
+  inventoryStore.loadCategories()
 })
 </script>
 
@@ -126,8 +67,14 @@ onMounted(() => {
             <div class="row items-center justify-between q-mb-md">
               <div class="text-h6">Point of Sale</div>
               <div class="row q-gutter-sm">
+                <q-btn
+                  color="primary"
+                  icon="history"
+                  label="Sales History"
+                  to="/sales/history"
+                />
                 <q-input
-                  v-model="searchQuery"
+                  v-model="salesStore.searchQuery"
                   dense
                   outlined
                   placeholder="Search products..."
@@ -138,8 +85,9 @@ onMounted(() => {
                   </template>
                 </q-input>
                 <q-select
-                  v-model="selectedCategory"
+                  v-model="salesStore.selectedCategory"
                   :options="categories"
+                  label="Category"
                   dense
                   outlined
                   emit-value
@@ -150,41 +98,8 @@ onMounted(() => {
                 />
               </div>
             </div>
-
             <!-- Products Grid -->
-            <div class="row q-col-gutter-md">
-              <div
-                v-for="product in filteredProducts"
-                :key="product.id"
-                class="col-6 col-sm-4 col-md-3"
-              >
-                <q-card
-                  class="product-card cursor-pointer"
-                  @click="addToCart(product)"
-                  :class="{ 'out-of-stock': product.quantity <= 0 }"
-                >
-                  <q-img
-                    :src="product.image || 'https://cdn.quasar.dev/img/parallax2.jpg'"
-                    :ratio="1"
-                    basic
-                  >
-                    <div class="absolute-bottom text-subtitle2 text-center bg-primary text-bold">
-                      {{ product.name }}
-                    </div>
-                  </q-img>
-                  <q-card-section class="q-pt-xs">
-                    <div class="row items-center justify-between">
-                      <div class="text-subtitle1 text-weight-bold">
-                        ₱{{ formatPrice(product.price) }}
-                      </div>
-                      <div class="text-caption">
-                        Stock: {{ product.quantity }}
-                      </div>
-                    </div>
-                  </q-card-section>
-                </q-card>
-              </div>
-            </div>
+            <Product></Product>
           </q-card-section>
         </q-card>
       </div>
@@ -197,42 +112,37 @@ onMounted(() => {
 
             <!-- Cart Items -->
             <q-list separator>
-              <q-item v-for="item in cart" :key="item.id">
+              <q-item v-for="item in salesStore.getCart" :key="item.id">
                 <q-item-section>
                   <q-item-label class="text-bold bg-primary q-pa-xs">{{ item.name }}</q-item-label>
                   <q-item-label caption>
-                    ₱{{ formatPrice(item.price) }} × {{ item.quantity }}
+                    ₱{{ salesStore.formatPrice(item.price) }} × {{ item.quantity }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
                   <div class="row items-center q-gutter-sm">
-                    <q-btn-group flat>
-                      <q-btn
-                        flat
-                        dense
-                        icon="remove"
-                        @click="updateCartQuantity(item, -1)"
-                      />
-                      <q-btn
-                        flat
-                        dense
-                        :label="item.quantity.toString()"
-                        style="min-width: 40px"
-                      />
-                      <q-btn
-                        flat
-                        dense
-                        icon="add"
-                        @click="updateCartQuantity(item, 1)"
-                      />
-                    </q-btn-group>
                     <q-btn
                       flat
-                      dense
                       round
-                      color="negative"
+                      dense
+                      icon="remove"
+                      @click.stop="handleUpdateCartQuantity(item, -1)"
+                    />
+                    <span class="text-subtitle1">{{ item.quantity }}</span>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      icon="add"
+                      @click.stop="handleUpdateCartQuantity(item, 1)"
+                    />
+                    <q-btn
+                      flat
+                      round
+                      dense
                       icon="delete"
-                      @click="removeFromCart(item)"
+                      color="negative"
+                      @click.stop="handleRemoveFromCart(item)"
                     />
                   </div>
                 </q-item-section>
@@ -243,16 +153,16 @@ onMounted(() => {
             <div class="q-mt-md">
               <div class="row justify-between q-mb-sm">
                 <div class="text-subtitle1">Subtotal:</div>
-                <div class="text-subtitle1">₱{{ formatPrice(subtotal) }}</div>
+                <div class="text-subtitle1">₱{{ salesStore.formatPrice(subtotal) }}</div>
               </div>
               <div class="row justify-between q-mb-md">
                 <div class="text-subtitle1">Total:</div>
-                <div class="text-h6 text-primary">₱{{ formatPrice(total) }}</div>
+                <div class="text-h6 text-primary">₱{{ salesStore.formatPrice(total) }}</div>
               </div>
 
               <!-- Payment Method Selection -->
               <q-select
-                v-model="selectedPaymentMethod"
+                v-model="salesStore.selectedPaymentMethod"
                 :options="paymentMethods"
                 label="Payment Method"
                 outlined
@@ -264,8 +174,8 @@ onMounted(() => {
                 color="primary"
                 class="full-width"
                 label="Checkout"
-                :disable="!cart.length"
-                @click="showCheckoutDialog = true"
+                :disable="!salesStore.getCart.length"
+                @click="salesStore.showCheckoutDialog = true"
               />
             </div>
           </q-card-section>
@@ -274,7 +184,7 @@ onMounted(() => {
     </div>
 
     <!-- Checkout Dialog -->
-    <q-dialog v-model="showCheckoutDialog" persistent>
+    <q-dialog v-model="salesStore.showCheckoutDialog" persistent>
       <q-card style="min-width: 350px">
         <q-card-section class="row items-center">
           <div class="text-h6">Confirm Purchase</div>
@@ -285,9 +195,9 @@ onMounted(() => {
         <q-card-section>
           <div class="q-mb-md">
             <div class="text-subtitle2">Payment Method</div>
-            <div>{{ selectedPaymentMethod }}</div>
+            <div>{{ salesStore.selectedPaymentMethod }}</div>
           </div>
-          <div class="text-h6">Total: ₱{{ formatPrice(total) }}</div>
+          <div class="text-h6">Total: ₱{{ salesStore.formatPrice(total) }}</div>
         </q-card-section>
 
         <q-card-actions align="right">
@@ -300,21 +210,5 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.product-card {
-  transition: all 0.3s ease;
-}
 
-.product-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-
-.out-of-stock {
-  opacity: 0.6;
-}
-
-.out-of-stock:hover {
-  transform: none;
-  cursor: not-allowed;
-}
 </style>
