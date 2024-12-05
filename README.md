@@ -21,7 +21,7 @@ A system that can help small business owners track their stocks and sales with a
 
 ## Prerequisites
 
-- Node.js >= 16.x
+- Node.js >= 16.x && <= 18.14.2
 - npm >= 6.13.4 or yarn >= 1.21.1
 - Firebase account and project
 
@@ -114,4 +114,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-For support, email [your-email] or open an issue in the repository.
+For support, email neilvallecer12@gmail.com or open an issue in the repository.
