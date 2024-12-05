@@ -124,8 +124,50 @@ export const useSalesStore = defineStore('sales', {
       return { success: true }
     },
 
-    processCheckout(){
+    processCheckout() {
+      if (!this.selectedPaymentMethod) {
+        return { success: false, error: 'Please select a payment method' }
+      }
 
+      if (this.cart.length === 0) {
+        return { success: false, error: 'Cart is empty' }
+      }
+
+      try {
+        // Create sale record
+        const sale = {
+          id: crypto.randomUUID(),
+          items: this.cart.map(item => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.quantity * item.price
+          })),
+          total: this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+          paymentMethod: this.selectedPaymentMethod,
+          date: new Date().toISOString()
+        }
+
+        // Update inventory quantities
+        this.cart.forEach(async (item) => {
+          const product = this.getProducts.find(p => p.id === item.id)
+          if (product) {
+            await inventoryStore.updateItemQuantity(item.id, product.quantity - item.quantity)
+          }
+        })
+
+        // Save sale to database
+        db.sales.add(sale)
+
+        // Clear cart and reset checkout state
+        this.clearCart()
+
+        return { success: true, sale }
+      } catch (error) {
+        console.error('Checkout error:', error)
+        return { success: false, error: 'Failed to process checkout' }
+      }
     },
 
     setSearchQuery(query) {
