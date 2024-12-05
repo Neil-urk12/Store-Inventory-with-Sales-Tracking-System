@@ -21,7 +21,8 @@ const $q = useQuasar()
 
 const deleteItem = async () => {
   try {
-    await inventoryStore.deleteItem()
+    await inventoryStore.handleDeleteConfirm()
+    inventoryStore.deleteDialog = false
     $q.notify({
       color: 'positive',
       message: 'Item deleted successfully'
