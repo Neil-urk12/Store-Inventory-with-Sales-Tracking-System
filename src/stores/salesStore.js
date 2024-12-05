@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Manages sales
+ */
+
 import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -7,6 +11,10 @@ import { useInventoryStore } from './inventoryStore'
 const { isOnline } = useNetworkStatus()
 const inventoryStore = useInventoryStore()
 
+/**
+ * @const {Store} useSalesStore
+ * @description Sales store for managing sales and checkout of items
+ */
 export const useSalesStore = defineStore('sales', {
   state: () => ({
     products: [],
@@ -18,12 +26,24 @@ export const useSalesStore = defineStore('sales', {
   }),
 
   getters: {
+     /**
+     * @getter
+     * @returns {Array} Returns array of products
+     */
     getProducts: (state) => {
       return inventoryStore.sortedItems || []
     },
+     /**
+     * @getter
+     * @returns {Array} Returns array of carts
+     */
     getCart: (state) => {
       return state.cart
     },
+     /**
+     * @getter
+     * @returns {Array} Filtered products based on search query and category
+     */
     filteredProducts: (state) => {
       const products = inventoryStore.sortedItems || []
       return products.filter(product => {
@@ -37,10 +57,19 @@ export const useSalesStore = defineStore('sales', {
   },
 
   actions: {
+    /**
+     * @method formatPrice
+     * @returns {Promise<Int16Array>}
+     * @description Formats the price for uniformity and consistency 
+     */
     formatPrice(price) {
       return price.toFixed(2)
     },
-
+    /**
+     * @method updateCartQuantity
+     * @returns {Promise<void>}
+     * @description Update cart quantity when adding products from the cart
+     */
     updateCartQuantity(item, change) {
       const product = this.getProducts.find(p => p.id === item.id)
       if (!product) return { success: false }
@@ -62,7 +91,11 @@ export const useSalesStore = defineStore('sales', {
 
       return { success: false, error: 'Cannot add more than available stock' }
     },
-
+    /**
+     * @method removeFromCart
+     * @returns {Promise<void>}
+     * @description Initializes the database and performs initial sync if needed
+     */
     removeFromCart(item) {
       const index = this.cart.findIndex(i => i.id === item.id)
       if (index > -1)
@@ -89,6 +122,10 @@ export const useSalesStore = defineStore('sales', {
         quantity: 1
       })
       return { success: true }
+    },
+
+    processCheckout(){
+
     },
 
     setSearchQuery(query) {
