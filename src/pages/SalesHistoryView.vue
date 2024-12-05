@@ -105,7 +105,10 @@ onMounted(() => {
       <div class="col-12">
         <q-card>
           <q-card-section>
-            <div class="text-h6">Sales History</div>
+            <div class="row items-center justify-between q-mb-md">
+              <div class="text-h6">Sales History</div>
+              <q-btn color="primary" icon="arrow_back" label="Return to Sales" to="/sales" />
+            </div>
             <div class="row q-col-gutter-sm q-mb-md">
               <div class="col-grow">
                 <q-input
