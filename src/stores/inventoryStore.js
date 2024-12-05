@@ -128,6 +128,11 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Function} Function to get category name from ID
      */
     getCategoryName: (state) => (categoryId) => {
+      // If categoryId is already a name (string), return it
+      if (typeof categoryId === 'string' && !state.categories.find(cat => cat.id === categoryId)) {
+        return categoryId
+      }
+      // Otherwise look up the category by ID
       const category = state.categories.find(cat => cat.id === categoryId)
       return category ? category.name : 'Uncategorized'
     },
@@ -458,29 +463,45 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Deletes an item from the local database and queues for sync
      */
     async deleteItem(id) {
-      const item = await db.items.get(id)
-      if (!item) throw new Error('Item not found')
+      try {
+        const item = await db.items.get(id)
+        if (!item) throw new Error('Item not found')
 
       // Always delete from local DB first
-      await db.transaction('rw', db.items, async () => {
-        try {
+        await db.transaction('rw', db.items, async () => {
           await db.items.delete(id)
+        })
 
-          // Queue for sync only if item was previously synced
-          if (item.firebaseId) {
+        // If online and item was synced with Firestore, delete from Firestore
+        if (isOnline.value && item.firebaseId) {
+          try {
+            const docRef = doc(fireDb, 'items', item.firebaseId)
+            await deleteDoc(docRef)
+          } catch (error) {
+            console.error('Error deleting from Firestore:', error)
+            // Queue for sync if Firestore delete fails
             await syncQueue.addToQueue({
               type: 'delete',
               collection: 'items',
-              docId: id
+              docId: id,
+              firebaseId: item.firebaseId
             })
           }
-        } catch (error) {
-          console.error('Error deleting item locally:', error)
-          throw error
+        } else if (item.firebaseId) {
+          // Offline but item exists in Firestore, queue for sync
+          await syncQueue.addToQueue({
+            type: 'delete',
+            collection: 'items',
+            docId: id,
+            firebaseId: item.firebaseId
+          })
         }
-      })
 
-      return id
+        return id
+      } catch (error) {
+        console.error('Error in deleteItem:', error)
+        throw error
+      }
     },
 
     /**
@@ -796,12 +817,29 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async deleteCashFlowTransaction(paymentMethod, transactionId) {
       try {
-        const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
-        await deleteDoc(docRef)
-
-        // Update local state
+        // Delete from local state first
         this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
           .filter(t => t.id !== transactionId)
+
+        if (isOnline.value) {
+          try {
+            const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
+            await deleteDoc(docRef)
+          } catch (error) {
+            console.error('Error deleting from Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'delete',
+              collection: `cashFlow_${paymentMethod}`,
+              docId: transactionId
+            })
+          }
+        } else {
+          await syncQueue.addToQueue({
+            type: 'delete',
+            collection: `cashFlow_${paymentMethod}`,
+            docId: transactionId
+          })
+        }
 
         return true
       } catch (error) {
@@ -821,15 +859,35 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async updateCashFlowTransaction(paymentMethod, transactionId, updatedData) {
       try {
-        const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
-        await updateDoc(docRef, {
-          ...updatedData,
-          date: serverTimestamp()
-        })
-
-        // Update local state
+        // Update local state first
+        const currentDate = new Date()
         this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
-          .map(t => t.id === transactionId ? { ...t, ...updatedData, date: new Date() } : t)
+          .map(t => t.id === transactionId ? { ...t, ...updatedData, date: currentDate } : t)
+
+        if (isOnline.value) {
+          try {
+            const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
+            await updateDoc(docRef, {
+              ...updatedData,
+              date: serverTimestamp()
+            })
+          } catch (error) {
+            console.error('Error updating in Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'update',
+              collection: `cashFlow_${paymentMethod}`,
+              docId: transactionId,
+              data: { ...updatedData, date: currentDate }
+            })
+          }
+        } else {
+          await syncQueue.addToQueue({
+            type: 'update',
+            collection: `cashFlow_${paymentMethod}`,
+            docId: transactionId,
+            data: { ...updatedData, date: currentDate }
+          })
+        }
 
         return true
       } catch (error) {
@@ -848,17 +906,44 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async addCashFlowTransaction(paymentMethod, transactionData) {
       try {
-        const docRef = await addDoc(collection(fireDb, `cashFlow_${paymentMethod}`), {
+        const currentDate = new Date()
+        const tempId = 'temp_' + Date.now()
+        const newTransaction = {
+          id: tempId,
           ...transactionData,
-          date: serverTimestamp()
-        })
+          date: currentDate
+        }
 
-        // Update local state
-        this.cashFlowTransactions[paymentMethod].unshift({
-          id: docRef.id,
-          ...transactionData,
-          date: new Date()
-        })
+        // Add to local state first
+        this.cashFlowTransactions[paymentMethod].unshift(newTransaction)
+
+        if (isOnline.value) {
+          try {
+            const docRef = await addDoc(collection(fireDb, `cashFlow_${paymentMethod}`), {
+              ...transactionData,
+              date: serverTimestamp()
+            })
+
+            // Update local state with real ID
+            this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
+              .map(t => t.id === tempId ? { ...t, id: docRef.id } : t)
+          } catch (error) {
+            console.error('Error adding to Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'create',
+              collection: `cashFlow_${paymentMethod}`,
+              data: { ...transactionData, date: currentDate },
+              tempId
+            })
+          }
+        } else {
+          await syncQueue.addToQueue({
+            type: 'create',
+            collection: `cashFlow_${paymentMethod}`,
+            data: { ...transactionData, date: currentDate },
+            tempId
+          })
+        }
 
         return true
       } catch (error) {
@@ -894,85 +979,106 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async loadCategories() {
       try {
-        // Load from local first
+        this.loading = true
+
+        // Load from local DB first
         const localCategories = await db.categories.toArray()
         this.categories = localCategories
 
-        // Sync with Firestore if online
+        // If online, sync with Firestore
         if (isOnline.value) {
-          const categoriesRef = collection(fireDb, 'categories')
-          const querySnapshot = await getDocs(categoriesRef)
-          const firestoreCategories = []
-
-          querySnapshot.forEach((doc) => {
-            firestoreCategories.push({
+          try {
+            const snapshot = await getDocs(query(collection(fireDb, 'categories'), orderBy('name')))
+            const firestoreCategories = snapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
-              firebaseId: doc.id
-            })
-          })
+              createdAt: doc.data().createdAt?.toDate() || new Date(),
+              updatedAt: doc.data().updatedAt?.toDate() || new Date()
+            }))
 
-          // Merge local and Firestore categories
-          await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+            // Merge local and Firestore categories
+            await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+          } catch (error) {
+            console.error('Error syncing categories with Firestore:', error)
+            // Continue with local categories
+          }
         }
       } catch (error) {
-        console.error('Failed to load categories:', error)
-        this.error = 'Failed to load categories'
-        // Fallback to empty categories array instead of throwing
-        this.categories = []
+        console.error('Error loading categories:', error)
+        this.error = handleError(error, 'Failed to load categories')
+      } finally {
+        this.loading = false
       }
     },
 
-    /**
-     * @async
-     * @method mergeCategoriesWithFirestore
-     * @param {Array} localCategories - Local categories to merge
-     * @param {Array} firestoreCategories - Firestore categories to merge
-     * @returns {Promise<void>}
-     * @description Merges local and Firestore categories, resolving conflicts
-     * @private
-     */
     async mergeCategoriesWithFirestore(localCategories, firestoreCategories) {
       try {
         const batch = writeBatch(fireDb)
-        const categoriesRef = collection(fireDb, 'categories')
+        const updates = []
 
-        // Update local categories with Firestore data
-        for (const firestoreCategory of firestoreCategories) {
-          const localCategory = localCategories.find(
-            local => local.firebaseId === firestoreCategory.firebaseId
-          )
-
-          if (!localCategory) {
-            // Category exists in Firestore but not locally - add to local
-            await db.categories.add({
-              ...firestoreCategory,
-              updatedAt: new Date().toISOString()
-            })
-          }
-        }
-
-        // Sync local categories to Firestore
-        for (const localCategory of localCategories) {
-          if (!localCategory.firebaseId) {
-            // Category exists locally but not in Firestore - add to Firestore
-            const docRef = doc(categoriesRef)
-            batch.set(docRef, {
-              name: localCategory.name,
-              createdAt: serverTimestamp(),
+        // Handle local categories not in Firestore
+        for (const localCat of localCategories) {
+          const firestoreCat = firestoreCategories.find(fc => fc.id === localCat.id)
+          if (!firestoreCat) {
+            // Category exists locally but not in Firestore
+            if (localCat.id.startsWith('temp_')) {
+              // This is a new local category, add to Firestore
+              const docRef = doc(collection(fireDb, 'categories'))
+              batch.set(docRef, {
+                name: localCat.name,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              })
+              updates.push({
+                type: 'update',
+                oldId: localCat.id,
+                newId: docRef.id,
+                data: localCat
+              })
+            }
+          } else if (new Date(localCat.updatedAt) > new Date(firestoreCat.updatedAt)) {
+            // Local category is newer, update Firestore
+            const docRef = doc(fireDb, 'categories', localCat.id)
+            batch.update(docRef, {
+              name: localCat.name,
               updatedAt: serverTimestamp()
             })
+          }
+        }
 
-            // Update local category with Firebase ID
-            await db.categories.update(localCategory.id, {
-              firebaseId: docRef.id
+        // Handle Firestore categories not in local DB
+        for (const firestoreCat of firestoreCategories) {
+          const localCat = localCategories.find(lc => lc.id === firestoreCat.id)
+          if (!localCat) {
+            // Category exists in Firestore but not locally
+            await db.categories.add({
+              id: firestoreCat.id,
+              name: firestoreCat.name,
+              createdAt: firestoreCat.createdAt,
+              updatedAt: firestoreCat.updatedAt
+            })
+          } else if (new Date(firestoreCat.updatedAt) > new Date(localCat.updatedAt)) {
+            // Firestore category is newer, update local
+            await db.categories.update(localCat.id, {
+              name: firestoreCat.name,
+              updatedAt: firestoreCat.updatedAt
             })
           }
         }
 
+        // Commit Firestore changes
         await batch.commit()
 
-        // Refresh local categories
+        // Update local IDs for new categories
+        for (const update of updates) {
+          if (update.type === 'update') {
+            await db.categories.where('id').equals(update.oldId).modify(category => {
+              category.id = update.newId
+            })
+          }
+        }
+
+        // Reload categories from local DB
         const updatedCategories = await db.categories.toArray()
         this.categories = updatedCategories
       } catch (error) {
@@ -990,58 +1096,77 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async addCategory(categoryName) {
       try {
-        // Check for duplicates first
-        const exists = this.categories.some(
-          cat => cat.name.toLowerCase() === categoryName.toLowerCase()
+        // Validate category name
+        if (!categoryName || typeof categoryName !== 'string') {
+          throw new Error('Invalid category name')
+        }
+
+        const existingCategory = this.categories.find(
+          c => c.name.toLowerCase() === categoryName.toLowerCase()
         )
-        if (exists) {
-          this.error = 'Category already exists'
-          return null
+        if (existingCategory) {
+          throw new Error('Category already exists')
         }
 
         // Add to local DB first
+        const tempId = 'temp_' + Date.now()
         const newCategory = {
+          id: tempId,
           name: categoryName,
-          value: categoryName.charAt(0).toLowerCase() + categoryName.slice(1),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: new Date(),
+          updatedAt: new Date()
         }
 
-        const localId = await db.categories.add(newCategory)
+        await db.categories.add(newCategory)
+        this.categories.push(newCategory)
 
         if (isOnline.value) {
           try {
-            // Add to Firestore
             const docRef = await addDoc(collection(fireDb, 'categories'), {
-              ...newCategory,
+              name: categoryName,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
 
-            // Update local category with Firebase ID
-            await db.categories.update(localId, { firebaseId: docRef.id })
+            // Update local DB and state with real ID
+            await db.categories.where('id').equals(tempId).modify(category => {
+              category.id = docRef.id
+            })
 
-            const updatedCategory = await db.categories.get(localId)
-            this.categories.push(updatedCategory)
-            this.error = null
-            return updatedCategory
+            this.categories = this.categories.map(c => 
+              c.id === tempId ? { ...c, id: docRef.id } : c
+            )
+
+            return { id: docRef.id, name: categoryName }
           } catch (error) {
-            console.error('Firebase error:', error)
-            // Keep local changes even if Firebase sync fails
-            const localCategory = await db.categories.get(localId)
-            this.categories.push(localCategory)
-            this.error = 'Changes saved locally, will sync when online'
-            return localCategory
+            console.error('Error adding category to Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'create',
+              collection: 'categories',
+              data: {
+                name: categoryName,
+                createdAt: new Date(),
+                updatedAt: new Date()
+              },
+              tempId
+            })
+            return { id: tempId, name: categoryName }
           }
+        } else {
+          await syncQueue.addToQueue({
+            type: 'create',
+            collection: 'categories',
+            data: {
+              name: categoryName,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            },
+            tempId
+          })
+          return { id: tempId, name: categoryName }
         }
-
-        const localCategory = await db.categories.get(localId)
-        this.categories.push(localCategory)
-        this.error = null
-        return localCategory
       } catch (error) {
         console.error('Error adding category:', error)
-        this.error = error.message || 'Failed to add category'
         return null
       }
     },
@@ -1055,14 +1180,35 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async deleteCategory(categoryId) {
       try {
+        // Delete from local DB first
         await db.categories.delete(categoryId)
-        this.categories = this.categories.filter(cat => cat.id !== categoryId)
-        this.error = null
+
+        // Update local state
+        this.categories = this.categories.filter(c => c.id !== categoryId)
+
+        if (isOnline.value) {
+          try {
+            const docRef = doc(fireDb, 'categories', categoryId)
+            await deleteDoc(docRef)
+          } catch (error) {
+            console.error('Error deleting category from Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'delete',
+              collection: 'categories',
+              docId: categoryId
+            })
+          }
+        } else {
+          await syncQueue.addToQueue({
+            type: 'delete',
+            collection: 'categories',
+            docId: categoryId
+          })
+        }
+
         return true
       } catch (error) {
-        this.error = 'Failed to delete category'
-        // Keep the UI state consistent even if DB operation fails
-        this.categories = this.categories.filter(cat => cat.id !== categoryId)
+        console.error('Error deleting category:', error)
         return false
       }
     },
