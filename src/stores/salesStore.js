@@ -60,7 +60,7 @@ export const useSalesStore = defineStore('sales', {
     /**
      * @method formatPrice
      * @returns {Promise<Int16Array>}
-     * @description Formats the price for uniformity and consistency 
+     * @description Formats the price for uniformity and consistency
      */
     formatPrice(price) {
       return price.toFixed(2)
@@ -125,13 +125,11 @@ export const useSalesStore = defineStore('sales', {
     },
 
     processCheckout() {
-      if (!this.selectedPaymentMethod) {
+      if (!this.selectedPaymentMethod)
         return { success: false, error: 'Please select a payment method' }
-      }
 
-      if (this.cart.length === 0) {
+      if (this.cart.length === 0)
         return { success: false, error: 'Cart is empty' }
-      }
 
       try {
         // Create sale record

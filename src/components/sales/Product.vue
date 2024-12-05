@@ -20,7 +20,7 @@ const handleAddToCart = (product) => {
   }
 }
 
-onMounted( () => inventoryStore.loadInventory())
+onMounted(() => inventoryStore.loadInventory())
 </script>
 
 <template>
