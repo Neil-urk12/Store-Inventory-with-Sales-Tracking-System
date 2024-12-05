@@ -20,7 +20,7 @@
         </div>
         <div class="row items-center justify-between q-mb-sm">
           <div class="text-h6">
-            Balance: {{ inventoryStore.formatCurrency(totalBalance) }}
+            Balance: {{ financialStore.formatCurrency(totalBalance) }}
           </div>
         </div>
         <div class="row items-center justify-start q-gutter-sm">
@@ -85,7 +85,7 @@
                     </q-badge>
                   </div>
                   <div class="row items-center justify-between q-mt-sm">
-                    <div>{{ inventoryStore.formatCurrency(props.row.value) }}</div>
+                    <div>{{ financialStore.formatCurrency(props.row.value) }}</div>
                     <div>{{ props.row.date }}</div>
                   </div>
                   <div class="row items-center justify-end q-mt-sm">
@@ -276,10 +276,10 @@
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useQuasar, date } from 'quasar'
-import { useInventoryStore } from 'src/stores/inventoryStore'
+import { useFinancialStore } from '../../stores/financialStore'
 
 const $q = useQuasar()
-const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 
 const props = defineProps({
   modelValue: {
@@ -326,7 +326,7 @@ const columns = [
     label: 'Amount',
     field: 'value',
     sortable: true,
-    format: val => inventoryStore.formatCurrency(val)
+    format: val => financialStore.formatCurrency(val)
   },
   {
     name: 'description',
@@ -343,11 +343,11 @@ const columns = [
 ]
 
 const transactions = computed(() => {
-  return inventoryStore.cashFlowTransactions[props.selectedPaymentMethod] || []
+  return financialStore.cashFlowTransactions[props.selectedPaymentMethod] || []
 })
 
 const totalBalance = computed(() => {
-  return inventoryStore.getBalance(props.selectedPaymentMethod) || 0
+  return financialStore.getBalance(props.selectedPaymentMethod) || 0
 })
 
 const transactionTypes = [
@@ -394,7 +394,7 @@ const updateTransaction = async () => {
 
   loading.value = true
   try {
-    const success = await inventoryStore.updateCashFlowTransaction(
+    const success = await financialStore.updateCashFlowTransaction(
       props.selectedPaymentMethod,
       selectedTransaction.value.id,
       newTransaction.value
@@ -431,7 +431,7 @@ const deleteTransaction = async () => {
 
   loading.value = true
   try {
-    const success = await inventoryStore.deleteCashFlowTransaction(
+    const success = await financialStore.deleteCashFlowTransaction(
       props.selectedPaymentMethod,
       selectedTransaction.value.id
     )
@@ -468,7 +468,7 @@ const addTransaction = async () => {
 
   loading.value = true
   try {
-    const success = await inventoryStore.addCashFlowTransaction(
+    const success = await financialStore.addCashFlowTransaction(
       props.selectedPaymentMethod,
       newTransaction.value
     )
@@ -504,17 +504,17 @@ const exportTransactions = () => {
   const data = transactions.value.map(transaction => ({
     'Date': date.formatDate(transaction.date, 'YYYY-MM-DD HH:mm'),
     'Type': transaction.type === 'in' ? 'Money In' : 'Money Out',
-    'Amount': inventoryStore.formatCurrency(transaction.value),
+    'Amount': financialStore.formatCurrency(transaction.value),
     'Description': transaction.description
   }))
 
-  inventoryStore.exportToCSV(data, `${props.selectedPaymentMethod.toLowerCase()}-transactions`)
+  financialStore.exportToCSV(data, `${props.selectedPaymentMethod.toLowerCase()}-transactions`)
 }
 
 const fetchTransactions = async () => {
   loading.value = true
   try {
-    await inventoryStore.fetchCashFlowTransactions(props.selectedPaymentMethod)
+    await financialStore.fetchCashFlowTransactions(props.selectedPaymentMethod)
   } catch (error) {
     console.error('Error fetching transactions:', error)
     $q.notify({

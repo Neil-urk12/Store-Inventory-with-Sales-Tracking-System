@@ -2,16 +2,16 @@
  * @component DailyPnl
  * @description A component that displays daily profit and loss information.
  * Shows today's profit and expenses with color-coded values and loading states.
- * Integrates with the inventory store for financial data.
+ * Integrates with the financial store for financial data.
  */
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useInventoryStore } from 'src/stores/inventoryStore'
+import { useFinancialStore } from '../../stores/financialStore'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
-const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 
 /** @type {import('vue').Ref<boolean>} */
 const isLoading = ref(true)
@@ -25,7 +25,7 @@ const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 
 onMounted(async () => {
   try {
-    await inventoryStore.loadInventory()
+    await financialStore.loadFinancialData()
   } finally {
     isLoading.value = false
   }
@@ -33,12 +33,12 @@ onMounted(async () => {
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the daily profit from the inventory store
+ * @description Computes the daily profit from the financial store
  * @returns {number} Daily profit value, defaults to 0 if error occurs
  */
 const dailyProfit = computed(() => {
   try {
-    return inventoryStore.getDailyProfit || 0
+    return financialStore.getDailyProfit || 0
   } catch (error) {
     console.error('Error calculating daily profit:', error)
     return 0
@@ -47,16 +47,25 @@ const dailyProfit = computed(() => {
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the daily expenses from the inventory store
+ * @description Computes the daily expenses from the financial store
  * @returns {number} Daily expense value, defaults to 0 if error occurs
  */
 const dailyExpense = computed(() => {
   try {
-    return inventoryStore.getDailyExpense || 0
+    return financialStore.getDailyExpense || 0
   } catch (error) {
     console.error('Error calculating daily expense:', error)
     return 0
   }
+})
+
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the net profit from the financial store
+ * @returns {number} Net profit value
+ */
+const netProfit = computed(() => {
+  return dailyProfit.value - dailyExpense.value
 })
 </script>
 
@@ -70,13 +79,19 @@ const dailyExpense = computed(() => {
       <div class="text-center">
         <div class="text-subtitle2 q-mb-xs" :style="{ color : textColor }">Today's Profit</div>
         <div class="text-h6" :class="dailyProfit >= 0 ? 'text-positive' : 'text-negative'">
-          {{ inventoryStore.formatCurrency(dailyProfit) }}
+          {{ financialStore.formatCurrency(dailyProfit) }}
         </div>
       </div>
       <div class="text-center">
         <div class="text-subtitle2 q-mb-xs" :style="{ color : textColor }">Today's Expenses</div>
         <div class="text-h6 text-negative">
-          {{ inventoryStore.formatCurrency(dailyExpense) }}
+          {{ financialStore.formatCurrency(dailyExpense) }}
+        </div>
+      </div>
+      <div class="text-center">
+        <div class="text-subtitle2 q-mb-xs" :style="{ color : textColor }">Today's Net Profit</div>
+        <div class="text-h6" :class="netProfit >= 0 ? 'text-positive' : 'text-negative'">
+          {{ financialStore.formatCurrency(netProfit) }}
         </div>
       </div>
     </div>
