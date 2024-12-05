@@ -67,6 +67,12 @@ onMounted(() => {
             <div class="row items-center justify-between q-mb-md">
               <div class="text-h6">Point of Sale</div>
               <div class="row q-gutter-sm">
+                <q-btn
+                  color="primary"
+                  icon="history"
+                  label="Sales History"
+                  to="/sales/history"
+                />
                 <q-input
                   v-model="salesStore.searchQuery"
                   dense

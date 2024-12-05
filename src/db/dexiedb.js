@@ -24,7 +24,10 @@ class AppDatabase extends Dexie {
       // Inventory tables
       categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
       items: '++id, name, sku, categoryId, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
-      sales: '++id, itemId, quantity, price, date, syncStatus, firebaseId',
+
+      // Sales tables
+      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId',
+
       cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
       // Contacts tables
