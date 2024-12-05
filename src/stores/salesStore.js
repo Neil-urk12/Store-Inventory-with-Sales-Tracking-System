@@ -22,7 +22,12 @@ export const useSalesStore = defineStore('sales', {
     searchQuery: '',
     selectedCategory: '',
     selectedPaymentMethod: null,
-    showCheckoutDialog: false
+    showCheckoutDialog: false,
+    loading: false,
+    dateRange: {
+      from: formatDate(new Date(), 'YYYY-MM-DD'),
+      to: formatDate(new Date(), 'YYYY-MM-DD')
+    }
   }),
 
   getters: {
@@ -189,6 +194,50 @@ export const useSalesStore = defineStore('sales', {
       this.showCheckoutDialog = false
       this.selectedPaymentMethod = null
       return { success: true }
-    }
+    },
+
+    /**
+     * @async
+     * @method generateSalesReport
+     * @returns {Promise<Array>} Sales report data
+     * @description Generates a sales report for the specified date range
+     */
+    async generateSalesReport() {
+      try {
+        this.loading = true
+        const { from, to } = this.dateRange
+
+        // Fetch sales data from database for the date range
+        const salesData = await db.sales
+          .where('date')
+          .between(from, to)
+          .toArray()
+
+        return salesData.map(sale => ({
+          id: sale.id,
+          date: sale.date,
+          items: sale.items,
+          quantity: sale.quantity,
+          total: sale.total
+        }))
+      } catch (error) {
+        console.error('Error generating sales report:', error)
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * @method setDateRange
+     * @param {Object} range - Date range to set
+     * @description Sets the date range for reports
+     */
+    setDateRange(range) {
+      this.dateRange = {
+        from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
+        to: formatDate(new Date(range.to), 'YYYY-MM-DD')
+      }
+    },
   }
 })
