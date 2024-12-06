@@ -48,8 +48,8 @@ export const useFinancialStore = defineStore('financial', {
       const todayStr = formatDate(today, 'YYYY-MM-DD')
       return Object.values(this.cashFlowTransactions)
         .flat()
-        .filter(transaction => 
-          transaction.date === todayStr && 
+        .filter(transaction =>
+          transaction.date === todayStr &&
           transaction.type === 'expense'
         )
         .reduce((sum, transaction) => sum + transaction.amount, 0)
@@ -64,6 +64,37 @@ export const useFinancialStore = defineStore('financial', {
   },
 
   actions: {
+    /**
+     * @method syncWithFirestore
+     * @description Syncs unsynced transactions with Firestore when online
+     * @private
+     */
+    async syncWithFirestore() {
+      if (!isOnline.value) return
+
+      try {
+        const unsyncedTransactions = await db.cashFlowTransactions
+          .where('synced')
+          .equals(false)
+          .toArray()
+
+        for (const transaction of unsyncedTransactions) {
+          const firestoreRef = collection(fireDb, 'cashFlowTransactions')
+          const docRef = await addDoc(firestoreRef, {
+            ...transaction,
+            timestamp: serverTimestamp()
+          })
+
+          await db.cashFlowTransactions.update(transaction.id, {
+            firestoreId: docRef.id,
+            synced: true
+          })
+        }
+      } catch (error) {
+        console.error('Error syncing with Firestore:', error)
+      }
+    },
+
     async fetchCashFlowTransactions(paymentMethod) {
       try {
         // Load from local DB first
@@ -84,6 +115,10 @@ export const useFinancialStore = defineStore('financial', {
 
           // Merge and update local DB
           await this.mergeCashFlowTransactions(localTransactions, firestoreTransactions)
+
+          // Sync any remaining unsynced transactions
+          this.syncWithFirestore()
+            .catch(error => console.error('Background sync failed:', error))
         }
 
         return true
@@ -93,7 +128,75 @@ export const useFinancialStore = defineStore('financial', {
       }
     },
 
+    /**
+     * @method mergeCashFlowTransactions
+     * @description Merges local and Firestore transactions, handling conflicts based on timestamp
+     * @param {Array} localTransactions - Local transactions from IndexedDB
+     * @param {Array} firestoreTransactions - Transactions from Firestore
+     */
+    async mergeCashFlowTransactions(localTransactions, firestoreTransactions) {
+      try {
+        const mergeOperations = []
+
+        // Update local transactions with Firestore data
+        for (const fireTransaction of firestoreTransactions) {
+          const localMatch = localTransactions.find(
+            local => local.firestoreId === fireTransaction.id
+          )
+
+          if (localMatch) {
+            // Update if Firestore version is newer
+            const fireTimestamp = new Date(fireTransaction.timestamp).getTime()
+            const localTimestamp = new Date(localMatch.timestamp).getTime()
+
+            if (fireTimestamp > localTimestamp) {
+              mergeOperations.push(
+                db.cashFlowTransactions.update(localMatch.id, {
+                  ...fireTransaction,
+                  synced: true
+                })
+              )
+            }
+          } else {
+            // Add new transaction from Firestore
+            mergeOperations.push(
+              db.cashFlowTransactions.add({
+                ...fireTransaction,
+                firestoreId: fireTransaction.id,
+                synced: true
+              })
+            )
+          }
+        }
+
+        // Find local transactions not in Firestore (might be deleted remotely)
+        const firebaseIds = new Set(firestoreTransactions.map(t => t.id))
+        const localOnly = localTransactions.filter(
+          local => local.firestoreId && !firebaseIds.has(local.firestoreId)
+        )
+
+        // Mark these as unsynced to handle potential deletes
+        for (const local of localOnly) {
+          mergeOperations.push(
+            db.cashFlowTransactions.update(local.id, { synced: false })
+          )
+        }
+
+        await Promise.all(mergeOperations)
+        return true
+      } catch (error) {
+        console.error('Error merging transactions:', error)
+        return false
+      }
+    },
+
     async addCashFlowTransaction(paymentMethod, transactionData) {
+      const validation = this.validateTransactionData(transactionData)
+      if (!validation.isValid) {
+        console.error('Invalid transaction data:', validation.errors)
+        throw new Error(validation.errors.join(', '))
+      }
+
       try {
         const transaction = {
           ...transactionData,
@@ -102,7 +205,7 @@ export const useFinancialStore = defineStore('financial', {
           synced: false
         }
 
-        // Save to local DB
+        // Save to local DB first
         const id = await db.cashFlowTransactions.add(transaction)
         transaction.id = id
 
@@ -112,19 +215,10 @@ export const useFinancialStore = defineStore('financial', {
         }
         this.cashFlowTransactions[paymentMethod].push(transaction)
 
-        // If online, sync with Firestore
+        // Try to sync with Firestore in background if online
         if (isOnline.value) {
-          const firestoreRef = collection(fireDb, 'cashFlowTransactions')
-          const docRef = await addDoc(firestoreRef, {
-            ...transaction,
-            timestamp: serverTimestamp()
-          })
-          
-          // Update local transaction with Firestore ID
-          await db.cashFlowTransactions.update(id, {
-            firestoreId: docRef.id,
-            synced: true
-          })
+          this.syncWithFirestore()
+            .catch(error => console.error('Background sync failed:', error))
         }
 
         return true
@@ -135,6 +229,12 @@ export const useFinancialStore = defineStore('financial', {
     },
 
     async updateCashFlowTransaction(paymentMethod, transactionId, updatedData) {
+      const validation = this.validateTransactionData(updatedData)
+      if (!validation.isValid) {
+        console.error('Invalid transaction data:', validation.errors)
+        throw new Error(validation.errors.join(', '))
+      }
+
       try {
         // Update local DB
         await db.cashFlowTransactions.update(transactionId, {
@@ -142,21 +242,21 @@ export const useFinancialStore = defineStore('financial', {
           synced: false
         })
 
-        // Update state
+        // Update local state
         const transactions = this.cashFlowTransactions[paymentMethod]
         const index = transactions.findIndex(t => t.id === transactionId)
         if (index !== -1) {
-          transactions[index] = { ...transactions[index], ...updatedData }
+          transactions[index] = {
+            ...transactions[index],
+            ...updatedData,
+            synced: false
+          }
         }
 
-        // If online, sync with Firestore
+        // Try to sync with Firestore in background if online
         if (isOnline.value) {
-          const transaction = await db.cashFlowTransactions.get(transactionId)
-          if (transaction?.firestoreId) {
-            const docRef = doc(fireDb, 'cashFlowTransactions', transaction.firestoreId)
-            await updateDoc(docRef, updatedData)
-            await db.cashFlowTransactions.update(transactionId, { synced: true })
-          }
+          this.syncWithFirestore()
+            .catch(error => console.error('Background sync failed:', error))
         }
 
         return true
@@ -170,26 +270,53 @@ export const useFinancialStore = defineStore('financial', {
       try {
         const transaction = await db.cashFlowTransactions.get(transactionId)
 
-        // Delete from local DB
+        // Delete from local DB first
         await db.cashFlowTransactions.delete(transactionId)
 
-        // Update state
+        // Update local state
         const transactions = this.cashFlowTransactions[paymentMethod]
         const index = transactions.findIndex(t => t.id === transactionId)
         if (index !== -1) {
           transactions.splice(index, 1)
         }
 
-        // If online and has Firestore ID, delete from Firestore
+        // If online and has Firestore ID, delete from Firestore in background
         if (isOnline.value && transaction?.firestoreId) {
           const docRef = doc(fireDb, 'cashFlowTransactions', transaction.firestoreId)
-          await deleteDoc(docRef)
+          deleteDoc(docRef)
+            .catch(error => console.error('Error deleting from Firestore:', error))
         }
 
         return true
       } catch (error) {
         console.error('Error deleting cash flow transaction:', error)
         return false
+      }
+    },
+
+    /**
+     * @method validateTransactionData
+     * @param {Object} data - Transaction data to validate
+     * @returns {Object} Validation result with isValid and errors
+     */
+    validateTransactionData(data) {
+      const errors = []
+
+      if (!data.type || !['income', 'expense'].includes(data.type)) {
+        errors.push('Invalid transaction type')
+      }
+
+      if (typeof data.amount !== 'number' || data.amount <= 0) {
+        errors.push('Amount must be a positive number')
+      }
+
+      if (!data.date || !/^\d{4}-\d{2}-\d{2}$/.test(data.date)) {
+        errors.push('Invalid date format (required: YYYY-MM-DD)')
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors
       }
     },
 
@@ -269,7 +396,7 @@ export const useFinancialStore = defineStore('financial', {
       const headers = Object.keys(data[0])
       const csvContent = [
         headers.join(','),
-        ...data.map(row => 
+        ...data.map(row =>
           headers.map(header => {
             let cell = row[header]
             // Handle cells that contain commas or quotes
@@ -284,7 +411,7 @@ export const useFinancialStore = defineStore('financial', {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
       const url = URL.createObjectURL(blob)
-      
+
       link.setAttribute('href', url)
       link.setAttribute('download', `${filename}.csv`)
       link.style.visibility = 'hidden'
