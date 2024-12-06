@@ -1,15 +1,15 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
+import { useFinancialStore } from 'src/stores/financialStore';
 import { computed, ref } from 'vue'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 const loading = ref(false)
 
 const items = computed(() => inventoryStore.sortedItems)
-
-const formatPrice = (price) => `₱${Number(price).toFixed(2)}`
 
 const columns = [
   { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
@@ -224,7 +224,7 @@ function customSort(rows, sortBy, descending) {
               ]"
             />
           </q-popup-edit>
-          {{ formatPrice(props.row.price) }}
+          {{ financialStore.formatCurrency(props.row.price) }}
         </q-td>
       </template>
       <template v-slot:body-cell-actions="props">

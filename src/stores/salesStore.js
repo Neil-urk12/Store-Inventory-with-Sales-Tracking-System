@@ -63,14 +63,6 @@ export const useSalesStore = defineStore('sales', {
 
   actions: {
     /**
-     * @method formatPrice
-     * @returns {Promise<Int16Array>}
-     * @description Formats the price for uniformity and consistency
-     */
-    formatPrice(price) {
-      return price.toFixed(2)
-    },
-    /**
      * @method updateCartQuantity
      * @returns {Promise<void>}
      * @description Update cart quantity when adding products from the cart

@@ -2,9 +2,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { db } from '../db/dexiedb'
 import { useSalesStore } from '../stores/salesStore'
+import { useFinancialStore } from 'src/stores/financialStore'
 import { date } from 'quasar'
 
 const salesStore = useSalesStore()
+const financialStore = useFinancialStore()
 const loading = ref(false)
 const searchQuery = ref('')
 const dateRange = ref({ from: '', to: '' })
@@ -72,10 +74,6 @@ const filteredSales = computed(() => {
 
   return filtered
 })
-
-const formatPrice = (price) => {
-  return salesStore.formatPrice(price)
-}
 
 const showSaleDetails = (sale) => {
   selectedSale.value = sale
@@ -147,7 +145,7 @@ onMounted(() => {
               </template>
               <template v-slot:body-cell-total="props">
                 <q-td :props="props">
-                  ₱{{ formatPrice(props.row.total) }}
+                  ₱{{ financialStore.formatCurrency(props.row.total) }}
                 </q-td>
               </template>
             </q-table>
@@ -181,17 +179,17 @@ onMounted(() => {
                 <q-item-section>
                   <q-item-label>{{ item.name }}</q-item-label>
                   <q-item-label caption>
-                    Quantity: {{ item.quantity }} × ₱{{ formatPrice(item.price) }}
+                    Quantity: {{ item.quantity }} × ₱{{ financialStore.formatCurrency(item.price) }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  ₱{{ formatPrice(item.total) }}
+                  ₱{{ financialStore.formatCurrency(item.total) }}
                 </q-item-section>
               </q-item>
             </q-list>
           </div>
           <div class="text-h6 text-right">
-            Total: ₱{{ selectedSale ? formatPrice(selectedSale.total) : '0.00' }}
+            Total: ₱{{ selectedSale ? financialStore.formatCurrency(selectedSale.total) : '0.00' }}
           </div>
         </q-card-section>
       </q-card>

@@ -2,12 +2,14 @@
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useInventoryStore } from '../stores/inventoryStore'
 import { useSalesStore } from 'src/stores/salesStore';
+import { useFinancialStore } from 'src/stores/financialStore'
 import { useQuasar } from 'quasar'
 const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'));
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const salesStore = useSalesStore()
+const financialStore = useFinancialStore()
 
 const paymentMethods = [ 'Cash', 'GCash', 'Growsari']
 
@@ -116,7 +118,7 @@ onMounted(() => {
                 <q-item-section>
                   <q-item-label class="text-bold bg-primary q-pa-xs">{{ item.name }}</q-item-label>
                   <q-item-label caption>
-                    ₱{{ salesStore.formatPrice(item.price) }} × {{ item.quantity }}
+                    ₱{{ financialStore.formatCurrency(item.price) }} × {{ item.quantity }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
@@ -153,11 +155,11 @@ onMounted(() => {
             <div class="q-mt-md">
               <div class="row justify-between q-mb-sm">
                 <div class="text-subtitle1">Subtotal:</div>
-                <div class="text-subtitle1">₱{{ salesStore.formatPrice(subtotal) }}</div>
+                <div class="text-subtitle1">{{ financialStore.formatCurrency(subtotal) }}</div>
               </div>
               <div class="row justify-between q-mb-md">
                 <div class="text-subtitle1">Total:</div>
-                <div class="text-h6 text-primary">₱{{ salesStore.formatPrice(total) }}</div>
+                <div class="text-h6 text-primary">{{ financialStore.formatCurrency(total) }}</div>
               </div>
 
               <!-- Payment Method Selection -->
@@ -197,7 +199,7 @@ onMounted(() => {
             <div class="text-subtitle2">Payment Method</div>
             <div>{{ salesStore.selectedPaymentMethod }}</div>
           </div>
-          <div class="text-h6">Total: ₱{{ salesStore.formatPrice(total) }}</div>
+          <div class="text-h6">Total: ₱{{ financialStore.formatCurrency(total) }}</div>
         </q-card-section>
 
         <q-card-actions align="right">
