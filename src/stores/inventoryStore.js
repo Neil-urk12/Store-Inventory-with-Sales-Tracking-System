@@ -254,6 +254,7 @@ export const useInventoryStore = defineStore('inventory', {
         }
 
         await this.loadInventory()
+        await this.loadCategories()
       } catch (error) {
         this.error = handleError(error, 'Failed to initialize database')
       }
@@ -621,6 +622,7 @@ export const useInventoryStore = defineStore('inventory', {
         if (isOnline.value) {
           try {
             const snapshot = await getDocs(query(collection(fireDb, 'categories'), orderBy('name')))
+            console.log('Firestore categories:', snapshot.docs.map(doc => doc.data()))
             const firestoreCategories = snapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
