@@ -65,7 +65,7 @@ const validateAndSave = async () => {
       : await inventoryStore.createNewItem(editedItem.value)
 
     const action = editMode.value ? 'updated' : 'added'
-    if (result.offline) {
+    if (result.offline)
       $q.notify({
         color: 'warning',
         message: `Item will be ${action} when back online`,
@@ -74,18 +74,17 @@ const validateAndSave = async () => {
         position: 'top',
         timeout: 3000
       })
-    } else {
+    else
       $q.notify({
         color: 'positive',
         message: `Item ${action} successfully`,
         icon: 'cloud_done',
         position: 'top'
       })
-    }
 
     // Close dialog and reset form
     inventoryStore.itemDialog = false
-    formRef.value.resetValidation()
+    // formRef.value.resetValidation()
     await inventoryStore.loadInventory() // Refresh the inventory list
   } catch (err) {
     console.error('Save error:', err)
