@@ -21,7 +21,7 @@ A system that can help small business owners track their stocks and sales with a
 
 ## Prerequisites
 
-- Node.js >= 16.x
+- Node.js >= 16.x && <= 20.x
 - npm >= 6.13.4 or yarn >= 1.21.1
 - Firebase account and project
 
