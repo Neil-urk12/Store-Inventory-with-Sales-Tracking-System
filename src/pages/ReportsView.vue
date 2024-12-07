@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch, onUnmounted, defineAsyncComponent } fr
 import { Chart, registerables } from 'chart.js'
 import { useQuasar } from 'quasar'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { useFinancialStore } from '../stores/financialStore'
 const SalesReportDialog = defineAsyncComponent(() => import('../components/reports/SalesReportDialog.vue'))
 const StockLevelsDialog = defineAsyncComponent(() => import('../components/reports/StockLevelsDialog.vue'))
 const CashFlowDialog = defineAsyncComponent(() => import('../components/reports/CashFlowDialog.vue'))
@@ -14,6 +15,7 @@ const $q = useQuasar()
 const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 const categoryChart = ref(null)
 const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 const stockModal = ref(false)
 const salesReportDialog = ref(false)
 const cashFlowDialog = ref(false)
@@ -38,6 +40,76 @@ const updateSalesTimeframe = (value) => inventoryStore.updateSalesTimeframe(valu
 
 const isRenderingCategory = ref(false)
 
+const getCategoryChartData = () => {
+  // Group items by category and calculate total sales
+  const categoryData = inventoryStore.items.reduce((acc, item) => {
+    if (!acc[item.category])
+      acc[item.category] = 0
+    // Assuming each item's sales contribution is quantity * price
+    acc[item.category] += item.quantity * item.price
+    return acc
+  }, {})
+  const labels = Object.keys(categoryData).map(category =>
+    category.charAt(0).toUpperCase() + category.slice(1)
+  )
+  const data = Object.values(categoryData)
+
+  const colors = [
+    '#FF6384',
+    '#36A2EB',
+    '#FFCE56',
+    '#4BC0C0',
+    '#9966FF',
+    '#FF9F40'
+  ]
+
+  return {
+    labels,
+    datasets: [{
+      data,
+      backgroundColor: colors.slice(0, labels.length),
+      hoverBackgroundColor: colors.slice(0, labels.length)
+    }]
+  }
+}
+
+const getCategoryChartOptions = (textColor) => {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: {
+          color: textColor,
+          font: {
+            size: 12
+          }
+        }
+      },
+      title: {
+        display: true,
+        text: 'Sales by Category',
+        color: textColor,
+        font: {
+          size: 16
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const label = context.label || ''
+            const value = context.raw || 0
+            const total = context.dataset.data.reduce((a, b) => a + b, 0)
+            const percentage = ((value / total) * 100).toFixed(1)
+            return `${label}: ${financialStore.formatCurrency(value)} (${percentage}%)`
+          }
+        }
+      }
+    }
+  }
+}
+
 const renderCategoryChart = async () => {
   if (categoryChart.value) {
     categoryChart.value.destroy()
@@ -50,8 +122,8 @@ const renderCategoryChart = async () => {
 
   categoryChart.value = new Chart(ctx, {
     type: 'pie',
-    data: inventoryStore.getCategoryChartData(),
-    options: inventoryStore.getCategoryChartOptions(textColor)
+    data: getCategoryChartData(),
+    options: getCategoryChartOptions(textColor)
   })
 }
 
