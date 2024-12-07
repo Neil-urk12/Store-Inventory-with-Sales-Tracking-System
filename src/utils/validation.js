@@ -12,10 +12,10 @@ export const validateContact = (contact) => {
 
   if (!contact.name?.trim())
     errors.push('Contact name is required')
-  if(!contact.email?.trim())
-    throw new Error('Email is required')
-  if(!contact.phone?.trim())
-    throw new Error('Phone is required')
+  if (!contact.email?.trim())
+    errors.push('Email is required')
+  if (!contact.phone?.trim())
+    errors.push('Phone is required')
   if (contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email))
     errors.push('Invalid email format')
   if (contact.phone && !/^\+?[\d\s-()]+$/.test(contact.phone))
@@ -39,7 +39,6 @@ export const validateContactCategory = (category) => {
 
   if (!category.name?.trim())
     errors.push('Category name is required')
-
   if (category.description && category.description.length > 500)
     errors.push('Category description must not exceed 500 characters')
 
@@ -70,7 +69,7 @@ export const validateDataBeforeSync = (contacts, categories) => {
   })
 
   categories.forEach(category => {
-    const validation = validateContactCategory(category);
+    const validation = validateContactCategory(category)
     if (!validation.isValid) {
       invalidCategories.push({
         item: category,
