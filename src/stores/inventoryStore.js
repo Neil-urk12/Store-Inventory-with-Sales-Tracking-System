@@ -70,7 +70,9 @@ export const useInventoryStore = defineStore('inventory', {
       totalItems: 0,
       processedItems: 0,
       failedItems: [],
-      retryCount: 0
+      retryCount: 0,
+      maxRetries: 3,
+      retryDelay: 1000 // 1 second delay between retries
     },
     sortBy: DEFAULT_SORT,
     sortDirection: DEFAULT_SORT_DIRECTION,
@@ -338,6 +340,11 @@ export const useInventoryStore = defineStore('inventory', {
         return { id: result, offline: true };
       } catch (error) {
         console.error('Error creating item:', error);
+        this.syncStatus.failedItems.push({
+          ...item,
+          error: error.message,
+          syncOperation: 'create'
+        })
         throw error;
       } finally {
         this.loading = false;
@@ -389,6 +396,11 @@ export const useInventoryStore = defineStore('inventory', {
         return { id, offline: true };
       } catch (error) {
         console.error('Error updating item:', error);
+        this.syncStatus.failedItems.push({
+          ...changes,
+          error: error.message,
+          syncOperation: 'update'
+        })
         throw error;
       } finally {
         this.loading = false;
@@ -460,6 +472,11 @@ export const useInventoryStore = defineStore('inventory', {
         return id
       } catch (error) {
         console.error('Error in deleteItem:', error)
+        this.syncStatus.failedItems.push({
+          id,
+          error: error.message,
+          syncOperation: 'delete'
+        })
         throw error
       }
     },
@@ -488,24 +505,35 @@ export const useInventoryStore = defineStore('inventory', {
         await this.loadCategories()
 
         for (const firestoreItem of firestoreItems) {
-          const existingItem = localItems.find(
-            item => item.firebaseId === firestoreItem.firebaseId
-          )
+          try {
+            const existingItem = localItems.find(
+              item => item.firebaseId === firestoreItem.firebaseId
+            )
 
-          if (!existingItem) {
-            const itemToAdd = {
-              ...firestoreItem,
-              categoryId: firestoreItem.categoryId,
-              category: this.getCategoryName(firestoreItem.categoryId),
-              syncStatus: 'synced'
+            if (!existingItem) {
+              const itemToAdd = {
+                ...firestoreItem,
+                categoryId: firestoreItem.categoryId,
+                category: this.getCategoryName(firestoreItem.categoryId),
+                syncStatus: 'synced'
+              }
+              await db.items.add(itemToAdd)
             }
-            await db.items.add(itemToAdd)
+          } catch (itemError) {
+            // Track failed items individually
+            this.syncStatus.failedItems.push({
+              ...firestoreItem,
+              error: itemError.message,
+              syncOperation: 'create'
+            })
           }
         }
+        
         await this.mergeChanges(localItems, firestoreItems)
         this.items = await db.getAllItems()
       } catch (error) {
         console.error('Error syncing with Firestore:', error)
+        this.error = handleError(error, 'Failed to sync with Firestore')
         throw error
       }
     },
@@ -1207,6 +1235,89 @@ export const useInventoryStore = defineStore('inventory', {
             display: false
           }
         }
+      }
+    },
+
+    async retryFailedSync(item) {
+      const { retryCount, maxRetries, retryDelay } = this.syncStatus
+      
+      if (retryCount >= maxRetries) {
+        console.error(`Max retries (${maxRetries}) reached for item:`, item.id)
+        return false
+      }
+
+      try {
+        this.syncStatus.retryCount++
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        
+        if (item.syncOperation === 'create') {
+          await this.createNewItem(item)
+        } else if (item.syncOperation === 'update') {
+          await this.updateExistingItem(item.id, item)
+        } else if (item.syncOperation === 'delete') {
+          await this.deleteItem(item.id)
+        }
+
+        // Remove from failed items if successful
+        this.syncStatus.failedItems = this.syncStatus.failedItems.filter(
+          failed => failed.id !== item.id
+        )
+        return true
+      } catch (error) {
+        console.error(`Retry failed for item ${item.id}:`, error)
+        return false
+      }
+    },
+
+    async retryAllFailedItems() {
+      const failedItems = [...this.syncStatus.failedItems]
+      const results = await Promise.allSettled(
+        failedItems.map(item => this.retryFailedSync(item))
+      )
+      
+      return results.filter(result => result.status === 'fulfilled' && result.value).length
+    },
+
+    cleanup(fullCleanup = false) {
+      // Cancel any pending debounced operations
+      if (debouncedSearch && typeof debouncedSearch.cancel === 'function') {
+        debouncedSearch.cancel()
+      }
+
+      // Reset UI state
+      this.loading = false
+      this.error = null
+      this.itemDialog = false
+      this.deleteDialog = false
+      this.editedItem = {}
+      this.itemToDelete = null
+
+      if (fullCleanup) {
+        // Full data cleanup
+        this.items = []
+        this.searchQuery = ''
+        this.categoryFilter = null
+        this.selectedItems = []
+        this.sortBy = DEFAULT_SORT
+        this.sortDirection = DEFAULT_SORT_DIRECTION
+        this.categories = []
+        this.inventoryData = []
+        this.lowStockAlerts = []
+        this.topSellingProducts = []
+      }
+
+      // Reset sync status
+      this.syncStatus = {
+        lastSync: null,
+        inProgress: false,
+        error: null,
+        pendingChanges: 0,
+        totalItems: 0,
+        processedItems: 0,
+        failedItems: [],
+        retryCount: 0,
+        maxRetries: 3,
+        retryDelay: 1000
       }
     },
   }
