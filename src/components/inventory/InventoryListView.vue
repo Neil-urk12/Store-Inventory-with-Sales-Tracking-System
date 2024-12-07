@@ -162,22 +162,6 @@ function customSort(rows, sortBy, descending) {
       </template>
       <template v-slot:body-cell-category="props">
         <q-td :props="props">
-          <q-popup-edit
-            v-model="props.row.categoryId"
-            v-slot="scope"
-            buttons
-            @save-handler="updateField(props.row, 'categoryId', scope.value)"
-          >
-            <q-select
-              v-model="scope.value"
-              :options="categories"
-              dense
-              autofocus
-              emit-value
-              map-options
-              options-dense
-            />
-          </q-popup-edit>
           {{ props.row.category }}
         </q-td>
       </template>

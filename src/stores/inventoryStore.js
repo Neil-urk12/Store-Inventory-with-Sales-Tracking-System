@@ -124,10 +124,12 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Function} Function to get category name from ID
      */
     getCategoryName: (state) => (categoryId) => {
-      // If categoryId is already a name (string), return it
-      if (typeof categoryId === 'string' && !state.categories.find(cat => cat.id === categoryId)) {
+      // If no categoryId is provided, return Uncategorized
+      if (!categoryId) return 'Uncategorized'
+
+      if (typeof categoryId === 'string' && !state.categories.find(cat => cat.id === categoryId))
         return categoryId
-      }
+
       // Otherwise look up the category by ID
       const category = state.categories.find(cat => cat.id === categoryId)
       return category ? category.name : 'Uncategorized'
@@ -482,16 +484,22 @@ export const useInventoryStore = defineStore('inventory', {
           firebaseId: doc.id
         }))
 
+        // Make sure categories are loaded before processing items
+        await this.loadCategories()
+
         for (const firestoreItem of firestoreItems) {
           const existingItem = localItems.find(
             item => item.firebaseId === firestoreItem.firebaseId
           )
 
           if (!existingItem) {
-            await db.items.add({
+            const itemToAdd = {
               ...firestoreItem,
+              categoryId: firestoreItem.categoryId,
+              category: this.getCategoryName(firestoreItem.categoryId),
               syncStatus: 'synced'
-            })
+            }
+            await db.items.add(itemToAdd)
           }
         }
         await this.mergeChanges(localItems, firestoreItems)
@@ -622,7 +630,6 @@ export const useInventoryStore = defineStore('inventory', {
         if (isOnline.value) {
           try {
             const snapshot = await getDocs(query(collection(fireDb, 'categories'), orderBy('name')))
-            console.log('Firestore categories:', snapshot.docs.map(doc => doc.data()))
             const firestoreCategories = snapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
@@ -630,8 +637,8 @@ export const useInventoryStore = defineStore('inventory', {
               updatedAt: doc.data().updatedAt?.toDate() || new Date()
             }))
 
-          // Merge local and Firestore categories
-          await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+            // Merge local and Firestore categories
+            await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
           } catch (error) {
             console.error('Error syncing categories with Firestore:', error)
             // Continue with local categories
