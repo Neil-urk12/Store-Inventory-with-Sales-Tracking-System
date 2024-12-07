@@ -4,7 +4,7 @@
  * **/
 
 import Dexie from 'dexie';
-
+import { useInventoryStore } from 'src/stores/inventoryStore';
 
 /**
  * @class AppDatabase
@@ -20,10 +20,10 @@ class AppDatabase extends Dexie {
   constructor() {
     super('inventoryDb'); // Name of the database
 
-    this.version(1).stores({
+    this.version(2).stores({
       // Inventory tables
       categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
-      items: '++id, name, sku, categoryId, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
+      items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
 
       // Sales tables
       sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId',
@@ -42,10 +42,20 @@ class AppDatabase extends Dexie {
     this.items.hook('creating', (primKey, obj) => {
       obj.createdAt = new Date().toISOString();
       obj.updatedAt = new Date().toISOString();
+      // Ensure category information is preserved
+      if (obj.categoryId && !obj.category) {
+        const store = useInventoryStore();
+        obj.category = store.getCategoryName(obj.categoryId);
+      }
     });
 
     this.items.hook('updating', (modifications, primKey, obj) => {
       modifications.updatedAt = new Date().toISOString();
+      // Ensure category information is preserved during updates
+      if (modifications.categoryId && !modifications.category) {
+        const store = useInventoryStore();
+        modifications.category = store.getCategoryName(modifications.categoryId);
+      }
     });
 
     this.categories.hook('creating', (primKey, obj) => {
