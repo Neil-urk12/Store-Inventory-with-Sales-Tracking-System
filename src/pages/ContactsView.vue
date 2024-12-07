@@ -203,39 +203,29 @@ const deleteContact = (contactCategory, contactPerson) => {
         timeout: 2000
       });
     } catch (error) {
-      console.error('Error deleting contact:', error);
+      console.error('Error deleting contact:', error)
       $q.notify({
         type: 'negative',
         message: 'Error deleting contact',
         position: 'top',
         timeout: 2000
-      });
+      })
     }
-  });
-};
+  })
+}
 
 const saveContact = async () => {
   try {
-    if (!newContact.name.trim()) {
-      $q.notify({
-        type: 'negative',
-        message: 'Contact name is required',
-        position: 'top',
-        timeout: 2000
-      });
-      return;
-    }
-
     const contactData = {
-      name: newContact.name,
-      email: newContact.email,
-      phone: newContact.phone,
+      name: newContact.name.trim(),
+      email: newContact.email.trim(),
+      phone: newContact.phone.trim(),
       avatar: newContact.avatar,
       categoryId: newContact.categoryId
     };
 
     if (newContact.id) {
-      await contactsStore.updateContact(newContact.id, contactData);
+      await contactsStore.updateContact(newContact.id, contactData)
       $q.notify({
         type: 'positive',
         message: 'Contact updated successfully',
@@ -243,7 +233,7 @@ const saveContact = async () => {
         timeout: 2000
       });
     } else {
-      await contactsStore.addContact(contactData);
+      await contactsStore.addContact(contactData)
       $q.notify({
         type: 'positive',
         message: 'Contact added successfully',
@@ -251,12 +241,18 @@ const saveContact = async () => {
         timeout: 2000
       });
     }
-    contactEntryModalOpen.value = false;
+    contactEntryModalOpen.value = false
   } catch (error) {
-    console.error('Error saving contact:', error);
+    console.error('Error saving contact:', error)
+    let errorMessage = 'Error saving contact'
+    if (error.code === 'VALIDATION_ERROR')
+      errorMessage = error.message
+    else if (error.code === 'OFFLINE_ERROR')
+      errorMessage = 'Cannot save contact while offline'
+
     $q.notify({
       type: 'negative',
-      message: 'Error saving contact',
+      message: errorMessage,
       position: 'top',
       timeout: 2000
     });
@@ -264,7 +260,7 @@ const saveContact = async () => {
 };
 
 // Computed property for contact categories from store
-const contactCategories = computed(() => contactsStore.contactCategories);
+const contactCategories = computed(() => contactsStore.contactCategories)
 </script>
 
 <template>
@@ -386,24 +382,25 @@ const contactCategories = computed(() => contactsStore.contactCategories);
               v-model="newContact.name"
               label="Name"
               filled
-              :rules="[val => !!val || 'Name is required']"
+              :rules="[val => !!val?.trim() || 'Name is required']"
             />
             <q-input
               v-model="newContact.email"
-              label="Email"
+              label="Email (Optional)"
               filled
               type="email"
               :rules="[
-                val => !!val || 'Email is required',
-                val => /^[^@]+@[^@]+\.[^@]+$/.test(val) || 'Invalid email format'
+                val => !val?.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) || 'Invalid email format'
               ]"
             />
             <q-input
               v-model="newContact.phone"
-              label="Phone"
+              label="Phone (Optional)"
               filled
               type="tel"
-              :rules="[val => !!val || 'Phone is required']"
+              :rules="[
+                val => !val?.trim() || /^\+?[\d\s-()]+$/.test(val) || 'Invalid phone number format'
+              ]"
             />
           </div>
         </q-card-section>
