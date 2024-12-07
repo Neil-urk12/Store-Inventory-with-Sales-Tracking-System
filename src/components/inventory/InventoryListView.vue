@@ -101,6 +101,14 @@ function customSort(rows, sortBy, descending) {
 
 <template>
   <div class="q-pa-md">
+    <div class="row q-mb-md items-center justify-between">
+      <q-btn
+        color="primary"
+        icon="cleaning_services"
+        label="Clean Duplicates"
+        @click="inventoryStore.cleanupDuplicates()"
+      />
+    </div>
     <q-table
       :rows="items"
       :columns="columns"
@@ -140,7 +148,7 @@ function customSort(rows, sortBy, descending) {
               autofocus
             />
           </q-popup-edit>
-          {{ props.row.name }}
+          {{ props.value }}
         </q-td>
       </template>
       <template v-slot:body-cell-sku="props">
@@ -157,7 +165,7 @@ function customSort(rows, sortBy, descending) {
               autofocus
             />
           </q-popup-edit>
-          {{ props.row.sku }}
+          {{ props.value }}
         </q-td>
       </template>
       <template v-slot:body-cell-category="props">

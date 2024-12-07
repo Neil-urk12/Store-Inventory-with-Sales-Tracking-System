@@ -506,18 +506,52 @@ export const useInventoryStore = defineStore('inventory', {
 
         for (const firestoreItem of firestoreItems) {
           try {
-            const existingItem = localItems.find(
-              item => item.firebaseId === firestoreItem.firebaseId
-            )
+            // Check if item already exists by firebaseId
+            const existingItems = await db.items
+              .where('firebaseId')
+              .equals(firestoreItem.firebaseId)
+              .toArray()
 
-            if (!existingItem) {
-              const itemToAdd = {
-                ...firestoreItem,
-                categoryId: firestoreItem.categoryId,
-                category: this.getCategoryName(firestoreItem.categoryId),
-                syncStatus: 'synced'
+            if (existingItems.length > 0) {
+              // Update the first instance and delete any duplicates
+              const [itemToKeep, ...duplicates] = existingItems
+              
+              if (itemToKeep.syncStatus !== 'pending') {
+                const firestoreDate = new Date(firestoreItem.updatedAt)
+                const localDate = new Date(itemToKeep.updatedAt)
+
+                if (firestoreDate > localDate) {
+                  await db.items.update(itemToKeep.id, {
+                    ...firestoreItem,
+                    id: itemToKeep.id,
+                    syncStatus: 'synced'
+                  })
+                }
               }
-              await db.items.add(itemToAdd)
+
+              // Delete any duplicate entries
+              for (const duplicate of duplicates) {
+                await db.items.delete(duplicate.id)
+              }
+            } else if (firestoreItem.localId) {
+              // This is a new item from another client
+              const existingLocal = await db.items
+                .where('id')
+                .equals(parseInt(firestoreItem.localId))
+                .first()
+
+              if (!existingLocal) {
+                await db.items.add({
+                  ...firestoreItem,
+                  syncStatus: 'synced'
+                })
+              }
+            } else {
+              // Completely new item
+              await db.items.add({
+                ...firestoreItem,
+                syncStatus: 'synced'
+              })
             }
           } catch (itemError) {
             // Track failed items individually
@@ -550,24 +584,32 @@ export const useInventoryStore = defineStore('inventory', {
       return await db.transaction('rw', db.items, async () => {
         // Only process items that are already synced (not pending local changes)
         for (const firestoreItem of firestoreItems) {
-          const localItem = localItems.find(
-            item => item.firebaseId === firestoreItem.firebaseId
-          )
+          // Check if item already exists by firebaseId
+          const existingItems = await db.items
+            .where('firebaseId')
+            .equals(firestoreItem.firebaseId)
+            .toArray()
 
-          if (localItem) {
-            // Only update if the item is not pending local changes
-            const currentItem = await db.items.get(localItem.id)
-            if (currentItem.syncStatus !== 'pending') {
+          if (existingItems.length > 0) {
+            // Update the first instance and delete any duplicates
+            const [itemToKeep, ...duplicates] = existingItems
+            
+            if (itemToKeep.syncStatus !== 'pending') {
               const firestoreDate = new Date(firestoreItem.updatedAt)
-              const localDate = new Date(currentItem.updatedAt)
+              const localDate = new Date(itemToKeep.updatedAt)
 
               if (firestoreDate > localDate) {
-                await db.items.update(localItem.id, {
+                await db.items.update(itemToKeep.id, {
                   ...firestoreItem,
-                  id: localItem.id,
+                  id: itemToKeep.id,
                   syncStatus: 'synced'
                 })
               }
+            }
+
+            // Delete any duplicate entries
+            for (const duplicate of duplicates) {
+              await db.items.delete(duplicate.id)
             }
           } else if (firestoreItem.localId) {
             // This is a new item from another client
@@ -582,6 +624,12 @@ export const useInventoryStore = defineStore('inventory', {
                 syncStatus: 'synced'
               })
             }
+          } else {
+            // Completely new item
+            await db.items.add({
+              ...firestoreItem,
+              syncStatus: 'synced'
+            })
           }
         }
 
@@ -1129,7 +1177,7 @@ export const useInventoryStore = defineStore('inventory', {
             let cell = row[header]
             // Handle cells that contain commas or quotes
             if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
-              cell = `"${cell.replace(/"/g, '""')}"`
+              cell = `"${cell.replace(/"/g, '""')}"` // escape double quotes
             }
             return cell
           }).join(',')
@@ -1276,6 +1324,44 @@ export const useInventoryStore = defineStore('inventory', {
       )
       
       return results.filter(result => result.status === 'fulfilled' && result.value).length
+    },
+
+    async cleanupDuplicates() {
+      try {
+        this.loading = true
+        await db.transaction('rw', db.items, async () => {
+          // Get all items
+          const allItems = await db.items.toArray()
+          
+          // Group items by firebaseId
+          const groupedItems = allItems.reduce((acc, item) => {
+            if (!item.firebaseId) return acc
+            if (!acc[item.firebaseId]) acc[item.firebaseId] = []
+            acc[item.firebaseId].push(item)
+            return acc
+          }, {})
+
+          // For each group of items with the same firebaseId
+          for (const [firebaseId, items] of Object.entries(groupedItems)) {
+            if (items.length > 1) {
+              // Keep the first item, delete the rest
+              const [itemToKeep, ...duplicates] = items
+              
+              // Delete duplicates
+              for (const duplicate of duplicates) {
+                await db.items.delete(duplicate.id)
+              }
+            }
+          }
+        })
+
+        // Reload inventory after cleanup
+        await this.loadInventory()
+      } catch (error) {
+        this.error = handleError(error, 'Failed to cleanup duplicates')
+      } finally {
+        this.loading = false
+      }
     },
 
     cleanup(fullCleanup = false) {
