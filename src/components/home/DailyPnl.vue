@@ -29,12 +29,17 @@ const loadFinancialData = async () => {
   try {
     isRefreshing.value = true
     await financialStore.generateFinancialReport()
-    await Promise.all([
-      financialStore.fetchCashFlowTransactions('Cash'),
-      financialStore.fetchCashFlowTransactions('GCash'),
-      financialStore.fetchCashFlowTransactions('Growsari')
-    ])
+
+    // Load transactions for each payment method
+    for (const method of ['Cash', 'GCash', 'Growsari']) {
+      const transactions = await financialStore.fetchCashFlowTransactions(method)
+      if (financialStore.error) {
+        throw new Error(`Error loading ${method} transactions: ${financialStore.error}`)
+      }
+    }
+
     retryCount.value = 0
+    isLoading.value = false
   } catch (error) {
     console.error('Error loading financial data:', error)
     if (retryCount.value < maxRetries) {
@@ -44,26 +49,15 @@ const loadFinancialData = async () => {
         message: `Retrying data load (attempt ${retryCount.value}/${maxRetries})...`,
         timeout: 2000
       })
-      // Exponential backoff
       await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount.value)))
       return loadFinancialData()
     }
     $q.notify({
       type: 'negative',
-      message: 'Failed to load financial data after multiple attempts',
-      actions: [
-        {
-          label: 'Retry',
-          color: 'white',
-          handler: () => {
-            retryCount.value = 0
-            loadFinancialData()
-          }
-        }
-      ]
+      message: 'Failed to load financial data. Please try again later.',
+      timeout: 5000
     })
   } finally {
-    isLoading.value = false
     isRefreshing.value = false
   }
 }

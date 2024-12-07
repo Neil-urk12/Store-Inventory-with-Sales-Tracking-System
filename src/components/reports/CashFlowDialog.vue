@@ -78,14 +78,14 @@
                   <div class="row items-center justify-between">
                     <div class="text-subtitle2">{{ props.row.description }}</div>
                     <q-badge
-                      :color="props.row.type === 'in' ? 'positive' : 'negative'"
+                      :color="props.row.type === 'income' ? 'positive' : 'negative'"
                       text-color="white"
                     >
                       {{ props.row.type.toUpperCase() }}
                     </q-badge>
                   </div>
                   <div class="row items-center justify-between q-mt-sm">
-                    <div>{{ financialStore.formatCurrency(props.row.value) }}</div>
+                    <div>{{ financialStore.formatCurrency(props.row.amount) }}</div>
                     <div>{{ props.row.date }}</div>
                   </div>
                   <div class="row items-center justify-end q-mt-sm">
@@ -126,7 +126,7 @@
               >
                 <template v-if="col.name === 'type'">
                   <q-badge
-                    :color="props.row.type === 'in' ? 'positive' : 'negative'"
+                    :color="props.row.type === 'income' ? 'positive' : 'negative'"
                     text-color="white"
                   >
                     {{ props.row.type.toUpperCase() }}
@@ -203,7 +203,7 @@
             >
               <q-item-section>
                 <q-badge
-                  :color="opt.value === 'in' ? 'positive' : 'negative'"
+                  :color="opt.value === 'income' ? 'positive' : 'negative'"
                   text-color="white"
                 >
                   {{ opt.label }}
@@ -213,7 +213,7 @@
           </template>
           <template #selected>
             <q-badge
-              :color="newTransaction.type === 'in' ? 'positive' : 'negative'"
+              :color="newTransaction.type === 'income' ? 'positive' : 'negative'"
               text-color="white"
             >
               {{ transactionTypes.find(t => t.value === newTransaction.type)?.label }}
@@ -222,7 +222,7 @@
         </q-select>
 
         <q-input
-          v-model.number="newTransaction.value"
+          v-model.number="newTransaction.amount"
           type="number"
           label="Amount"
           outlined
@@ -252,7 +252,7 @@
           :label="editMode ? 'Save' : 'Add'"
           @click="editMode ? updateTransaction() : addTransaction()"
           :loading="loading"
-          :disable="loading || !newTransaction.value || !newTransaction.description"
+          :disable="loading || !newTransaction.amount || !newTransaction.description"
         />
       </q-card-actions>
     </q-card>
@@ -322,9 +322,9 @@ const columns = [
     sortable: true
   },
   {
-    name: 'value',
+    name: 'amount',
     label: 'Amount',
-    field: 'value',
+    field: 'amount',
     sortable: true,
     format: val => financialStore.formatCurrency(val)
   },
@@ -342,23 +342,25 @@ const columns = [
   }
 ]
 
-const transactions = computed(() => {
-  return financialStore.cashFlowTransactions[props.selectedPaymentMethod] || []
-})
+const transactions = ref([])
 
 const totalBalance = computed(() => {
-  return financialStore.getBalance(props.selectedPaymentMethod) || 0
+  return transactions.value.reduce((sum, transaction) => {
+    const amount = Number(transaction?.amount) || 0
+    return sum + (transaction?.type === 'income' ? amount : -amount)
+  }, 0)
 })
 
 const transactionTypes = [
-  { label: 'Money In', value: 'in' },
-  { label: 'Money Out', value: 'out' }
+  { label: 'Income', value: 'income' },
+  { label: 'Expense', value: 'expense' }
 ]
 
 const newTransaction = ref({
-  type: 'in',
-  value: 0,
-  description: ''
+  type: 'income',
+  amount: 0,
+  description: '',
+  date: date.formatDate(new Date(), 'YYYY-MM-DD')
 })
 
 const showAddDialog = ref(false)
@@ -370,9 +372,10 @@ const selectedTransaction = ref(null)
 
 const resetTransaction = () => {
   newTransaction.value = {
-    type: 'in',
-    value: 0,
-    description: ''
+    type: 'income',
+    amount: 0,
+    description: '',
+    date: date.formatDate(new Date(), 'YYYY-MM-DD')
   }
   editMode.value = false
   selectedTransaction.value = null
@@ -383,8 +386,9 @@ const editTransaction = (transaction) => {
   selectedTransaction.value = transaction
   newTransaction.value = {
     type: transaction.type,
-    value: transaction.value,
-    description: transaction.description
+    amount: transaction.amount,
+    description: transaction.description,
+    date: transaction.date
   }
   showAddDialog.value = true
 }
@@ -392,29 +396,27 @@ const editTransaction = (transaction) => {
 const updateTransaction = async () => {
   if (!selectedTransaction.value) return
 
-  loading.value = true
   try {
-    const success = await financialStore.updateCashFlowTransaction(
-      props.selectedPaymentMethod,
-      selectedTransaction.value.id,
-      newTransaction.value
-    )
+    loading.value = true
+    await financialStore.updateTransaction(selectedTransaction.value.id, {
+      ...newTransaction.value,
+      date: date.formatDate(new Date(newTransaction.value.date), 'YYYY-MM-DD')
+    })
 
-    if (success) {
-      $q.notify({
-        color: 'positive',
-        message: 'Transaction updated successfully'
-      })
-      showAddDialog.value = false
-      resetTransaction()
-    } else {
-      throw new Error('Failed to update transaction')
-    }
+    await fetchTransactions()
+    showAddDialog.value = false
+
+    $q.notify({
+      type: 'positive',
+      message: 'Transaction updated successfully',
+      timeout: 2000
+    })
   } catch (error) {
     console.error('Error updating transaction:', error)
     $q.notify({
-      color: 'negative',
-      message: 'Failed to update transaction'
+      type: 'negative',
+      message: 'Failed to update transaction. Please try again.',
+      timeout: 3000
     })
   } finally {
     loading.value = false
@@ -429,28 +431,24 @@ const confirmDelete = (transaction) => {
 const deleteTransaction = async () => {
   if (!selectedTransaction.value) return
 
-  loading.value = true
   try {
-    const success = await financialStore.deleteCashFlowTransaction(
-      props.selectedPaymentMethod,
-      selectedTransaction.value.id
-    )
+    loading.value = true
+    await financialStore.deleteTransaction(selectedTransaction.value.id)
 
-    if (success) {
-      $q.notify({
-        color: 'positive',
-        message: 'Transaction deleted successfully'
-      })
-      showDeleteDialog.value = false
-      selectedTransaction.value = null
-    } else {
-      throw new Error('Failed to delete transaction')
-    }
+    await fetchTransactions()
+    showDeleteDialog.value = false
+
+    $q.notify({
+      type: 'positive',
+      message: 'Transaction deleted successfully',
+      timeout: 2000
+    })
   } catch (error) {
     console.error('Error deleting transaction:', error)
     $q.notify({
-      color: 'negative',
-      message: 'Failed to delete transaction'
+      type: 'negative',
+      message: 'Failed to delete transaction. Please try again.',
+      timeout: 3000
     })
   } finally {
     loading.value = false
@@ -458,40 +456,29 @@ const deleteTransaction = async () => {
 }
 
 const addTransaction = async () => {
-  if (!newTransaction.value.value || !newTransaction.value.description) {
-    $q.notify({
-      color: 'negative',
-      message: 'Please fill in all fields'
-    })
-    return
-  }
-
-  loading.value = true
   try {
-    const success = await financialStore.addCashFlowTransaction(
-      props.selectedPaymentMethod,
-      newTransaction.value
-    )
+    loading.value = true
+    await financialStore.addTransaction({
+      ...newTransaction.value,
+      paymentMethod: props.selectedPaymentMethod,
+      date: date.formatDate(new Date(newTransaction.value.date), 'YYYY-MM-DD')
+    })
 
-    if (success) {
-      newTransaction.value = {
-        type: 'in',
-        value: 0,
-        description: ''
-      }
-      showAddDialog.value = false
-      $q.notify({
-        color: 'positive',
-        message: 'Transaction added successfully'
-      })
-    } else {
-      throw new Error('Failed to add transaction')
-    }
+    await fetchTransactions()
+    showAddDialog.value = false
+    resetTransaction()
+
+    $q.notify({
+      type: 'positive',
+      message: 'Transaction added successfully',
+      timeout: 2000
+    })
   } catch (error) {
     console.error('Error adding transaction:', error)
     $q.notify({
-      color: 'negative',
-      message: 'Failed to add transaction'
+      type: 'negative',
+      message: 'Failed to add transaction. Please try again.',
+      timeout: 3000
     })
   } finally {
     loading.value = false
@@ -503,8 +490,8 @@ const exportTransactions = () => {
 
   const data = transactions.value.map(transaction => ({
     'Date': date.formatDate(transaction.date, 'YYYY-MM-DD HH:mm'),
-    'Type': transaction.type === 'in' ? 'Money In' : 'Money Out',
-    'Amount': financialStore.formatCurrency(transaction.value),
+    'Type': transaction.type === 'income' ? 'Income' : 'Expense',
+    'Amount': financialStore.formatCurrency(transaction.amount),
     'Description': transaction.description
   }))
 
@@ -512,14 +499,21 @@ const exportTransactions = () => {
 }
 
 const fetchTransactions = async () => {
-  loading.value = true
   try {
-    await financialStore.fetchCashFlowTransactions(props.selectedPaymentMethod)
+    loading.value = true
+    const result = await financialStore.fetchCashFlowTransactions(props.selectedPaymentMethod)
+
+    if (financialStore.error) {
+      throw new Error(financialStore.error)
+    }
+
+    transactions.value = result
   } catch (error) {
     console.error('Error fetching transactions:', error)
     $q.notify({
-      color: 'negative',
-      message: 'Failed to fetch transactions'
+      type: 'negative',
+      message: 'Failed to load transactions. Please try again.',
+      timeout: 3000
     })
   } finally {
     loading.value = false
