@@ -13,12 +13,12 @@ const items = computed(() => inventoryStore.sortedItems)
 
 const columns = [
   { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
-  {
-    name: 'image',
-    label: 'Image',
-    field: 'image',
-    align: 'left'
-  },
+  // {
+  //   name: 'image',
+  //   label: 'Image',
+  //   field: 'image',
+  //   align: 'left'
+  // },
   {
     name: 'name',
     label: 'Name',
@@ -116,7 +116,7 @@ function customSort(rows, sortBy, descending) {
       sticky-header
       :rows-per-page-options="[5, 10, 20, 50, 100]"
     >
-      <template v-slot:body-cell-image="props">
+      <!-- <template v-slot:body-cell-image="props">
         <q-td :props="props" auto-width>
           <q-img
             :src="props.row.image"
@@ -125,7 +125,7 @@ function customSort(rows, sortBy, descending) {
             loading="lazy"
           />
         </q-td>
-      </template>
+      </template> -->
       <template v-slot:body-cell-name="props">
         <q-td :props="props">
           <q-popup-edit
