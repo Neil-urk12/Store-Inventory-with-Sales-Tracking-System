@@ -56,38 +56,23 @@ export const useFinancialStore = defineStore('financial', {
      * @private
      */
     async syncWithFirestore() {
-      if (!isOnline.value) {
-        return console.log('Not online, skipping sync')
-      }
+      if (!isOnline.value) return
 
-      if (!fireDb) {
-        console.error('Firebase DB not initialized')
-        return
-      }
+      if (!fireDb)
+        return console.error('Firebase DB not initialized')
 
       try {
-        console.log('Starting sync with Firestore...')
-
-        // Get all pending transactions
         const unsyncedTransactions = await db.cashFlow
           .where('syncStatus')
           .equals('pending')
           .toArray()
 
-        console.log(`Found ${unsyncedTransactions.length} unsynced transactions`)
-
-        if (unsyncedTransactions.length === 0) {
-          return console.log('No transactions to sync')
-        }
+        if (unsyncedTransactions.length === 0) return
 
         const firestoreRef = collection(fireDb, 'cashFlow')
 
-        // Process each unsynced transaction
         for (const transaction of unsyncedTransactions) {
           try {
-            console.log(`Syncing transaction ${transaction.id}...`)
-
-            // Clean up the transaction data before sending to Firestore
             const cleanTransaction = {
               paymentMethod: transaction.paymentMethod,
               type: transaction.type,
@@ -99,51 +84,38 @@ export const useFinancialStore = defineStore('financial', {
             }
 
             if (!transaction.firestoreId) {
-              console.log('New transaction - adding to Firestore...')
-              // New transaction - add to Firestore
               const docRef = await addDoc(firestoreRef, {
                 ...cleanTransaction,
                 timestamp: serverTimestamp(),
                 lastUpdated: serverTimestamp()
               })
-              console.log(`Added to Firestore with ID: ${docRef.id}`)
 
-              // Update local record with Firestore ID
               await db.cashFlow.update(transaction.id, {
                 firestoreId: docRef.id,
                 syncStatus: 'synced',
-                ...cleanTransaction // Update local record with cleaned data
+                ...cleanTransaction
               })
-              console.log('Updated local record with Firestore ID')
             } else {
-              console.log('Existing transaction - updating in Firestore...')
-              // Existing transaction - update in Firestore
               const docRef = doc(fireDb, 'cashFlow', transaction.firestoreId)
               await updateDoc(docRef, {
                 ...cleanTransaction,
                 lastUpdated: serverTimestamp()
               })
-              console.log('Updated in Firestore')
 
-              // Mark as synced in local DB
               await db.cashFlow.update(transaction.id, {
                 syncStatus: 'synced',
-                ...cleanTransaction // Update local record with cleaned data
+                ...cleanTransaction
               })
-              console.log('Updated local record sync status')
             }
           } catch (error) {
             console.error(`Error syncing transaction ${transaction.id}:`, error)
-            // Mark transaction for retry
             await db.cashFlow.update(transaction.id, {
               syncStatus: 'error',
               syncError: error.message
             })
-            throw error // Rethrow to handle in outer catch
+            throw error
           }
         }
-
-        console.log('Sync completed successfully')
       } catch (error) {
         console.error('Error in syncWithFirestore:', error)
         throw error
@@ -155,18 +127,15 @@ export const useFinancialStore = defineStore('financial', {
         this.isLoading = true
         this.error = null
 
-        if (!paymentMethod) {
+        if (!paymentMethod)
           throw new Error('Payment method is required')
-        }
 
-        // Always fetch from local DB first
         const transactions = await db.cashFlow
           .where('paymentMethod')
           .equals(paymentMethod)
           .reverse()
           .sortBy('date')
 
-        // Only attempt sync if online and there are pending transactions
         if (isOnline.value) {
           const pendingCount = await db.cashFlow
             .where('syncStatus')
@@ -178,7 +147,6 @@ export const useFinancialStore = defineStore('financial', {
               await this.syncWithFirestore()
             } catch (error) {
               console.error('Background sync failed:', error)
-              // Don't throw error here as we still have local data
             }
           }
         }
@@ -211,16 +179,12 @@ export const useFinancialStore = defineStore('financial', {
 
     async addTransaction(transactionData) {
       try {
-        console.log('Adding transaction with data:', transactionData)
-
-        // Validate transaction data
         const validation = await this.validateTransactionData(transactionData)
         if (!validation.isValid) {
           console.error('Validation failed:', validation.errors)
           throw new Error(validation.errors.join(', '))
         }
 
-        // Clean up the transaction data
         const cleanTransaction = {
           paymentMethod: transactionData.paymentMethod,
           type: transactionData.type,
@@ -232,46 +196,32 @@ export const useFinancialStore = defineStore('financial', {
           updatedAt: new Date().toISOString()
         }
 
-        console.log('Cleaned transaction data:', cleanTransaction)
-
-        // Always add to local DB first
         const id = await db.cashFlow.add(cleanTransaction)
-        console.log('Added to local DB with ID:', id)
 
-        // If online, sync immediately
         if (isOnline.value) {
           try {
-            console.log('Online, attempting Firebase sync...')
-            if (!fireDb) {
+            if (!fireDb)
               throw new Error('Firebase DB not initialized')
-            }
 
             const firestoreRef = collection(fireDb, 'cashFlow')
-            console.log('Created Firestore reference')
 
             const docRef = await addDoc(firestoreRef, {
               ...cleanTransaction,
               timestamp: serverTimestamp(),
               lastUpdated: serverTimestamp()
             })
-            console.log('Added to Firestore with ID:', docRef.id)
 
-            // Update local record with Firestore ID
             await db.cashFlow.update(id, {
               firestoreId: docRef.id,
               syncStatus: 'synced'
             })
-            console.log('Updated local record with Firestore ID')
           } catch (error) {
             console.error('Error syncing to Firestore:', error)
-            // Keep the transaction in pending state for later sync
             await db.cashFlow.update(id, {
               syncStatus: 'error',
               syncError: error.message
             })
           }
-        } else {
-          console.log('Offline - transaction will sync later')
         }
 
         return id
@@ -284,11 +234,9 @@ export const useFinancialStore = defineStore('financial', {
     async updateTransaction(id, updatedData) {
       try {
         const transaction = await db.cashFlow.get(id)
-        if (!transaction) {
+        if (!transaction)
           throw new Error('Transaction not found')
-        }
 
-        // Clean up the updated data
         const cleanUpdate = {
           ...updatedData,
           amount: Number(updatedData.amount),
@@ -298,10 +246,8 @@ export const useFinancialStore = defineStore('financial', {
           updatedAt: new Date().toISOString()
         }
 
-        // Always update local DB first
         await db.cashFlow.update(id, cleanUpdate)
 
-        // Only attempt immediate sync if online and has Firestore ID
         if (isOnline.value && transaction.firestoreId) {
           try {
             const docRef = doc(fireDb, 'cashFlow', transaction.firestoreId)
@@ -310,13 +256,11 @@ export const useFinancialStore = defineStore('financial', {
               lastUpdated: serverTimestamp()
             })
 
-            // Mark as synced
             await db.cashFlow.update(id, {
               syncStatus: 'synced'
             })
           } catch (error) {
             console.error('Error syncing to Firestore:', error)
-            // Don't throw error as local update was successful
           }
         }
       } catch (error) {
@@ -328,21 +272,17 @@ export const useFinancialStore = defineStore('financial', {
     async deleteTransaction(id) {
       try {
         const transaction = await db.cashFlow.get(id)
-        if (!transaction) {
+        if (!transaction)
           throw new Error('Transaction not found')
-        }
 
-        // Always delete from local DB first
         await db.cashFlow.delete(id)
-
-        // Only attempt Firestore deletion if online and has Firestore ID
+D
         if (isOnline.value && transaction.firestoreId) {
           try {
             const docRef = doc(fireDb, 'cashFlow', transaction.firestoreId)
             await deleteDoc(docRef)
           } catch (error) {
             console.error('Error deleting from Firestore:', error)
-            // Don't throw error as local delete was successful
           }
         }
       } catch (error) {
@@ -411,13 +351,11 @@ export const useFinancialStore = defineStore('financial', {
       try {
         const { from, to } = this.dateRange
 
-        // Get all transactions within date range
         const transactions = await db.cashFlow
           .where('date')
           .between(from, to)
           .toArray()
 
-        // Calculate daily totals
         const dailyTotals = transactions.reduce((acc, transaction) => {
           const date = transaction.date
           if (!acc[date]) {
@@ -441,7 +379,6 @@ export const useFinancialStore = defineStore('financial', {
           return acc
         }, {})
 
-        // Convert to array and sort by date
         this.financialData = Object.values(dailyTotals)
           .sort((a, b) => new Date(b.date) - new Date(a.date))
 
@@ -455,25 +392,20 @@ export const useFinancialStore = defineStore('financial', {
     async validateTransactionData(data) {
       const errors = []
 
-      if (!data.paymentMethod) {
+      if (!data.paymentMethod)
         errors.push('Payment method is required')
-      }
 
-      if (!data.type || !['income', 'expense'].includes(data.type)) {
+      if (!data.type || !['income', 'expense'].includes(data.type))
         errors.push('Invalid transaction type')
-      }
 
-      if (!data.amount || isNaN(Number(data.amount)) || Number(data.amount) <= 0) {
+      if (!data.amount || isNaN(Number(data.amount)) || Number(data.amount) <= 0)
         errors.push('Amount must be a positive number')
-      }
 
-      if (!data.date) {
+      if (!data.date)
         errors.push('Date is required')
-      }
 
-      if (!data.description?.trim()) {
+      if (!data.description?.trim())
         errors.push('Description is required')
-      }
 
       return {
         isValid: errors.length === 0,
@@ -508,9 +440,8 @@ export const useFinancialStore = defineStore('financial', {
           headers.map(header => {
             let cell = row[header]
             // Handle cells that contain commas or quotes
-            if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
+            if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"')))
               cell = `"${cell.replace(/"/g, '""')}"`
-            }
             return cell
           }).join(',')
         )

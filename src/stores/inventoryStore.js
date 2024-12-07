@@ -253,7 +253,6 @@ export const useInventoryStore = defineStore('inventory', {
         // If we're still empty after sync attempt, and we're offline,
         // we'll wait for online status to try again
         if (existingItems === 0 && !isOnline.value) {
-          console.log('No local data and offline. Will sync when online.')
           this.error = 'No local data available. Waiting for network connection...'
         }
 
@@ -273,7 +272,6 @@ export const useInventoryStore = defineStore('inventory', {
     async loadInventory() {
       try {
         this.loading = true
-        console.log('Loading inventory...')
 
         // Load from local first
         const localItems = await db.getAllItems()
@@ -281,7 +279,6 @@ export const useInventoryStore = defineStore('inventory', {
 
         // If we have no items locally and we're online, force a sync
         if (localItems.length === 0 && isOnline.value) {
-          console.log('No local items found, syncing with Firestore...')
           await this.syncWithFirestore()
           const updatedItems = await db.getAllItems()
           this.items = updatedItems.map(processItem)
@@ -515,7 +512,7 @@ export const useInventoryStore = defineStore('inventory', {
             if (existingItems.length > 0) {
               // Update the first instance and delete any duplicates
               const [itemToKeep, ...duplicates] = existingItems
-              
+
               if (itemToKeep.syncStatus !== 'pending') {
                 const firestoreDate = new Date(firestoreItem.updatedAt)
                 const localDate = new Date(itemToKeep.updatedAt)
@@ -562,7 +559,7 @@ export const useInventoryStore = defineStore('inventory', {
             })
           }
         }
-        
+
         await this.mergeChanges(localItems, firestoreItems)
         this.items = await db.getAllItems()
       } catch (error) {
@@ -593,7 +590,7 @@ export const useInventoryStore = defineStore('inventory', {
           if (existingItems.length > 0) {
             // Update the first instance and delete any duplicates
             const [itemToKeep, ...duplicates] = existingItems
-            
+
             if (itemToKeep.syncStatus !== 'pending') {
               const firestoreDate = new Date(firestoreItem.updatedAt)
               const localDate = new Date(itemToKeep.updatedAt)
@@ -822,7 +819,6 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async addCategory(categoryName) {
       try {
-        // Validate category name
         if (!categoryName || typeof categoryName !== 'string')
           throw new Error('Invalid category name')
 
@@ -832,7 +828,6 @@ export const useInventoryStore = defineStore('inventory', {
         if (existingCategory)
           throw new Error('Category already exists')
 
-        // Add to local DB first
         const tempId = 'temp_' + Date.now()
         const newCategory = {
           id: tempId,
@@ -852,7 +847,6 @@ export const useInventoryStore = defineStore('inventory', {
               updatedAt: serverTimestamp()
             })
 
-            // Update local DB and state with real ID
             await db.categories.where('id').equals(tempId).modify(category => {
               category.id = docRef.id
             })
@@ -904,10 +898,8 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async deleteCategory(categoryId) {
       try {
-        // Delete from local DB first
         await db.categories.delete(categoryId)
 
-        // Update local state
         this.categories = this.categories.filter(c => c.id !== categoryId)
 
         if (isOnline.value) {
@@ -973,9 +965,8 @@ export const useInventoryStore = defineStore('inventory', {
     getCategoryChartData() {
       // Group items by category and calculate total sales
       const categoryData = this.items.reduce((acc, item) => {
-        if (!acc[item.category]) {
+        if (!acc[item.category])
           acc[item.category] = 0
-        }
         // Assuming each item's sales contribution is quantity * price
         acc[item.category] += item.quantity * item.price
         return acc
@@ -1130,7 +1121,6 @@ export const useInventoryStore = defineStore('inventory', {
      */
     handleSearch() {
       // Reactive through state, but we can add logging or additional handling here
-      console.log('Search query:', this.searchQuery)
     },
 
     /**
@@ -1138,26 +1128,6 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Handles category filter changes
      */
     handleFilters() {
-      console.log('Category filter:', this.categoryFilter)
-    },
-
-    /**
-     * @async
-     * @method repopulateDatabase
-     * @returns {Promise<void>}
-     * @description Repopulates the database with mock data
-     */
-    async repopulateDatabase() {
-      try {
-        this.loading = true
-        await db.repopulateWithMockData()
-        await this.loadInventory()
-      } catch (error) {
-        console.error('Error repopulating database:', error)
-        this.error = error.message
-      } finally {
-        this.loading = false
-      }
     },
 
     /**
@@ -1288,7 +1258,7 @@ export const useInventoryStore = defineStore('inventory', {
 
     async retryFailedSync(item) {
       const { retryCount, maxRetries, retryDelay } = this.syncStatus
-      
+
       if (retryCount >= maxRetries) {
         console.error(`Max retries (${maxRetries}) reached for item:`, item.id)
         return false
@@ -1297,7 +1267,7 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         this.syncStatus.retryCount++
         await new Promise(resolve => setTimeout(resolve, retryDelay))
-        
+
         if (item.syncOperation === 'create') {
           await this.createNewItem(item)
         } else if (item.syncOperation === 'update') {
@@ -1322,7 +1292,7 @@ export const useInventoryStore = defineStore('inventory', {
       const results = await Promise.allSettled(
         failedItems.map(item => this.retryFailedSync(item))
       )
-      
+
       return results.filter(result => result.status === 'fulfilled' && result.value).length
     },
 
@@ -1332,7 +1302,7 @@ export const useInventoryStore = defineStore('inventory', {
         await db.transaction('rw', db.items, async () => {
           // Get all items
           const allItems = await db.items.toArray()
-          
+
           // Group items by firebaseId
           const groupedItems = allItems.reduce((acc, item) => {
             if (!item.firebaseId) return acc
@@ -1346,7 +1316,7 @@ export const useInventoryStore = defineStore('inventory', {
             if (items.length > 1) {
               // Keep the first item, delete the rest
               const [itemToKeep, ...duplicates] = items
-              
+
               // Delete duplicates
               for (const duplicate of duplicates) {
                 await db.items.delete(duplicate.id)
