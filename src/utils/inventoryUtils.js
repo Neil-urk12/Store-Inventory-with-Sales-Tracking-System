@@ -10,6 +10,7 @@ import { useInventoryStore } from 'src/stores/inventoryStore'
  * @function processItem
  * @param {Object} item - Raw item data
  * @param {string} [item.categoryId] - Optional category ID
+ * @param {string} [item.category] - Optional category name
  * @param {number|string} [item.quantity] - Item quantity (will be converted to number)
  * @param {number|string} [item.price] - Item price (will be converted to number)
  * @param {string} [item.createdAt] - Creation timestamp
@@ -24,14 +25,11 @@ import { useInventoryStore } from 'src/stores/inventoryStore'
  */
 export const processItem = (item) => {
   const store = useInventoryStore()
-  const category = item.categoryId ?
-    store.categories.find(c => c.id === item.categoryId)?.name || 'Uncategorized' :
-    'Uncategorized'
 
   return {
     ...item,
-    category,
     categoryId: item.categoryId || null,
+    category: item.category || store.getCategoryName(item.categoryId) || 'Uncategorized',
     quantity: Number(item.quantity) || 0,
     price: Number(item.price) || 0,
     createdAt: item.createdAt || new Date().toISOString()
