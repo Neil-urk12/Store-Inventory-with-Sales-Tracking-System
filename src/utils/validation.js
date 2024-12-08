@@ -7,7 +7,9 @@
  * @param {Object} contact - Contact to validate
  * @returns {Object} Validation result with isValid and errors
  */
-export const validateContact = (contact) => {
+export const validateContact = async (contact, contactsList) => {
+  if(!contactsList) throw new Error('Contacts list is required')
+
   const errors = []
 
   if (!contact.name?.trim())
@@ -18,6 +20,33 @@ export const validateContact = (contact) => {
     errors.push('Invalid phone number format')
   if (!contact.categoryId)
     errors.push('Contact category is required')
+
+  const existingContactsPromises = [
+    contactsList.where('phone').equals(contact.phone).first(),
+    contactsList.where('name').equals(contact.name).first(),
+    contactsList.where('email').equals(contact.email).first()
+  ]
+
+  const existingContacts = await Promise.all(existingContactsPromises)
+
+  if(existingContacts[0] && existingContacts[0].id !== contact.id)
+    errors.push('Contact with this phone number already exists')
+  if(existingContacts[1] && existingContacts[1].id !== contact.id)
+    errors.push('Contact with this name already exists')
+  if(existingContacts[2] && existingContacts[2].id !== contact.id)
+    errors.push('Contact with this email already exists')
+
+  // const existingPhone = await contactsList.where('phone').equals(contact.phone).first()
+  // if (existingPhone && existingPhone.id !== contact.id)
+  //   errors.push('Contact with this phone number already exists')
+
+  // const existingName = await contactsList.where('name').equals(contact.name).first()
+  // if (existingName && existingName.id !== contact.id)
+  //   errors.push('Contact with this name already exists')
+
+  // const existingEmail = await contactsList.where('email').equals(contact.email).first()
+  // if (existingEmail && existingEmail.id !== contact.id)
+  //   errors.push('Contact with this email already exists')
 
   return {
     isValid: errors.length === 0,
