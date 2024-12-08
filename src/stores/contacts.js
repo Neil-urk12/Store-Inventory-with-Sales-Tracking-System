@@ -311,6 +311,252 @@ export const useContactsStore = defineStore('contacts', {
 
     /**
      * @async
+     * @method fetchFirestoreData
+     * @returns {Promise<Object>} - An object containing firestore contact categories and contacts
+     * @description Fetches contact categories and contacts from Firestore.
+     */
+    async fetchFirestoreData() {
+      const contactCategoriesSnapshot = await getDocs(query(collection(fireDb, 'contactCategories')))
+      const contactsListSnapshot = await getDocs(query(collection(fireDb, 'contactsList')))
+
+      const firestoreContactCategories = contactCategoriesSnapshot.docs.map(doc => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          ...data,
+          updatedAt: data.updatedAt && typeof data.updatedAt.toDate === 'function'
+            ? data.updatedAt.toDate().toISOString()
+            : new Date().toISOString()
+        }
+      })
+      const firestoreContactsList = contactsListSnapshot.docs.map(doc => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          ...data,
+          updatedAt: data.updatedAt && typeof data.updatedAt.toDate === 'function'
+            ? data.updatedAt.toDate().toISOString()
+            : new Date().toISOString()
+        }
+      })
+
+      return { firestoreContactCategories, firestoreContactsList }
+    },
+
+    /**
+     * @async
+     * @method mergeLocalAndFirestoreData
+     * @param {Array} localContactCategories - Local contact categories
+     * @param {Array} localContacts - Local contacts
+     * @param {Object} firestoreData - Firestore data fetched from fetchFirestoreData
+     * @returns {Promise<Object>} - An object containing merged contact categories and contacts
+     * @description Merges local and Firestore data using the mergeChanges function.
+     */
+    async mergeLocalAndFirestoreData(localContactCategories, localContacts, firestoreData) {
+      const { firestoreContactCategories, firestoreContactsList } = firestoreData
+      const mergedContactCategories = await this.mergeChanges(localContactCategories, firestoreContactCategories, 'name')
+      const mergedContacts = await this.mergeChanges(localContacts, firestoreContactsList, 'name')
+      return { mergedContactCategories, mergedContacts }
+    },
+
+    /**
+     * @async
+     * @method updateFirestoreData
+     * @param {Array} mergedContactCategories - Merged contact categories
+     * @param {Array} mergedContacts - Merged contacts
+     * @returns {Promise<void>}
+     * @description Updates Firestore with merged data in batches.
+     */
+    async updateFirestoreData(mergedContactCategories, mergedContacts) {
+      const batchSize = 500;
+
+      // Update contact categories in Firebase
+      if (mergedContactCategories.length > 0) {
+        const contactCategoriesRef = collection(fireDb, 'contactCategories')
+        for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
+          const batch = writeBatch(fireDb)
+          const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
+
+          for (const category of currentBatch) {
+            const { id, ...categoryData } = category
+            if (id && typeof id === 'string') {
+              const docRef = doc(contactCategoriesRef, id)
+              const docSnapshot = await getDoc(docRef)
+              if (docSnapshot.exists()) {
+                batch.update(docRef, {
+                  ...categoryData,
+                  updatedAt: serverTimestamp()
+                })
+              } else {
+                batch.set(docRef, {
+                  ...categoryData,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                })
+              }
+            } else {
+              const newDocRef = doc(contactCategoriesRef)
+              batch.set(newDocRef, {
+                ...categoryData,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              })
+            }
+          }
+
+          try {
+            await batch.commit()
+          } catch (error) {
+            console.error('Contact category batch update failed:', error)
+          }
+        }
+      }
+
+      // Update contacts in Firebase
+      if (mergedContacts.length > 0) {
+        const contactsRef = collection(fireDb, 'contactsList')
+        for (let i = 0; i < mergedContacts.length; i += batchSize) {
+          const batch = writeBatch(fireDb)
+          const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
+
+          for (const contact of currentBatch) {
+            const { id, ...contactData } = contact
+            if (id && typeof id === 'string') {
+              const docRef = doc(contactsRef, id)
+              const docSnapshot = await getDoc(docRef)
+              if (docSnapshot.exists()) {
+                batch.update(docRef, {
+                  ...contactData,
+                  updatedAt: serverTimestamp()
+                })
+              } else {
+                batch.set(docRef, {
+                  ...contactData,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                })
+              }
+            } else {
+              const newDocRef = doc(contactsRef)
+              batch.set(newDocRef, {
+                ...contactData,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              })
+            }
+          }
+
+          try {
+            await batch.commit()
+          } catch (error) {
+            console.error('Contact batch update failed:', error)
+          }
+        }
+      }
+    },
+
+    /**
+     * @async
+     * @method updateLocalDatabase
+     * @param {Array} mergedContactCategories - Merged contact categories
+     * @param {Array} mergedContacts - Merged contacts
+     * @returns {Promise<void>}
+     * @description Updates the local IndexedDB with the merged data.
+     */
+    async updateLocalDatabase(mergedContactCategories, mergedContacts) {
+      if (mergedContactCategories.length > 0)
+        await db.syncWithFirestoreSimple(mergedContactCategories, 'contactCategories')
+
+      if (mergedContacts.length > 0) {
+        await db.syncWithFirestoreSimple(mergedContacts, 'contactsList')
+      }
+    },
+
+    /**
+     * @async
+     * @method uploadNewData
+     * @param {Array} localContactCategories - Local contact categories
+     * @param {Array} localContacts - Local contacts
+     * @returns {Promise<void>}
+     * @description Uploads any new local data to Firestore if no merged data exists.
+     */
+    async uploadNewData(localContactCategories, localContacts) {
+      const contactCategoriesRef = collection(fireDb, 'contactCategories')
+      const contactsRef = collection(fireDb, 'contactsList')
+
+      const batchSize = 500;
+
+      // Upload contact categories
+      if (localContactCategories.length > 0) {
+        const batch = writeBatch(fireDb)
+        let batchCount = 0
+
+        for (const category of localContactCategories) {
+          const { id, ...categoryData } = category
+          const newDocRef = doc(contactCategoriesRef)
+          batch.set(newDocRef, {
+            ...categoryData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          })
+
+          batchCount++
+          if (batchCount >= batchSize) {
+            try {
+              await batch.commit()
+              batchCount = 0
+            } catch (error) {
+              console.error('Contact category batch upload failed:', error)
+            }
+          }
+        }
+
+        if (batchCount > 0) {
+          try {
+            await batch.commit()
+          } catch (error) {
+            console.error('Final contact category batch upload failed:', error)
+          }
+        }
+      }
+
+      // Upload contacts
+      if (localContacts.length > 0) {
+        const batch = writeBatch(fireDb)
+        let batchCount = 0
+
+        for (const contact of localContacts) {
+          const { id, ...contactData } = contact
+          const newDocRef = doc(contactsRef)
+          batch.set(newDocRef, {
+            ...contactData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          })
+
+          batchCount++
+          if (batchCount >= batchSize) {
+            try {
+              await batch.commit()
+              batchCount = 0
+            } catch (error) {
+              console.error('Contact batch upload failed:', error)
+            }
+          }
+        }
+
+        if (batchCount > 0) {
+          try {
+            await batch.commit()
+          } catch (error) {
+            console.error('Final contact batch upload failed:', error)
+          }
+        }
+      }
+    },
+
+    /**
+     * @async
      * @method syncWithFirestore
      * @returns {Promise<void>}
      * @description Synchronizes local contacts data with Firestore
@@ -327,210 +573,26 @@ export const useContactsStore = defineStore('contacts', {
 
         // Validate data before syncing
         const validationResult = validateDataBeforeSync(localContacts, localContactCategories, this.contactsList)
-        if (!validationResult.isValid) {
-          if(validationResult.invalidContacts.length > 0 || validationResult.invalidCategories.length > 0){
-            const errorMessage = [
-              'Validation failed:',
-              ...validationResult.invalidContacts.map(({ item, errors = [] }) =>
-                `Contact "${item.name || 'Unknown'}": ${errors.length > 0 ? errors.join(', ') : 'Unspecified error'}`
-              ),
-              ...validationResult.invalidCategories.map(({ item, errors = [] }) =>
-                `Category "${item.name || 'Unknown'}": ${errors.length > 0 ? errors.join(', ') : 'Unspecified error'}`
-              )
-            ].join('\n')
-            throw new ContactError(errorMessage)
-          }
+        if (validationResult.isValid) {
+          const errorMessage = [
+            'Validation failed:',
+            ...validationResult.invalidContacts.map(({ item, errors = [] }) =>
+              `Contact "${item.name || 'Unknown'}": ${errors.length > 0 ? errors.join(', ') : null}`
+            ),
+            ...validationResult.invalidCategories.map(({ item, errors = [] }) =>
+              `Category "${item.name || 'Unknown'}": ${errors.length > 0 ? errors.join(', ') : null}`
+            )
+          ].join('\n')
+          throw new ContactError(errorMessage)
         }
 
-        const contactCategoriesSnapshot = await getDocs(query(collection(fireDb, 'contactCategories')))
-        const contactsListSnapshot = await getDocs(query(collection(fireDb, 'contactsList')))
+        const firestoreData = await this.fetchFirestoreData()
+        const mergedData = await this.mergeLocalAndFirestoreData(localContactCategories, localContacts, firestoreData)
+        await this.updateFirestoreData(mergedData.mergedContactCategories, mergedData.mergedContacts)
+        await this.updateLocalDatabase(mergedData.mergedContactCategories, mergedData.mergedContacts)
 
-        const firestoreContactCategories = contactCategoriesSnapshot.docs.map(doc => {
-          const data = doc.data()
-          return {
-            id: doc.id,
-            ...data,
-            updatedAt: data.updatedAt && typeof data.updatedAt.toDate === 'function'
-              ? data.updatedAt.toDate().toISOString()
-              : new Date().toISOString()
-          }
-        })
-        const firestoreContactsList = contactsListSnapshot.docs.map(doc => {
-          const data = doc.data()
-          return {
-            id: doc.id,
-            ...data,
-            updatedAt: data.updatedAt && typeof data.updatedAt.toDate === 'function'
-              ? data.updatedAt.toDate().toISOString()
-              : new Date().toISOString()
-          }
-        })
-
-        const mergedContactCategories = await this.mergeChanges(localContactCategories, firestoreContactCategories, 'name')
-        const mergedContacts = await this.mergeChanges(localContacts, firestoreContactsList, 'name')
-
-        const batchSize = 500
-
-        // Update contact categories in Firebase
-        if (mergedContactCategories.length > 0) {
-          const contactCategoriesRef = collection(fireDb, 'contactCategories')
-          for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
-            const batch = writeBatch(fireDb)
-            const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
-
-            for (const category of currentBatch) {
-              const { id, ...categoryData } = category
-              if (id && typeof id === 'string') {
-                const docRef = doc(contactCategoriesRef, id)
-                const docSnapshot = await getDoc(docRef)
-                if (docSnapshot.exists()) {
-                  batch.update(docRef, {
-                    ...categoryData,
-                    updatedAt: serverTimestamp()
-                  })
-                } else {
-                  batch.set(docRef, {
-                    ...categoryData,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp()
-                  })
-                }
-              } else {
-                const newDocRef = doc(contactCategoriesRef)
-                batch.set(newDocRef, {
-                  ...categoryData,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                })
-              }
-            }
-
-            try {
-              await batch.commit()
-            } catch (error) {
-              console.error('Contact category batch update failed:', error)
-            }
-          }
-        }
-
-        // Update contacts in Firebase
-        if (mergedContacts.length > 0) {
-          const contactsRef = collection(fireDb, 'contactsList')
-          for (let i = 0; i < mergedContacts.length; i += batchSize) {
-            const batch = writeBatch(fireDb)
-            const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
-
-            for (const contact of currentBatch) {
-              const { id, ...contactData } = contact
-              if (id && typeof id === 'string') {
-                const docRef = doc(contactsRef, id)
-                const docSnapshot = await getDoc(docRef)
-                if (docSnapshot.exists()) {
-                  batch.update(docRef, {
-                    ...contactData,
-                    updatedAt: serverTimestamp()
-                  })
-                } else {
-                  batch.set(docRef, {
-                    ...contactData,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp()
-                  })
-                }
-              } else {
-                const newDocRef = doc(contactsRef)
-                batch.set(newDocRef, {
-                  ...contactData,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                })
-              }
-            }
-
-            try {
-              await batch.commit()
-            } catch (error) {
-              console.error('Contact batch update failed:', error)
-            }
-          }
-        }
-
-        // Sync merged data back to local database
-        if (mergedContactCategories.length > 0)
-          await db.syncWithFirestoreSimple(mergedContactCategories, 'contactCategories')
-
-        if (mergedContacts.length > 0) {
-          await db.syncWithFirestoreSimple(mergedContacts, 'contactsList')
-        } else {
-          const contactCategoriesRef = collection(fireDb, 'contactCategories')
-          const contactsRef = collection(fireDb, 'contactsList')
-
-          if (localContactCategories.length > 0) {
-            const batch = writeBatch(fireDb)
-            let batchCount = 0
-
-            for (const category of localContactCategories) {
-              const { id, ...categoryData } = category
-              const newDocRef = doc(contactCategoriesRef)
-              batch.set(newDocRef, {
-                ...categoryData,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
-
-              batchCount++
-              if (batchCount >= 500) {
-                try {
-                  await batch.commit()
-                  batchCount = 0
-                } catch (error) {
-                  console.error('Contact category batch upload failed:', error)
-                }
-              }
-            }
-
-            if (batchCount > 0) {
-              try {
-                await batch.commit()
-              } catch (error) {
-                console.error('Final contact category batch upload failed:', error)
-              }
-            }
-          }
-
-          // Upload contacts
-          if (localContacts.length > 0) {
-            const batch = writeBatch(fireDb)
-            let batchCount = 0
-
-            for (const contact of localContacts) {
-              const { id, ...contactData } = contact
-              const newDocRef = doc(contactsRef)
-              batch.set(newDocRef, {
-                ...contactData,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
-
-              batchCount++
-              if (batchCount >= 500) {
-                try {
-                  await batch.commit()
-                  batchCount = 0
-                } catch (error) {
-                  console.error('Contact batch upload failed:', error)
-                }
-              }
-            }
-
-            if (batchCount > 0) {
-              try {
-                await batch.commit()
-              } catch (error) {
-                console.error('Final contact batch upload failed:', error)
-              }
-            }
-          }
+        if (mergedData.mergedContactCategories.length === 0 && mergedData.mergedContacts.length === 0) {
+          await this.uploadNewData(localContactCategories, localContacts)
         }
 
         await this.loadContactCategories()
