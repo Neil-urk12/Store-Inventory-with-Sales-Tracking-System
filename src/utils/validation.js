@@ -79,12 +79,12 @@ export const validateContactCategory = (category) => {
  * @param {Array} categories - Categories to validate
  * @returns {Object} Validation results with invalid items
  */
-export const validateDataBeforeSync = (contacts, categories) => {
+export const validateDataBeforeSync = (contacts, categories, contactsList) => {
   const invalidContacts = []
   const invalidCategories = []
 
   contacts.forEach(contact => {
-    const validation = validateContact(contact)
+    const validation = validateContact(contact, contactsList)
     if (!validation.isValid) {
       invalidContacts.push({
         item: contact,
