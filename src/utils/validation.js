@@ -21,11 +21,17 @@ export const validateContact = async (contact, contactsList) => {
   if (!contact.categoryId)
     errors.push('Contact category is required')
 
-  const existingContacts = await Promise.all([
-    contactsList.filter(c => c.phone === contact.phone && c.id !== contact.id),
+  const existingContacts = await Promise.allSettled([
+    contact.phone?.trim() ? contactsList.filter(c => c.phone?.trim() === contact.phone?.trim() && c.id !== contact.id) : [],
     contactsList.filter(c => c.name === contact.name && c.id !== contact.id),
-    contactsList.filter(c => c.email === contact.email && c.id !== contact.id)
+    contact.email?.trim() ? contactsList.filter(c => c.email?.trim() === contact.email?.trim() && c.id !== contact.id) : []
   ])
+
+  // const existingContacts = await Promise.all([
+  //   contactsList.filter(c => c.phone === contact.phone && c.id !== contact.id),
+  //   contactsList.filter(c => c.name === contact.name && c.id !== contact.id),
+  //   contactsList.filter(c => c.email === contact.email && c.id !== contact.id)
+  // ])
 
   if(existingContacts[0].length > 0)
     errors.push('Contact with this phone number already exists')

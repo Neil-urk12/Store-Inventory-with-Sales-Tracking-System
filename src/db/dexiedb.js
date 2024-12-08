@@ -321,20 +321,50 @@ class AppDatabase extends Dexie {
     if(!contactPerson.name?.trim()) throw new ValidationError('Contact name is required')
     if(!contactPerson.categoryId) throw new ValidationError('Contact category is required')
 
-    const existingContact = await this.contactsList
+    let query = this.contactsList
       .where('[categoryId+name]')
       .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
-      .or('email')
-      .equals(contactPerson.email?.trim().toLowerCase())
-      .first()
+
+    if (contactPerson.email?.trim())
+      query = query.or('email').equals(contactPerson.email.trim().toLowerCase())
+
+    if (contactPerson.phone?.trim())
+      query = query.or('phone').equals(contactPerson.phone.trim())
+
+    const existingContact = await query.first()
 
     if (existingContact) {
-      throw new ValidationError(
-        existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
-          ? 'A contact with this name already exists in the category'
-          : 'A contact with this email already exists'
-      )
+      if (existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase())
+        throw new ValidationError('A contact with this name already exists in the category')
+      else if (existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase())
+        throw new ValidationError('A contact with this email already exists')
+      else if (existingContact.phone === contactPerson.phone?.trim())
+        throw new ValidationError('A contact with this phone number already exists')
     }
+    //====================================
+    // const existingContact = await this.contactsList
+    //   .where('[categoryId+name]')
+    //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
+    //   .or('email')
+    //   .equals(contactPerson.email?.trim().toLowerCase() || undefined)
+    //   .or('phone')
+    //   .equals(contactPerson.phone?.trim() || undefined)
+    //   .first()
+    //====================================
+    // const existingContact = await this.contactsList
+    //   .where('[categoryId+name]')
+    //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
+    //   .or('email')
+    //   .equals(contactPerson.email?.trim().toLowerCase())
+    //   .first()
+
+    // if (existingContact) {
+    //   throw new ValidationError(
+    //     existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
+    //       ? 'A contact with this name already exists in the category'
+    //       : 'A contact with this email already exists'
+    //   )
+    // }
 
     const newContact = {
       ...contactPerson,
