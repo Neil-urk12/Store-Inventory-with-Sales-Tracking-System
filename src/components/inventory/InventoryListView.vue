@@ -1,24 +1,24 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
+import { useFinancialStore } from 'src/stores/financialStore';
 import { computed, ref } from 'vue'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 const loading = ref(false)
 
 const items = computed(() => inventoryStore.sortedItems)
 
-const formatPrice = (price) => `₱${Number(price).toFixed(2)}`
-
 const columns = [
   { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
-  {
-    name: 'image',
-    label: 'Image',
-    field: 'image',
-    align: 'left'
-  },
+  // {
+  //   name: 'image',
+  //   label: 'Image',
+  //   field: 'image',
+  //   align: 'left'
+  // },
   {
     name: 'name',
     label: 'Name',
@@ -101,6 +101,14 @@ function customSort(rows, sortBy, descending) {
 
 <template>
   <div class="q-pa-md">
+    <div class="row q-mb-md items-center justify-between">
+      <q-btn
+        color="primary"
+        icon="cleaning_services"
+        label="Clean Duplicates"
+        @click="inventoryStore.cleanupDuplicates()"
+      />
+    </div>
     <q-table
       :rows="items"
       :columns="columns"
@@ -116,7 +124,7 @@ function customSort(rows, sortBy, descending) {
       sticky-header
       :rows-per-page-options="[5, 10, 20, 50, 100]"
     >
-      <template v-slot:body-cell-image="props">
+      <!-- <template v-slot:body-cell-image="props">
         <q-td :props="props" auto-width>
           <q-img
             :src="props.row.image"
@@ -125,7 +133,7 @@ function customSort(rows, sortBy, descending) {
             loading="lazy"
           />
         </q-td>
-      </template>
+      </template> -->
       <template v-slot:body-cell-name="props">
         <q-td :props="props">
           <q-popup-edit
@@ -140,7 +148,7 @@ function customSort(rows, sortBy, descending) {
               autofocus
             />
           </q-popup-edit>
-          {{ props.row.name }}
+          {{ props.value }}
         </q-td>
       </template>
       <template v-slot:body-cell-sku="props">
@@ -157,27 +165,11 @@ function customSort(rows, sortBy, descending) {
               autofocus
             />
           </q-popup-edit>
-          {{ props.row.sku }}
+          {{ props.value }}
         </q-td>
       </template>
       <template v-slot:body-cell-category="props">
         <q-td :props="props">
-          <q-popup-edit
-            v-model="props.row.categoryId"
-            v-slot="scope"
-            buttons
-            @save-handler="updateField(props.row, 'categoryId', scope.value)"
-          >
-            <q-select
-              v-model="scope.value"
-              :options="categories"
-              dense
-              autofocus
-              emit-value
-              map-options
-              options-dense
-            />
-          </q-popup-edit>
           {{ props.row.category }}
         </q-td>
       </template>
@@ -224,7 +216,7 @@ function customSort(rows, sortBy, descending) {
               ]"
             />
           </q-popup-edit>
-          {{ formatPrice(props.row.price) }}
+          {{ financialStore.formatCurrency(props.row.price) }}
         </q-td>
       </template>
       <template v-slot:body-cell-actions="props">

@@ -8,10 +8,9 @@ const ItemDialog = defineAsyncComponent(() => import('src/components/inventory/I
 const InventoryListView = defineAsyncComponent(() => import('src/components/inventory/InventoryListView.vue'))
 const inventoryStore = useInventoryStore()
 
-onMounted(async () => {
+onMounted(async () =>
   await inventoryStore.initializeDb()
-  await inventoryStore.loadInventory()
-})
+)
 </script>
 
 <template>

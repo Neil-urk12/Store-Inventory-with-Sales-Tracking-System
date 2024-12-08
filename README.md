@@ -29,7 +29,7 @@ A system that can help small business owners track their stocks and sales with a
 
 1. Clone the repository:
 ```bash
-git clone [your-repo-url]
+git clone https://github.com/Neil-urk12/Store-Inventory-with-Sales-Tracking-System.git
 cd StoreInventorywithSalesTrackingSystem
 ```
 

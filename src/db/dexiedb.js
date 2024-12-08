@@ -4,8 +4,21 @@
  * **/
 
 import Dexie from 'dexie';
+import { useInventoryStore } from 'src/stores/inventoryStore';
 
 
+export class ValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+export class DatabaseError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DatabaseError';
+  }
+}
 /**
  * @class AppDatabase
  * @description The local database instance.
@@ -20,10 +33,10 @@ class AppDatabase extends Dexie {
   constructor() {
     super('inventoryDb'); // Name of the database
 
-    this.version(1).stores({
+    this.version(2).stores({
       // Inventory tables
       categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
-      items: '++id, name, sku, categoryId, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
+      items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
 
       // Sales tables
       sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId',
@@ -42,10 +55,20 @@ class AppDatabase extends Dexie {
     this.items.hook('creating', (primKey, obj) => {
       obj.createdAt = new Date().toISOString();
       obj.updatedAt = new Date().toISOString();
+      // Ensure category information is preserved
+      if (obj.categoryId && !obj.category) {
+        const store = useInventoryStore();
+        obj.category = store.getCategoryName(obj.categoryId);
+      }
     });
 
     this.items.hook('updating', (modifications, primKey, obj) => {
       modifications.updatedAt = new Date().toISOString();
+      // Ensure category information is preserved during updates
+      if (modifications.categoryId && !modifications.category) {
+        const store = useInventoryStore();
+        modifications.category = store.getCategoryName(modifications.categoryId);
+      }
     });
 
     this.categories.hook('creating', (primKey, obj) => {
@@ -78,15 +101,12 @@ class AppDatabase extends Dexie {
   */
   async createItem(item) {
     // Validate required fields
-    if (!item.name?.trim()) {
-      throw new Error('Item name is required');
-    }
-    if (!item.categoryId) {
-      throw new Error('Category is required');
-    }
-    if (typeof item.price !== 'number' || item.price < 0) {
-      throw new Error('Valid price is required');
-    }
+    if (!item.name?.trim())
+      throw new ValidationError('Item name is required');
+    if (!item.categoryId)
+      throw new ValidationError('Category is required');
+    if (typeof item.price !== 'number' || item.price < 0)
+      throw new ValidationError('Valid price is required');
 
     // Sanitize and prepare item data
     const newItem = {
@@ -99,21 +119,20 @@ class AppDatabase extends Dexie {
       syncStatus: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    };
+    }
 
     try {
       // Check for duplicate SKU if provided
       if (newItem.sku) {
-        const existingItem = await this.items.where('sku').equals(newItem.sku).first();
-        if (existingItem) {
-          throw new Error(`Item with SKU ${newItem.sku} already exists`);
-        }
+        const existingItem = await this.items.where('sku').equals(newItem.sku).first()
+        if (existingItem)
+          throw new ValidationError(`Item with SKU ${newItem.sku} already exists`);
       }
 
-      return await this.items.add(newItem);
+      return await this.items.add(newItem)
     } catch (error) {
-      console.error('Database error creating item:', error);
-      throw error;
+      console.error('Database error creating item:', error)
+      throw DatabaseError('Failed to create item')
     }
   }
 
@@ -299,7 +318,40 @@ class AppDatabase extends Dexie {
    * @description Adds a contact to the database.
   */
   async addContact(contactPerson) {
-    return await this.contactsList.add(contactPerson);
+    if(!contactPerson.name?.trim()) throw new ValidationError('Contact name is required')
+    if(!contactPerson.categoryId) throw new ValidationError('Contact category is required')
+
+    const existingContact = await this.contactsList
+      .where('[categoryId+name]')
+      .equals([contact.categoryId, contact.name.trim().toLowerCase()])
+      .or('email')
+      .equals(contact.email?.trim().toLowerCase())
+      .first()
+
+    if (existingContact) {
+      throw new ValidationError(
+        existingContact.name.toLowerCase() === contact.name.trim().toLowerCase()
+          ? 'A contact with this name already exists in the category'
+          : 'A contact with this email already exists'
+      )
+    }
+
+    const newContact = {
+      ...contact,
+      name: contact.name.trim(),
+      email: contact.email?.trim().toLowerCase() || null,
+      phone: contact.phone?.trim() || null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'pending'
+    }
+
+    try {
+      return await this.contactsList.add(newContact)
+    } catch (error) {
+      console.error('Database error adding contact:', error)
+      throw new DatabaseError('Failed to add contact')
+    }
   }
   /**
    * @async

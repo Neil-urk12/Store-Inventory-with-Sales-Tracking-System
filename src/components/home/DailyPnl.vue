@@ -2,19 +2,84 @@
  * @component DailyPnl
  * @description A component that displays daily profit and loss information.
  * Shows today's profit and expenses with color-coded values and loading states.
- * Integrates with the inventory store for financial data.
+ * Integrates with the financial store for financial data.
  */
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useInventoryStore } from 'src/stores/inventoryStore'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useFinancialStore } from '../../stores/financialStore'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
-const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 
 /** @type {import('vue').Ref<boolean>} */
 const isLoading = ref(true)
+const isRefreshing = ref(false)
+const retryCount = ref(0)
+const maxRetries = 3
+
+// Add refresh interval
+const refreshInterval = ref(null)
+
+/**
+ * @description Loads financial data with retry mechanism
+ */
+const loadFinancialData = async () => {
+  try {
+    isRefreshing.value = true
+    await financialStore.generateFinancialReport()
+
+    // Load transactions for each payment method
+    for (const method of ['Cash', 'GCash', 'Growsari']) {
+      const transactions = await financialStore.fetchCashFlowTransactions(method)
+      if (financialStore.error) {
+        throw new Error(`Error loading ${method} transactions: ${financialStore.error}`)
+      }
+    }
+
+    retryCount.value = 0
+    isLoading.value = false
+  } catch (error) {
+    console.error('Error loading financial data:', error)
+    if (retryCount.value < maxRetries) {
+      retryCount.value++
+      $q.notify({
+        type: 'warning',
+        message: `Retrying data load (attempt ${retryCount.value}/${maxRetries})...`,
+        timeout: 2000
+      })
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount.value)))
+      return loadFinancialData()
+    }
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load financial data. Please try again later.',
+      timeout: 5000
+    })
+  } finally {
+    isRefreshing.value = false
+  }
+}
+
+// Set up automatic refresh and initial load
+onMounted(async () => {
+  await loadFinancialData()
+  // Refresh data every 5 minutes
+  refreshInterval.value = setInterval(() => {
+    // Only refresh if not already refreshing
+    if (!isRefreshing.value) {
+      loadFinancialData()
+    }
+  }, 300000)
+})
+
+// Clean up interval on component unmount
+onUnmounted(() => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+  }
+})
 
 /**
  * @type {import('vue').ComputedRef<string>}
@@ -23,22 +88,14 @@ const isLoading = ref(true)
  */
 const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 
-onMounted(async () => {
-  try {
-    await inventoryStore.loadInventory()
-  } finally {
-    isLoading.value = false
-  }
-})
-
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the daily profit from the inventory store
+ * @description Computes the daily profit from the financial store
  * @returns {number} Daily profit value, defaults to 0 if error occurs
  */
 const dailyProfit = computed(() => {
   try {
-    return inventoryStore.getDailyProfit || 0
+    return financialStore.getDailyProfit || 0
   } catch (error) {
     console.error('Error calculating daily profit:', error)
     return 0
@@ -47,16 +104,25 @@ const dailyProfit = computed(() => {
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the daily expenses from the inventory store
+ * @description Computes the daily expenses from the financial store
  * @returns {number} Daily expense value, defaults to 0 if error occurs
  */
 const dailyExpense = computed(() => {
   try {
-    return inventoryStore.getDailyExpense || 0
+    return financialStore.getDailyExpense || 0
   } catch (error) {
     console.error('Error calculating daily expense:', error)
     return 0
   }
+})
+
+/**
+ * @type {import('vue').ComputedRef<number>}
+ * @description Computes the net profit from the financial store
+ * @returns {number} Net profit value
+ */
+const netProfit = computed(() => {
+  return dailyProfit.value - dailyExpense.value
 })
 </script>
 
@@ -68,15 +134,24 @@ const dailyExpense = computed(() => {
     </div>
     <div v-else class="profitBox q-mb-none fit row justify-evenly items-center q-pa-md">
       <div class="text-center">
-        <div class="text-subtitle2 q-mb-xs" :style="{ color : textColor }">Today's Profit</div>
+        <div class="text-subtitle2 q-mb-xs" :style="{ color: textColor }">Today's Profit</div>
         <div class="text-h6" :class="dailyProfit >= 0 ? 'text-positive' : 'text-negative'">
-          {{ inventoryStore.formatCurrency(dailyProfit) }}
+          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" />
+          {{ financialStore.formatCurrency(dailyProfit) }}
         </div>
       </div>
       <div class="text-center">
-        <div class="text-subtitle2 q-mb-xs" :style="{ color : textColor }">Today's Expenses</div>
+        <div class="text-subtitle2 q-mb-xs" :style="{ color: textColor }">Today's Expenses</div>
         <div class="text-h6 text-negative">
-          {{ inventoryStore.formatCurrency(dailyExpense) }}
+          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" />
+          {{ financialStore.formatCurrency(dailyExpense) }}
+        </div>
+      </div>
+      <div class="text-center">
+        <div class="text-subtitle2 q-mb-xs" :style="{ color: textColor }">Today's Net Profit</div>
+        <div class="text-h6" :class="netProfit >= 0 ? 'text-positive' : 'text-negative'">
+          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" />
+          {{ financialStore.formatCurrency(netProfit) }}
         </div>
       </div>
     </div>

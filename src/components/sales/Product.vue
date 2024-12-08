@@ -1,6 +1,7 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { useSalesStore } from 'src/stores/salesStore'
+import { useFinancialStore } from 'src/stores/financialStore'
 import { computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 
@@ -8,6 +9,7 @@ const $q = useQuasar()
 
 const salesStore = useSalesStore()
 const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 const filteredProducts = computed(() => salesStore.filteredProducts)
 
 const handleAddToCart = (product) => {
@@ -48,7 +50,7 @@ onMounted(() => inventoryStore.loadInventory())
         <q-card-section class="q-pt-xs">
           <div class="row items-center justify-between">
             <div class="text-subtitle1 text-weight-bold">
-              ₱{{ salesStore.formatPrice(product.price) }}
+              {{ financialStore.formatCurrency(product.price) }}
             </div>
             <div class="text-caption">
               Stock: {{ product.quantity }}

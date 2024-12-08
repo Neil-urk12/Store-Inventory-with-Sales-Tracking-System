@@ -41,7 +41,8 @@ const inStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + 
  * @type {import('vue').ComputedRef<number>}
  * @description Computes the quantity of items with low stock (below threshold)
  */
-const lowStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(item.quantity, lowStockThreshold)), 0))
+const lowStock = computed(() => inventoryStore.items.reduce((sum, item) =>
+    sum + (item.quantity > 0 && item.quantity < lowStockThreshold ? 1 : 0), 0))
 
 /**
  * @type {import('vue').ComputedRef<number>}
@@ -109,7 +110,7 @@ onMounted(() => {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
   padding: 1rem;
 }
-.stock-flex { 
+.stock-flex {
   font-weight: 600;
   width: 100%;
 }

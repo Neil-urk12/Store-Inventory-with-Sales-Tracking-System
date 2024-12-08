@@ -2,12 +2,14 @@
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useInventoryStore } from '../stores/inventoryStore'
 import { useSalesStore } from 'src/stores/salesStore';
+import { useFinancialStore } from 'src/stores/financialStore'
 import { useQuasar } from 'quasar'
 const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'));
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const salesStore = useSalesStore()
+const financialStore = useFinancialStore()
 
 const paymentMethods = [ 'Cash', 'GCash', 'Growsari']
 
@@ -61,24 +63,26 @@ onMounted(() => {
   <q-page padding>
     <div class="row q-col-gutter-md">
       <!-- Left Side - Product Selection and Cart -->
-      <div class="col-12 col-lg-8">
+      <div class="col-12 col-md-8">
         <q-card class="full-height">
           <q-card-section>
             <div class="row items-center justify-between q-mb-md">
-              <div class="text-h6">Point of Sale</div>
-              <div class="row q-gutter-sm">
+              <div class="text-h6 col-12 col-sm-auto q-mb-sm-xs">Point of Sale</div>
+              <div class="row q-gutter-sm col-12 col-sm-auto">
                 <q-btn
                   color="primary"
                   icon="history"
-                  label="Sales History"
+                  :label="$q.screen.gt.xs ? 'Sales History' : ''"
                   to="/sales/history"
+                  class="col-auto"
                 />
                 <q-input
                   v-model="salesStore.searchQuery"
                   dense
                   outlined
                   placeholder="Search products..."
-                  class="col-grow"
+                  class="col-12 col-sm-auto"
+                  style="min-width: 200px"
                 >
                   <template v-slot:append>
                     <q-icon name="search" />
@@ -94,6 +98,7 @@ onMounted(() => {
                   map-options
                   options-dense
                   placeholder="Category"
+                  class="col-12 col-sm-auto"
                   style="min-width: 150px"
                 />
               </div>
@@ -105,7 +110,7 @@ onMounted(() => {
       </div>
 
       <!-- Right Side - Cart and Payment -->
-      <div class="col-12 col-lg-4">
+      <div class="col-12 col-md-4">
         <q-card class="full-height">
           <q-card-section>
             <div class="text-h6 q-mb-md">Shopping Cart</div>
@@ -116,26 +121,31 @@ onMounted(() => {
                 <q-item-section>
                   <q-item-label class="text-bold bg-primary q-pa-xs">{{ item.name }}</q-item-label>
                   <q-item-label caption>
-                    ₱{{ salesStore.formatPrice(item.price) }} × {{ item.quantity }}
+                    ₱{{ financialStore.formatCurrency(item.price) }} × {{ item.quantity }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
                   <div class="row items-center q-gutter-sm">
-                    <q-btn
-                      flat
-                      round
-                      dense
-                      icon="remove"
-                      @click.stop="handleUpdateCartQuantity(item, -1)"
-                    />
-                    <span class="text-subtitle1">{{ item.quantity }}</span>
-                    <q-btn
-                      flat
-                      round
-                      dense
-                      icon="add"
-                      @click.stop="handleUpdateCartQuantity(item, 1)"
-                    />
+                    <q-btn-group spread>
+                      <q-btn
+                        flat
+                        dense
+                        icon="remove"
+                        @click.stop="handleUpdateCartQuantity(item, -1)"
+                      />
+                      <q-btn
+                        flat
+                        dense
+                        :label="item.quantity.toString()"
+                        style="min-width: 40px"
+                      />
+                      <q-btn
+                        flat
+                        dense
+                        icon="add"
+                        @click.stop="handleUpdateCartQuantity(item, 1)"
+                      />
+                    </q-btn-group>
                     <q-btn
                       flat
                       round
@@ -153,11 +163,11 @@ onMounted(() => {
             <div class="q-mt-md">
               <div class="row justify-between q-mb-sm">
                 <div class="text-subtitle1">Subtotal:</div>
-                <div class="text-subtitle1">₱{{ salesStore.formatPrice(subtotal) }}</div>
+                <div class="text-subtitle1">{{ financialStore.formatCurrency(subtotal) }}</div>
               </div>
               <div class="row justify-between q-mb-md">
                 <div class="text-subtitle1">Total:</div>
-                <div class="text-h6 text-primary">₱{{ salesStore.formatPrice(total) }}</div>
+                <div class="text-h6 text-primary">{{ financialStore.formatCurrency(total) }}</div>
               </div>
 
               <!-- Payment Method Selection -->
@@ -197,7 +207,7 @@ onMounted(() => {
             <div class="text-subtitle2">Payment Method</div>
             <div>{{ salesStore.selectedPaymentMethod }}</div>
           </div>
-          <div class="text-h6">Total: ₱{{ salesStore.formatPrice(total) }}</div>
+          <div class="text-h6">Total: ₱{{ financialStore.formatCurrency(total) }}</div>
         </q-card-section>
 
         <q-card-actions align="right">
@@ -210,5 +220,34 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* Mobile-first styles */
+.q-page {
+  max-width: 100%;
+}
 
+/* Responsive adjustments */
+@media (max-width: 599px) {
+  .q-gutter-sm > * {
+    margin: 4px !important;
+  }
+
+  .q-mb-sm-xs {
+    margin-bottom: 8px;
+  }
+
+  .q-card-section {
+    padding: 12px !important;
+  }
+}
+
+/* Ensure cart items are properly spaced */
+.q-item {
+  flex-wrap: wrap;
+}
+
+@media (min-width: 600px) {
+  .q-item {
+    flex-wrap: nowrap;
+  }
+}
 </style>

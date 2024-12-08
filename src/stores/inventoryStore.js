@@ -23,11 +23,12 @@ import { syncQueue } from '../services/syncQueue'
 import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { date } from 'quasar'
+import { useFinancialStore } from './financialStore'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 
 // Get network status at the store level
 const { isOnline } = useNetworkStatus()
-
+const financialStore = useFinancialStore()
 // Constants
 const BATCH_SIZE = 500
 const DEFAULT_SORT = 'name'
@@ -65,7 +66,13 @@ export const useInventoryStore = defineStore('inventory', {
       lastSync: null,
       inProgress: false,
       error: null,
-      pendingChanges: 0
+      pendingChanges: 0,
+      totalItems: 0,
+      processedItems: 0,
+      failedItems: [],
+      retryCount: 0,
+      maxRetries: 3,
+      retryDelay: 1000 // 1 second delay between retries
     },
     sortBy: DEFAULT_SORT,
     sortDirection: DEFAULT_SORT_DIRECTION,
@@ -78,16 +85,7 @@ export const useInventoryStore = defineStore('inventory', {
       from: formatDate(new Date(), 'YYYY-MM-DD'),
       to: formatDate(new Date(), 'YYYY-MM-DD')
     },
-    salesData: [],
-    selectedTimeframe: 'daily',
-    profitTimeframe: 'daily',
-    cashFlowTransactions: {
-      Cash: [],
-      GCash: [],
-      Growsari: []
-    },
     inventoryData: [],
-    financialData: [],
     lowStockAlerts: [],
     topSellingProducts: [],
     chartData: {
@@ -128,6 +126,13 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Function} Function to get category name from ID
      */
     getCategoryName: (state) => (categoryId) => {
+      // If no categoryId is provided, return Uncategorized
+      if (!categoryId) return 'Uncategorized'
+
+      if (typeof categoryId === 'string' && !state.categories.find(cat => cat.id === categoryId))
+        return categoryId
+
+      // Otherwise look up the category by ID
       const category = state.categories.find(cat => cat.id === categoryId)
       return category ? category.name : 'Uncategorized'
     },
@@ -179,49 +184,10 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @getter
-     * @returns {number} Total revenue from sales data
-     */
-    getTotalRevenue(state) {
-      return state.salesData.reduce((sum, item) => sum + item.revenue, 0)
-    },
-
-    /**
-     * @getter
      * @returns {Array} Items with low stock levels
      */
     getLowStockItems(state) {
       return state.inventoryData.filter(item => item.currentStock <= item.minStock * 1.2)
-    },
-
-    /**
-     * @getter
-     * @returns {number} Net profit from financial data
-     */
-    getNetProfit(state) {
-      return state.financialData.find(item => item.category === 'Net Profit')?.amount || 0
-    },
-
-    /**
-     * @getter
-     * @returns {number} Daily profit from sales data
-     */
-    getDailyProfit() {
-      const today = new Date().toISOString().split('T')[0]
-      return (this.salesData || [])
-        .filter(sale => sale?.date?.startsWith(today))
-        .reduce((total, sale) => total + ((sale?.price || 0) * (sale?.quantity || 0)), 0)
-    },
-
-    /**
-     * @getter
-     * @returns {number} Daily expense from cash flow transactions
-     */
-    getDailyExpense() {
-      const today = new Date().toISOString().split('T')[0]
-      const cashTransactions = this.cashFlowTransactions?.Cash || []
-      return cashTransactions
-        .filter(t => t?.date?.startsWith(today) && t?.type === 'expense')
-        .reduce((total, t) => total + (t?.amount || 0), 0)
     },
 
     /**
@@ -287,11 +253,11 @@ export const useInventoryStore = defineStore('inventory', {
         // If we're still empty after sync attempt, and we're offline,
         // we'll wait for online status to try again
         if (existingItems === 0 && !isOnline.value) {
-          console.log('No local data and offline. Will sync when online.')
           this.error = 'No local data available. Waiting for network connection...'
         }
 
         await this.loadInventory()
+        await this.loadCategories()
       } catch (error) {
         this.error = handleError(error, 'Failed to initialize database')
       }
@@ -306,7 +272,6 @@ export const useInventoryStore = defineStore('inventory', {
     async loadInventory() {
       try {
         this.loading = true
-        console.log('Loading inventory...')
 
         // Load from local first
         const localItems = await db.getAllItems()
@@ -314,7 +279,6 @@ export const useInventoryStore = defineStore('inventory', {
 
         // If we have no items locally and we're online, force a sync
         if (localItems.length === 0 && isOnline.value) {
-          console.log('No local items found, syncing with Firestore...')
           await this.syncWithFirestore()
           const updatedItems = await db.getAllItems()
           this.items = updatedItems.map(processItem)
@@ -373,6 +337,11 @@ export const useInventoryStore = defineStore('inventory', {
         return { id: result, offline: true };
       } catch (error) {
         console.error('Error creating item:', error);
+        this.syncStatus.failedItems.push({
+          ...item,
+          error: error.message,
+          syncOperation: 'create'
+        })
         throw error;
       } finally {
         this.loading = false;
@@ -424,6 +393,11 @@ export const useInventoryStore = defineStore('inventory', {
         return { id, offline: true };
       } catch (error) {
         console.error('Error updating item:', error);
+        this.syncStatus.failedItems.push({
+          ...changes,
+          error: error.message,
+          syncOperation: 'update'
+        })
         throw error;
       } finally {
         this.loading = false;
@@ -458,29 +432,50 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Deletes an item from the local database and queues for sync
      */
     async deleteItem(id) {
-      const item = await db.items.get(id)
-      if (!item) throw new Error('Item not found')
+      try {
+        const item = await db.items.get(id)
+        if (!item) throw new Error('Item not found')
 
       // Always delete from local DB first
-      await db.transaction('rw', db.items, async () => {
-        try {
+        await db.transaction('rw', db.items, async () => {
           await db.items.delete(id)
+        })
 
-          // Queue for sync only if item was previously synced
-          if (item.firebaseId) {
+        // If online and item was synced with Firestore, delete from Firestore
+        if (isOnline.value && item.firebaseId) {
+          try {
+            const docRef = doc(fireDb, 'items', item.firebaseId)
+            await deleteDoc(docRef)
+          } catch (error) {
+            console.error('Error deleting from Firestore:', error)
+            // Queue for sync if Firestore delete fails
             await syncQueue.addToQueue({
               type: 'delete',
               collection: 'items',
-              docId: id
+              docId: id,
+              firebaseId: item.firebaseId
             })
           }
-        } catch (error) {
-          console.error('Error deleting item locally:', error)
-          throw error
+        } else if (item.firebaseId) {
+          // Offline but item exists in Firestore, queue for sync
+          await syncQueue.addToQueue({
+            type: 'delete',
+            collection: 'items',
+            docId: id,
+            firebaseId: item.firebaseId
+          })
         }
-      })
 
-      return id
+        return id
+      } catch (error) {
+        console.error('Error in deleteItem:', error)
+        this.syncStatus.failedItems.push({
+          id,
+          error: error.message,
+          syncOperation: 'delete'
+        })
+        throw error
+      }
     },
 
     /**
@@ -503,22 +498,73 @@ export const useInventoryStore = defineStore('inventory', {
           firebaseId: doc.id
         }))
 
-        for (const firestoreItem of firestoreItems) {
-          const existingItem = localItems.find(
-            item => item.firebaseId === firestoreItem.firebaseId
-          )
+        // Make sure categories are loaded before processing items
+        await this.loadCategories()
 
-          if (!existingItem) {
-            await db.items.add({
+        for (const firestoreItem of firestoreItems) {
+          try {
+            // Check if item already exists by firebaseId
+            const existingItems = await db.items
+              .where('firebaseId')
+              .equals(firestoreItem.firebaseId)
+              .toArray()
+
+            if (existingItems.length > 0) {
+              // Update the first instance and delete any duplicates
+              const [itemToKeep, ...duplicates] = existingItems
+
+              if (itemToKeep.syncStatus !== 'pending') {
+                const firestoreDate = new Date(firestoreItem.updatedAt)
+                const localDate = new Date(itemToKeep.updatedAt)
+
+                if (firestoreDate > localDate) {
+                  await db.items.update(itemToKeep.id, {
+                    ...firestoreItem,
+                    id: itemToKeep.id,
+                    syncStatus: 'synced'
+                  })
+                }
+              }
+
+              // Delete any duplicate entries
+              for (const duplicate of duplicates) {
+                await db.items.delete(duplicate.id)
+              }
+            } else if (firestoreItem.localId) {
+              // This is a new item from another client
+              const existingLocal = await db.items
+                .where('id')
+                .equals(parseInt(firestoreItem.localId))
+                .first()
+
+              if (!existingLocal) {
+                await db.items.add({
+                  ...firestoreItem,
+                  syncStatus: 'synced'
+                })
+              }
+            } else {
+              // Completely new item
+              await db.items.add({
+                ...firestoreItem,
+                syncStatus: 'synced'
+              })
+            }
+          } catch (itemError) {
+            // Track failed items individually
+            this.syncStatus.failedItems.push({
               ...firestoreItem,
-              syncStatus: 'synced'
+              error: itemError.message,
+              syncOperation: 'create'
             })
           }
         }
+
         await this.mergeChanges(localItems, firestoreItems)
         this.items = await db.getAllItems()
       } catch (error) {
         console.error('Error syncing with Firestore:', error)
+        this.error = handleError(error, 'Failed to sync with Firestore')
         throw error
       }
     },
@@ -535,24 +581,32 @@ export const useInventoryStore = defineStore('inventory', {
       return await db.transaction('rw', db.items, async () => {
         // Only process items that are already synced (not pending local changes)
         for (const firestoreItem of firestoreItems) {
-          const localItem = localItems.find(
-            item => item.firebaseId === firestoreItem.firebaseId
-          )
+          // Check if item already exists by firebaseId
+          const existingItems = await db.items
+            .where('firebaseId')
+            .equals(firestoreItem.firebaseId)
+            .toArray()
 
-          if (localItem) {
-            // Only update if the item is not pending local changes
-            const currentItem = await db.items.get(localItem.id)
-            if (currentItem.syncStatus !== 'pending') {
+          if (existingItems.length > 0) {
+            // Update the first instance and delete any duplicates
+            const [itemToKeep, ...duplicates] = existingItems
+
+            if (itemToKeep.syncStatus !== 'pending') {
               const firestoreDate = new Date(firestoreItem.updatedAt)
-              const localDate = new Date(currentItem.updatedAt)
+              const localDate = new Date(itemToKeep.updatedAt)
 
               if (firestoreDate > localDate) {
-                await db.items.update(localItem.id, {
+                await db.items.update(itemToKeep.id, {
                   ...firestoreItem,
-                  id: localItem.id,
+                  id: itemToKeep.id,
                   syncStatus: 'synced'
                 })
               }
+            }
+
+            // Delete any duplicate entries
+            for (const duplicate of duplicates) {
+              await db.items.delete(duplicate.id)
             }
           } else if (firestoreItem.localId) {
             // This is a new item from another client
@@ -567,6 +621,12 @@ export const useInventoryStore = defineStore('inventory', {
                 syncStatus: 'synced'
               })
             }
+          } else {
+            // Completely new item
+            await db.items.add({
+              ...firestoreItem,
+              syncStatus: 'synced'
+            })
           }
         }
 
@@ -627,299 +687,41 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method generateSalesReport
-     * @returns {Promise<Array>} Sales report data
-     * @description Generates a sales report for the specified date range
-     */
-    async generateSalesReport() {
-      try {
-        this.loading = true;
-        const { from, to } = this.dateRange;
-
-        // Fetch sales data from database for the date range
-        const salesData = await db.sales
-          .where('date')
-          .between(from, to)
-          .toArray();
-
-        return salesData.map(sale => ({
-          id: sale.id,
-          date: sale.date,
-          amount: sale.amount,
-          items: sale.items
-        }));
-      } catch (error) {
-        console.error('Error generating sales report:', error);
-        throw error;
-      } finally {
-        this.loading = false;
-      }
-    },
-
-    /**
-     * @async
-     * @method generateFinancialReport
-     * @returns {Promise<Object>} Financial report data
-     * @description Generates a financial report for the specified date range
-     */
-    async generateFinancialReport() {
-      try {
-        this.loading = true;
-        const { from, to } = this.dateRange;
-
-        // Fetch financial data from database for the date range
-        const transactions = await db.cashFlow
-          .where('date')
-          .between(from, to)
-          .toArray();
-
-        // Calculate totals
-        const totals = transactions.reduce((acc, curr) => {
-          if (curr.type === 'income') {
-            acc.revenue += curr.amount;
-          } else if (curr.type === 'expense') {
-            acc.expenses += curr.amount;
-          }
-          return acc;
-        }, { revenue: 0, expenses: 0 });
-
-        return {
-          ...totals,
-          profit: totals.revenue - totals.expenses,
-          period: { start: from, end: to }
-        };
-      } catch (error) {
-        console.error('Error generating financial report:', error);
-        throw error;
-      } finally {
-        this.loading = false;
-      }
-    },
-
-    /**
-     * @async
-     * @method formatDate
-     * @param {string} dateStr - Date string to format
-     * @returns {string} Formatted date string
-     * @description Formats a date string for display
-     */
-    formatDate(dateStr) {
-      if (!dateStr) return ''
-      return formatDate(new Date(dateStr), 'MM/DD/YY HH:mm:ss')
-    },
-
-    /**
-     * @async
-     * @method setDateRange
-     * @param {Object} range - Date range to set
-     * @returns {void}
-     * @description Sets the date range for reports
-     */
-    setDateRange(range) {
-      this.dateRange = {
-        from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
-        to: formatDate(new Date(range.to), 'YYYY-MM-DD')
-      }
-    },
-
-    /**
-     * @async
-     * @method fetchCashFlowTransactions
-     * @param {string} paymentMethod - Payment method to fetch transactions for
-     * @returns {Promise<boolean>} Success flag
-     * @description Fetches cash flow transactions for the specified payment method
-     */
-    async fetchCashFlowTransactions(paymentMethod) {
-      try {
-        const q = query(
-          collection(fireDb, `cashFlow_${paymentMethod}`),
-          orderBy('date', 'desc')
-        )
-
-        const querySnapshot = await getDocs(q)
-        this.cashFlowTransactions[paymentMethod] = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          date: doc.data().date?.toDate() || new Date()
-        }))
-
-        return true
-      } catch (error) {
-        console.error('Error fetching transactions:', error)
-        return false
-      }
-    },
-
-    /**
-     * @async
-     * @method getBalance
-     * @param {string} paymentMethod - Payment method to get balance for
-     * @returns {number} Balance
-     * @description Gets the balance for the specified payment method
-     */
-    getBalance(paymentMethod) {
-      if (!this.cashFlowTransactions[paymentMethod]) {
-        return 0
-      }
-      return this.cashFlowTransactions[paymentMethod].reduce((total, transaction) => {
-        return total + (transaction.type === 'in' ? transaction.value : -transaction.value)
-      }, 0)
-    },
-
-    /**
-     * @async
-     * @method formatCurrency
-     * @param {number} value - Value to format
-     * @returns {string} Formatted currency string
-     * @description Formats a value as a currency string
-     */
-    formatCurrency(value) {
-      if (!value && value !== 0) {
-        return new Intl.NumberFormat('en-PH', {
-          style: 'currency',
-          currency: 'PHP'
-        }).format(0)
-      }
-      return new Intl.NumberFormat('en-PH', {
-        style: 'currency',
-        currency: 'PHP'
-      }).format(value)
-    },
-
-    /**
-     * @async
-     * @method deleteCashFlowTransaction
-     * @param {string} paymentMethod - Payment method to delete transaction for
-     * @param {string} transactionId - Transaction ID to delete
-     * @returns {Promise<boolean>} Success flag
-     * @description Deletes a cash flow transaction
-     */
-    async deleteCashFlowTransaction(paymentMethod, transactionId) {
-      try {
-        const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
-        await deleteDoc(docRef)
-
-        // Update local state
-        this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
-          .filter(t => t.id !== transactionId)
-
-        return true
-      } catch (error) {
-        console.error('Error deleting transaction:', error)
-        return false
-      }
-    },
-
-    /**
-     * @async
-     * @method updateCashFlowTransaction
-     * @param {string} paymentMethod - Payment method to update transaction for
-     * @param {string} transactionId - Transaction ID to update
-     * @param {Object} updatedData - Updated transaction data
-     * @returns {Promise<boolean>} Success flag
-     * @description Updates a cash flow transaction
-     */
-    async updateCashFlowTransaction(paymentMethod, transactionId, updatedData) {
-      try {
-        const docRef = doc(fireDb, `cashFlow_${paymentMethod}`, transactionId)
-        await updateDoc(docRef, {
-          ...updatedData,
-          date: serverTimestamp()
-        })
-
-        // Update local state
-        this.cashFlowTransactions[paymentMethod] = this.cashFlowTransactions[paymentMethod]
-          .map(t => t.id === transactionId ? { ...t, ...updatedData, date: new Date() } : t)
-
-        return true
-      } catch (error) {
-        console.error('Error updating transaction:', error)
-        return false
-      }
-    },
-
-    /**
-     * @async
-     * @method addCashFlowTransaction
-     * @param {string} paymentMethod - Payment method to add transaction for
-     * @param {Object} transactionData - Transaction data to add
-     * @returns {Promise<boolean>} Success flag
-     * @description Adds a new cash flow transaction
-     */
-    async addCashFlowTransaction(paymentMethod, transactionData) {
-      try {
-        const docRef = await addDoc(collection(fireDb, `cashFlow_${paymentMethod}`), {
-          ...transactionData,
-          date: serverTimestamp()
-        })
-
-        // Update local state
-        this.cashFlowTransactions[paymentMethod].unshift({
-          id: docRef.id,
-          ...transactionData,
-          date: new Date()
-        })
-
-        return true
-      } catch (error) {
-        console.error('Error adding transaction:', error)
-        return false
-      }
-    },
-
-    /**
-     * @async
-     * @method repopulateDatabase
-     * @returns {Promise<void>}
-     * @description Repopulates the database with mock data
-     */
-    async repopulateDatabase() {
-      try {
-        this.loading = true
-        await db.repopulateWithMockData()
-        await this.loadInventory()
-      } catch (error) {
-        console.error('Error repopulating database:', error)
-        this.error = error.message
-      } finally {
-        this.loading = false
-      }
-    },
-
-    /**
-     * @async
      * @method loadCategories
      * @returns {Promise<void>}
      * @description Loads categories from the database and syncs with Firestore
      */
     async loadCategories() {
       try {
-        // Load from local first
+        this.loading = true
+
+        // Load from local DB first
         const localCategories = await db.categories.toArray()
         this.categories = localCategories
 
         // Sync with Firestore if online
         if (isOnline.value) {
-          const categoriesRef = collection(fireDb, 'categories')
-          const querySnapshot = await getDocs(categoriesRef)
-          const firestoreCategories = []
-
-          querySnapshot.forEach((doc) => {
-            firestoreCategories.push({
+          try {
+            const snapshot = await getDocs(query(collection(fireDb, 'categories'), orderBy('name')))
+            const firestoreCategories = snapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
-              firebaseId: doc.id
-            })
-          })
+              createdAt: doc.data().createdAt?.toDate() || new Date(),
+              updatedAt: doc.data().updatedAt?.toDate() || new Date()
+            }))
 
-          // Merge local and Firestore categories
-          await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+            // Merge local and Firestore categories
+            await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+          } catch (error) {
+            console.error('Error syncing categories with Firestore:', error)
+            // Continue with local categories
+          }
         }
       } catch (error) {
-        console.error('Failed to load categories:', error)
-        this.error = 'Failed to load categories'
-        // Fallback to empty categories array instead of throwing
-        this.categories = []
+        console.error('Error loading categories:', error)
+        this.error = handleError(error, 'Failed to load categories')
+      } finally {
+        this.loading = false
       }
     },
 
@@ -935,44 +737,71 @@ export const useInventoryStore = defineStore('inventory', {
     async mergeCategoriesWithFirestore(localCategories, firestoreCategories) {
       try {
         const batch = writeBatch(fireDb)
-        const categoriesRef = collection(fireDb, 'categories')
+        const updates = []
 
-        // Update local categories with Firestore data
-        for (const firestoreCategory of firestoreCategories) {
-          const localCategory = localCategories.find(
-            local => local.firebaseId === firestoreCategory.firebaseId
-          )
-
-          if (!localCategory) {
-            // Category exists in Firestore but not locally - add to local
-            await db.categories.add({
-              ...firestoreCategory,
-              updatedAt: new Date().toISOString()
-            })
-          }
-        }
-
-        // Sync local categories to Firestore
-        for (const localCategory of localCategories) {
-          if (!localCategory.firebaseId) {
-            // Category exists locally but not in Firestore - add to Firestore
-            const docRef = doc(categoriesRef)
+        // Handle local categories not in Firestore
+        for (const localCat of localCategories) {
+          const firestoreCat = firestoreCategories.find(fc => fc.id === localCat.id)
+          if (!firestoreCat) {
+            // Category exists locally but not in Firestore
+            if (localCat.id.startsWith('temp_')) {
+              // This is a new local category, add to Firestore
+              const docRef = doc(collection(fireDb, 'categories'))
             batch.set(docRef, {
-              name: localCategory.name,
+                name: localCat.name,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
-
-            // Update local category with Firebase ID
-            await db.categories.update(localCategory.id, {
-              firebaseId: docRef.id
+              updates.push({
+                type: 'update',
+                oldId: localCat.id,
+                newId: docRef.id,
+                data: localCat
+              })
+            }
+          } else if (new Date(localCat.updatedAt) > new Date(firestoreCat.updatedAt)) {
+            // Local category is newer, update Firestore
+            const docRef = doc(fireDb, 'categories', localCat.id)
+            batch.update(docRef, {
+              name: localCat.name,
+              updatedAt: serverTimestamp()
             })
           }
         }
 
+        // Handle Firestore categories not in local DB
+        for (const firestoreCat of firestoreCategories) {
+          const localCat = localCategories.find(lc => lc.id === firestoreCat.id)
+          if (!localCat) {
+            // Category exists in Firestore but not locally
+            await db.categories.add({
+              id: firestoreCat.id,
+              name: firestoreCat.name,
+              createdAt: firestoreCat.createdAt,
+              updatedAt: firestoreCat.updatedAt
+            })
+          } else if (new Date(firestoreCat.updatedAt) > new Date(localCat.updatedAt)) {
+            // Firestore category is newer, update local
+            await db.categories.update(localCat.id, {
+              name: firestoreCat.name,
+              updatedAt: firestoreCat.updatedAt
+            })
+          }
+        }
+
+        // Commit Firestore changes
         await batch.commit()
 
-        // Refresh local categories
+        // Update local IDs for new categories
+        for (const update of updates) {
+          if (update.type === 'update') {
+            await db.categories.where('id').equals(update.oldId).modify(category => {
+              category.id = update.newId
+            })
+          }
+        }
+
+        // Reload categories from local DB
         const updatedCategories = await db.categories.toArray()
         this.categories = updatedCategories
       } catch (error) {
@@ -990,58 +819,72 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async addCategory(categoryName) {
       try {
-        // Check for duplicates first
-        const exists = this.categories.some(
-          cat => cat.name.toLowerCase() === categoryName.toLowerCase()
+        if (!categoryName || typeof categoryName !== 'string')
+          throw new Error('Invalid category name')
+
+        const existingCategory = this.categories.find(
+          c => c.name.toLowerCase() === categoryName.toLowerCase()
         )
-        if (exists) {
-          this.error = 'Category already exists'
-          return null
-        }
+        if (existingCategory)
+          throw new Error('Category already exists')
 
-        // Add to local DB first
+        const tempId = 'temp_' + Date.now()
         const newCategory = {
+          id: tempId,
           name: categoryName,
-          value: categoryName.charAt(0).toLowerCase() + categoryName.slice(1),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: new Date(),
+          updatedAt: new Date()
         }
 
-        const localId = await db.categories.add(newCategory)
+        await db.categories.add(newCategory)
+        this.categories.push(newCategory)
 
         if (isOnline.value) {
           try {
-            // Add to Firestore
             const docRef = await addDoc(collection(fireDb, 'categories'), {
-              ...newCategory,
+              name: categoryName,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
 
-            // Update local category with Firebase ID
-            await db.categories.update(localId, { firebaseId: docRef.id })
+            await db.categories.where('id').equals(tempId).modify(category => {
+              category.id = docRef.id
+            })
 
-            const updatedCategory = await db.categories.get(localId)
-            this.categories.push(updatedCategory)
-            this.error = null
-            return updatedCategory
+            this.categories = this.categories.map(c =>
+              c.id === tempId ? { ...c, id: docRef.id } : c
+            )
+
+            return { id: docRef.id, name: categoryName }
           } catch (error) {
-            console.error('Firebase error:', error)
-            // Keep local changes even if Firebase sync fails
-            const localCategory = await db.categories.get(localId)
-            this.categories.push(localCategory)
-            this.error = 'Changes saved locally, will sync when online'
-            return localCategory
-          }
+            console.error('Error adding category to Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'create',
+              collection: 'categories',
+              data: {
+                name: categoryName,
+                createdAt: new Date(),
+                updatedAt: new Date()
+              },
+              tempId
+            })
+            return { id: tempId, name: categoryName }
         }
-
-        const localCategory = await db.categories.get(localId)
-        this.categories.push(localCategory)
-        this.error = null
-        return localCategory
+        } else {
+          await syncQueue.addToQueue({
+            type: 'create',
+            collection: 'categories',
+            data: {
+              name: categoryName,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            },
+            tempId
+          })
+          return { id: tempId, name: categoryName }
+        }
       } catch (error) {
         console.error('Error adding category:', error)
-        this.error = error.message || 'Failed to add category'
         return null
       }
     },
@@ -1056,13 +899,35 @@ export const useInventoryStore = defineStore('inventory', {
     async deleteCategory(categoryId) {
       try {
         await db.categories.delete(categoryId)
-        this.categories = this.categories.filter(cat => cat.id !== categoryId)
-        this.error = null
+
+        this.categories = this.categories.filter(c => c.id !== categoryId)
+
+        if (isOnline.value) {
+          try {
+            const docRef = doc(fireDb, 'categories', categoryId)
+            await deleteDoc(docRef)
+          } catch (error) {
+            console.error('Error deleting category from Firestore:', error)
+            await syncQueue.addToQueue({
+              type: 'delete',
+              collection: 'categories',
+              docId: categoryId
+            })
+            this.error = handleError(error, 'Failed to delete category')
+            return false
+          }
+        } else {
+          await syncQueue.addToQueue({
+            type: 'delete',
+            collection: 'categories',
+            docId: categoryId
+          })
+        }
+
         return true
       } catch (error) {
-        this.error = 'Failed to delete category'
-        // Keep the UI state consistent even if DB operation fails
-        this.categories = this.categories.filter(cat => cat.id !== categoryId)
+        console.error('Error deleting category:', error)
+        this.error = handleError(error, 'Failed to delete category')
         return false
       }
     },
@@ -1089,90 +954,6 @@ export const useInventoryStore = defineStore('inventory', {
       this.categoryDialog = false
       this.editedCategory = null
       this.error = null
-    },
-
-    /**
-     * @async
-     * @method getCategoryChartData
-     * @returns {Object} Chart data for categories
-     * @description Gets chart data for categories
-     */
-    getCategoryChartData() {
-      // Group items by category and calculate total sales
-      const categoryData = this.items.reduce((acc, item) => {
-        if (!acc[item.category]) {
-          acc[item.category] = 0
-        }
-        // Assuming each item's sales contribution is quantity * price
-        acc[item.category] += item.quantity * item.price
-        return acc
-      }, {})
-      const labels = Object.keys(categoryData).map(category =>
-        category.charAt(0).toUpperCase() + category.slice(1)
-      )
-      const data = Object.values(categoryData)
-
-      const colors = [
-        '#FF6384',
-        '#36A2EB',
-        '#FFCE56',
-        '#4BC0C0',
-        '#9966FF',
-        '#FF9F40'
-      ]
-
-      return {
-        labels,
-        datasets: [{
-          data,
-          backgroundColor: colors.slice(0, labels.length),
-          hoverBackgroundColor: colors.slice(0, labels.length)
-        }]
-      }
-    },
-
-    /**
-     * @async
-     * @method getCategoryChartOptions
-     * @param {string} textColor - Text color for the chart
-     * @returns {Object} Chart options for categories
-     * @description Gets chart options for categories
-     */
-    getCategoryChartOptions(textColor) {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: {
-              color: textColor,
-              font: {
-                size: 12
-              }
-            }
-          },
-          title: {
-            display: true,
-            text: 'Sales by Category',
-            color: textColor,
-            font: {
-              size: 16
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                const label = context.label || ''
-                const value = context.raw || 0
-                const total = context.dataset.data.reduce((a, b) => a + b, 0)
-                const percentage = ((value / total) * 100).toFixed(1)
-                return `${label}: ${this.formatCurrency(value)} (${percentage}%)`
-              }
-            }
-          }
-        }
-      }
     },
 
     /**
@@ -1257,7 +1038,6 @@ export const useInventoryStore = defineStore('inventory', {
      */
     handleSearch() {
       // Reactive through state, but we can add logging or additional handling here
-      console.log('Search query:', this.searchQuery)
     },
 
     /**
@@ -1265,8 +1045,42 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Handles category filter changes
      */
     handleFilters() {
-      // Reactive through state, but we can add logging or additional handling here
-      console.log('Category filter:', this.categoryFilter)
+    },
+
+    /**
+     * @method exportToCSV
+     * @param {Array} data - Data to export
+     * @param {string} filename - Name of the file to export
+     * @description Exports data to a CSV file
+     */
+    exportToCSV(data, filename) {
+      if (!data || !data.length) return
+
+      const headers = Object.keys(data[0])
+      const csvContent = [
+        headers.join(','),
+        ...data.map(row =>
+          headers.map(header => {
+            let cell = row[header]
+            // Handle cells that contain commas or quotes
+            if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
+              cell = `"${cell.replace(/"/g, '""')}"` // escape double quotes
+            }
+            return cell
+          }).join(',')
+        )
+      ].join('\n')
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+
+      link.setAttribute('href', url)
+      link.setAttribute('download', `${filename}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
     },
 
     getChartData(timeframe) {
@@ -1356,6 +1170,127 @@ export const useInventoryStore = defineStore('inventory', {
             display: false
           }
         }
+      }
+    },
+
+    async retryFailedSync(item) {
+      const { retryCount, maxRetries, retryDelay } = this.syncStatus
+
+      if (retryCount >= maxRetries) {
+        console.error(`Max retries (${maxRetries}) reached for item:`, item.id)
+        return false
+      }
+
+      try {
+        this.syncStatus.retryCount++
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+
+        if (item.syncOperation === 'create') {
+          await this.createNewItem(item)
+        } else if (item.syncOperation === 'update') {
+          await this.updateExistingItem(item.id, item)
+        } else if (item.syncOperation === 'delete') {
+          await this.deleteItem(item.id)
+        }
+
+        // Remove from failed items if successful
+        this.syncStatus.failedItems = this.syncStatus.failedItems.filter(
+          failed => failed.id !== item.id
+        )
+        return true
+      } catch (error) {
+        console.error(`Retry failed for item ${item.id}:`, error)
+        return false
+      }
+    },
+
+    async retryAllFailedItems() {
+      const failedItems = [...this.syncStatus.failedItems]
+      const results = await Promise.allSettled(
+        failedItems.map(item => this.retryFailedSync(item))
+      )
+
+      return results.filter(result => result.status === 'fulfilled' && result.value).length
+    },
+
+    async cleanupDuplicates() {
+      try {
+        this.loading = true
+        await db.transaction('rw', db.items, async () => {
+          // Get all items
+          const allItems = await db.items.toArray()
+
+          // Group items by firebaseId
+          const groupedItems = allItems.reduce((acc, item) => {
+            if (!item.firebaseId) return acc
+            if (!acc[item.firebaseId]) acc[item.firebaseId] = []
+            acc[item.firebaseId].push(item)
+            return acc
+          }, {})
+
+          // For each group of items with the same firebaseId
+          for (const [firebaseId, items] of Object.entries(groupedItems)) {
+            if (items.length > 1) {
+              // Keep the first item, delete the rest
+              const [itemToKeep, ...duplicates] = items
+
+              // Delete duplicates
+              for (const duplicate of duplicates) {
+                await db.items.delete(duplicate.id)
+              }
+            }
+          }
+        })
+
+        // Reload inventory after cleanup
+        await this.loadInventory()
+      } catch (error) {
+        this.error = handleError(error, 'Failed to cleanup duplicates')
+      } finally {
+        this.loading = false
+      }
+    },
+
+    cleanup(fullCleanup = false) {
+      // Cancel any pending debounced operations
+      if (debouncedSearch && typeof debouncedSearch.cancel === 'function') {
+        debouncedSearch.cancel()
+      }
+
+      // Reset UI state
+      this.loading = false
+      this.error = null
+      this.itemDialog = false
+      this.deleteDialog = false
+      this.editedItem = {}
+      this.itemToDelete = null
+
+      if (fullCleanup) {
+        // Full data cleanup
+        this.items = []
+        this.searchQuery = ''
+        this.categoryFilter = null
+        this.selectedItems = []
+        this.sortBy = DEFAULT_SORT
+        this.sortDirection = DEFAULT_SORT_DIRECTION
+        this.categories = []
+        this.inventoryData = []
+        this.lowStockAlerts = []
+        this.topSellingProducts = []
+      }
+
+      // Reset sync status
+      this.syncStatus = {
+        lastSync: null,
+        inProgress: false,
+        error: null,
+        pendingChanges: 0,
+        totalItems: 0,
+        processedItems: 0,
+        failedItems: [],
+        retryCount: 0,
+        maxRetries: 3,
+        retryDelay: 1000
       }
     },
   }
