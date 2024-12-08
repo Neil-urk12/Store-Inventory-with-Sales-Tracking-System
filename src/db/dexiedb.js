@@ -7,13 +7,13 @@ import Dexie from 'dexie';
 import { useInventoryStore } from 'src/stores/inventoryStore';
 
 
-class ValidationError extends Error {
+export class ValidationError extends Error {
   constructor(message) {
     super(message);
     this.name = 'ValidationError';
   }
 }
-class DatabaseError extends Error {
+export class DatabaseError extends Error {
   constructor(message) {
     super(message);
     this.name = 'DatabaseError';
