@@ -77,33 +77,58 @@ export const validateContactCategory = (category) => {
  * @param {Array} categories - Categories to validate
  * @returns {Object} Validation results with invalid items
  */
-export const validateDataBeforeSync = (contacts, categories, contactsList) => {
+export const validateDataBeforeSync = async (contacts, categories, contactsList) => {
   const invalidContacts = []
   const invalidCategories = []
 
-  contacts.forEach(contact => {
-    const validation = validateContact(contact, contactsList)
+  const contactPromises = contacts.map(contact => validateContact(contact, contactsList))
+  const contactResults = await Promise.all(contactPromises)
+
+  contactResults.forEach((validation, index) => {
+    const contact = contacts[index];
     if (!validation.isValid) {
       invalidContacts.push({
         item: contact,
-        errors: validation.errors
+        errors: validation.errors || ['Unspecified error']
       })
     }
   })
 
-  categories.forEach(category => {
-    const validation = validateContactCategory(category)
+  const categoryPromises = categories.map(category => validateContactCategory(category))
+  const categoryResults = await Promise.all(categoryPromises)
+
+  categoryResults.forEach((validation, index) => {
+    const category = categories[index];
     if (!validation.isValid) {
       invalidCategories.push({
         item: category,
-        errors: validation.errors
+        errors: validation.errors || ['Unspecified error']
       })
     }
   })
+  // contacts.forEach(contact => {
+  //   const validation = validateContact(contact, contactsList)
+  //   if (!validation.isValid) {
+  //     invalidContacts.push({
+  //       item: contact,
+  //       errors: validation.errors
+  //     })
+  //   }
+  // })
+
+  // categories.forEach(category => {
+  //   const validation = validateContactCategory(category)
+  //   if (!validation.isValid) {
+  //     invalidCategories.push({
+  //       item: category,
+  //       errors: validation.errors
+  //     })
+  //   }
+  // })
 
   return {
     isValid: invalidContacts.length === 0 && invalidCategories.length === 0,
-    invalidContacts,
-    invalidCategories
+    invalidContacts : [...invalidContacts],
+    invalidCategories : [...invalidCategories]
   }
 }
