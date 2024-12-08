@@ -323,24 +323,24 @@ class AppDatabase extends Dexie {
 
     const existingContact = await this.contactsList
       .where('[categoryId+name]')
-      .equals([contact.categoryId, contact.name.trim().toLowerCase()])
+      .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
       .or('email')
-      .equals(contact.email?.trim().toLowerCase())
+      .equals(contactPerson.email?.trim().toLowerCase())
       .first()
 
     if (existingContact) {
       throw new ValidationError(
-        existingContact.name.toLowerCase() === contact.name.trim().toLowerCase()
+        existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
           ? 'A contact with this name already exists in the category'
           : 'A contact with this email already exists'
       )
     }
 
     const newContact = {
-      ...contact,
-      name: contact.name.trim(),
-      email: contact.email?.trim().toLowerCase() || null,
-      phone: contact.phone?.trim() || null,
+      ...contactPerson,
+      name: contactPerson.name.trim(),
+      email: contactPerson.email?.trim().toLowerCase() || null,
+      phone: contactPerson.phone?.trim() || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       syncStatus: 'pending'
