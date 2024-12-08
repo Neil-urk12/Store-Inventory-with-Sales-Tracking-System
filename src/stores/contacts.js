@@ -184,7 +184,7 @@ export const useContactsStore = defineStore('contacts', {
      */
     async addContactCategory(contactCategory) {
       try {
-        const validation = validateContactCategory(contactCategory)
+        const validation = await validateContactCategory(contactCategory)
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
 
@@ -356,6 +356,9 @@ export const useContactsStore = defineStore('contacts', {
       const { firestoreContactCategories, firestoreContactsList } = firestoreData
       const mergedContactCategories = await this.mergeChanges(localContactCategories, firestoreContactCategories, 'name')
       const mergedContacts = await this.mergeChanges(localContacts, firestoreContactsList, 'name')
+      console.log("HOOOOH")
+      console.log('mergedContactCategories:', mergedContactCategories)
+      console.log('mergedContacts:', mergedContacts)
       return { mergedContactCategories, mergedContacts }
     },
 
@@ -464,12 +467,13 @@ export const useContactsStore = defineStore('contacts', {
      * @description Updates the local IndexedDB with the merged data.
      */
     async updateLocalDatabase(mergedContactCategories, mergedContacts) {
+      console.log('mergedContacts:', mergedContacts)
+      console.log('mergedContactCategories:', mergedContactCategories)
       if (mergedContactCategories.length > 0)
         await db.syncWithFirestoreSimple(mergedContactCategories, 'contactCategories')
 
-      if (mergedContacts.length > 0) {
+      if (mergedContacts.length > 0)
         await db.syncWithFirestoreSimple(mergedContacts, 'contactsList')
-      }
     },
 
     /**
@@ -572,8 +576,8 @@ export const useContactsStore = defineStore('contacts', {
         this.contactsSyncStatus.inProgress = true
 
         // Validate data before syncing
-        const validationResult = validateDataBeforeSync(localContacts, localContactCategories, this.contactsList)
-        if (validationResult.isValid) {
+        const validationResult = await validateDataBeforeSync(localContacts, localContactCategories, this.contactsList)
+        if (!validationResult.isValid) {
           const errorMessage = [
             'Validation failed:',
             ...validationResult.invalidContacts.map(({ item, errors = [] }) =>
@@ -591,9 +595,8 @@ export const useContactsStore = defineStore('contacts', {
         await this.updateFirestoreData(mergedData.mergedContactCategories, mergedData.mergedContacts)
         await this.updateLocalDatabase(mergedData.mergedContactCategories, mergedData.mergedContacts)
 
-        if (mergedData.mergedContactCategories.length === 0 && mergedData.mergedContacts.length === 0) {
+        if (mergedData.mergedContactCategories.length === 0 && mergedData.mergedContacts.length === 0)
           await this.uploadNewData(localContactCategories, localContacts)
-        }
 
         await this.loadContactCategories()
 
@@ -615,49 +618,103 @@ export const useContactsStore = defineStore('contacts', {
      * @returns {Promise<Array>} Merged items without duplicates
      */
     async mergeChanges(localItems, firestoreItems, uniqueField) {
-      const merged = new Map()
-      const seenIds = new Set(firestoreItems.map(item => item.id).filter(Boolean))
 
-      firestoreItems.forEach(item => {
-        if (item[uniqueField])
-          merged.set(item[uniqueField], item)
-        else
-          console.warn('Firestore item missing unique field:', item)
-      })
+      const mergedItems = new Map()
+      const usedIds = new Set()
 
-      localItems.forEach(localItem => {
-        if (!localItem[uniqueField])
-          return console.warn('Local item missing unique field:', localItem)
+      console.log('localItems:', localItems)
+      console.log('firestoreItems:', firestoreItems)
+      function isLocalItemNewer(localItem, existingItem) {
+        const localDate = new Date(localItem.updatedAt || 0);
+        const existingDate = new Date(existingItem.updatedAt || 0);
+        return localDate > existingDate;
+      }
 
-        const existingItem = merged.get(localItem[uniqueField])
-        if (!existingItem) {
-          if (!localItem.id || !seenIds.has(localItem.id))
-            merged.set(localItem[uniqueField], localItem)
-          return
+      const useCompoundKey = uniqueField === 'name' && localItems[0]?.categoryId !== undefined;
+
+      const getItemKey = (item) => useCompoundKey
+      ? `${item.categoryId}-${item.name}`
+      : item[uniqueField]
+
+      const generateNewId = (item) => `new-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+
+      for(const firestoreItem of firestoreItems) {
+        const key = getItemKey(firestoreItem)
+        if(!key) console.warn('Firestore item missing unique field:', firestoreItem)
+        else {
+          mergedItems.set(key, firestoreItem)
+          usedIds.add(firestoreItem.id)
+        }
+      }
+
+      // firestoreItems.forEach(item => {
+      //   const key = useCompoundKey ? `${item.categoryId}-${item.name}` : item[uniqueField]
+      //   if (key) merged.set(key, item);
+      //   else console.warn('Firestore item missing unique field:', item)
+      // });
+
+      for(const localItem of localItems) {
+        const key = getItemKey(localItem)
+        if(!key){
+          console.warn('Local item missing unique field:', localItem)
+          continue
         }
 
-        const localDate = new Date(localItem.updatedAt || 0)
-        const existingDate = new Date(existingItem.updatedAt || 0)
+        const existingItem = mergedItems.get(key)
+        console.log('existingItem:', existingItem)
 
-        if (localDate > existingDate) {
-          merged.set(localItem[uniqueField], {
-            ...localItem,
-            id: existingItem.id
-          })
+        if(existingItem || isLocalItemNewer(localItem, existingItem)) {
+          let itemToMerge = {...localItem}
+          console.log('itemToMerge:', itemToMerge)
+          if(localItem.id && usedIds.has(localItem.id)){
+            itemToMerge.id = generateNewId(localItem)
+            itemToMerge.localId = localItem.id
+            console.log('itemToMerge:', itemToMerge)
+          }
+          if(existingItem.name === localItem.name){
+            console.warn('Duplicate item detected:', localItem)
+            mergedItems.delete(key)
+          }
+          mergedItems.set(key, itemToMerge)
+          // console.log('mergedItems:', mergedItems)
+          // console.log('usedIds:', usedIds)
+          // console.log('itemToMerge:', itemToMerge)
+          // usedIds.add(itemToMerge.id)
         }
-      })
+      }
+      console.log('mergedItems:', mergedItems)
+      return Array.from(mergedItems.values())
 
-      const result = Array.from(merged.values())
-      const uniqueCheck = new Set()
-      return result.filter(item => {
-        const key = item[uniqueField]
-        if (!key || uniqueCheck.has(key)) {
-          console.warn('Duplicate or invalid item filtered out:', item)
-          return false
-        }
-        uniqueCheck.add(key)
-        return true
-      })
+      // localItems.forEach(localItem => {
+      //   const key = useCompoundKey ? `${localItem.categoryId}-${localItem.name}` : localItem[uniqueField];
+      //   if (!key) return console.warn('Local item missing unique field:', localItem);
+
+      //   const existingItem = merged.get(key);
+      //   if (!existingItem) {
+      //     if (!localItem.id || !seenIds.has(localItem.id)) merged.set(key, localItem);
+      //     return;
+      //   }
+
+      //   const localDate = new Date(localItem.updatedAt || 0);
+      //   const existingDate = new Date(existingItem.updatedAt || 0);
+
+      //   if (localDate > existingDate) {
+      //     merged.set(key, { ...localItem, id: existingItem.id });
+      //   }
+      // })
+
+      // const result = Array.from(merged.values())
+      // const uniqueCheck = new Set()
+      // return result.filter(item => {
+      //   const key = useCompoundKey ? `${item.categoryId}-${item.name}` : item[uniqueField];
+      //   if (!key || uniqueCheck.has(key)) {
+      //     console.warn('Duplicate or invalid item filtered out:', item)
+      //     return false
+      //   }
+      //   uniqueCheck.add(key)
+      //   return true
+      // })
     }
+
   }
 })
