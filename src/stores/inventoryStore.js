@@ -300,14 +300,13 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Promise<Object>} Created item result
      */
     async createNewItem(item) {
-      this.loading = true;
+      this.loading = true
 
       try {
         // Validate item before saving
-        const errors = validateItem(item);
-        if (errors.length > 0) {
-        throw new Error(`Validation failed: ${errors.join(', ')}`)
-        }
+        const errors = validateItem(item)
+        if (errors.length > 0) 
+          throw new Error(`Validation failed: ${errors.join(', ')}`)
 
         // Process item (format data, set defaults, etc.)
         const processedItem = processItem(item)
@@ -321,30 +320,30 @@ export const useInventoryStore = defineStore('inventory', {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
-            await db.updateItem(result, { firebaseId: docRef.id });
-            return { id: result, offline: false };
+            await db.updateItem(result, { firebaseId: docRef.id })
+            return { id: result, offline: false }
           } catch (firebaseError) {
-            console.error('Firebase error:', firebaseError);
+            console.error('Firebase error:', firebaseError)
             // If Firebase fails, queue for sync
-            await this.queueForSync('create', processedItem, result);
-            return { id: result, offline: true };
+            await this.queueForSync('create', processedItem, result)
+            return { id: result, offline: true }
           }
         }
 
         // Queue for sync if offline
-        await this.queueForSync('create', processedItem, result);
-        await this.loadInventory();
-        return { id: result, offline: true };
+        await this.queueForSync('create', processedItem, result)
+        await this.loadInventory()
+        return { id: result, offline: true }
       } catch (error) {
-        console.error('Error creating item:', error);
+        console.error('Error creating item:', error)
         this.syncStatus.failedItems.push({
           ...item,
           error: error.message,
           syncOperation: 'create'
         })
-        throw error;
+        throw error
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
 
@@ -436,7 +435,6 @@ export const useInventoryStore = defineStore('inventory', {
         const item = await db.items.get(id)
         if (!item) throw new Error('Item not found')
 
-      // Always delete from local DB first
         await db.transaction('rw', db.items, async () => {
           await db.items.delete(id)
         })
@@ -747,11 +745,11 @@ export const useInventoryStore = defineStore('inventory', {
             if (localCat.id.startsWith('temp_')) {
               // This is a new local category, add to Firestore
               const docRef = doc(collection(fireDb, 'categories'))
-            batch.set(docRef, {
+              batch.set(docRef, {
                 name: localCat.name,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            })
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              })
               updates.push({
                 type: 'update',
                 oldId: localCat.id,
@@ -869,7 +867,7 @@ export const useInventoryStore = defineStore('inventory', {
               tempId
             })
             return { id: tempId, name: categoryName }
-        }
+          }
         } else {
           await syncQueue.addToQueue({
             type: 'create',
@@ -1291,6 +1289,51 @@ export const useInventoryStore = defineStore('inventory', {
         retryCount: 0,
         maxRetries: 3,
         retryDelay: 1000
+      }
+    },
+
+    /**
+     * @async
+     * @method generateSalesReport
+     * @returns {Promise<Array>} Array of daily sales report objects
+     * @description Calculates and returns sales report data
+     */
+    async generateSalesReport() {
+      try {
+        const salesData = await db.sales.toArray(); // Fetch all sales data from Dexie.js
+
+        const reportData = {};
+
+        // Aggregate data by date
+        salesData.forEach(sale => {
+          const saleDate = formatDate(new Date(sale.createdAt), 'YYYY-MM-DD');
+          if (!reportData[saleDate]) {
+            reportData[saleDate] = {
+              date: saleDate,
+              grossProfit: 0,
+              netProfit: 0,
+              loss: 0
+            };
+          }
+
+          // Calculate profit/loss based on payment method (example logic)
+          const profit = sale.total - sale.cost; // Assuming 'cost' property exists
+          if (sale.paymentMethod === 'cash') {
+            reportData[saleDate].grossProfit += profit;
+            reportData[saleDate].netProfit += profit; // Adjust for cash-specific expenses
+          } else if (sale.paymentMethod === 'credit') {
+            reportData[saleDate].grossProfit += profit;
+            reportData[saleDate].netProfit += profit * 0.95; // Adjust for credit card fees
+          } else {
+            reportData[saleDate].loss += profit < 0 ? profit : 0;
+          }
+        });
+
+        return Object.values(reportData);
+      } catch (error) {
+        console.error('Error generating sales report:', error);
+        // Return an empty array in case of error
+        return [];
       }
     },
   }
