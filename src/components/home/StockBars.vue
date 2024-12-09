@@ -17,7 +17,7 @@ const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 
 /** @type {number} The threshold below which stock is considered "low" */
-const lowStockThreshold = 8
+const lowStockThreshold = 10
 
 /**
  * @type {import('vue').ComputedRef<string>}
