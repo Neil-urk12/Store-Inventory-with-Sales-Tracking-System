@@ -373,89 +373,195 @@ export const useContactsStore = defineStore('contacts', {
     async updateFirestoreData(mergedContactCategories, mergedContacts) {
       const batchSize = 500;
 
-      // Update contact categories in Firebase
-      if (mergedContactCategories.length > 0) {
-        const contactCategoriesRef = collection(fireDb, 'contactCategories')
-        for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
-          const batch = writeBatch(fireDb)
-          const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
+      async function processBatchUpdates(collectionName, items) {
+        if (!items || items.length === 0) return;
 
-          for (const category of currentBatch) {
-            const { id, ...categoryData } = category
-            if (id && typeof id === 'string') {
-              const docRef = doc(contactCategoriesRef, id)
-              const docSnapshot = await getDoc(docRef)
-              if (docSnapshot.exists()) {
-                batch.update(docRef, {
-                  ...categoryData,
-                  updatedAt: serverTimestamp()
-                })
-              } else {
-                batch.set(docRef, {
-                  ...categoryData,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                })
-              }
-            } else {
-              const newDocRef = doc(contactCategoriesRef)
-              batch.set(newDocRef, {
-                ...categoryData,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
-            }
-          }
+        const collectionRef = collection(fireDb, collectionName);
+        for (let i = 0; i < items.length; i += batchSize) {
+          const batch = writeBatch(fireDb);
+          const currentBatch = items.slice(i, Math.min(i + batchSize, items.length));
+
+          currentBatch.forEach(item => {
+            const { id, ...itemData } = item
+            const docRef = id && typeof id === 'string' ? doc(collectionRef, id) : doc(collectionRef);
+            const isUpdate = id && typeof id === 'string';
+            const timestampData = isUpdate
+                ? { updatedAt: serverTimestamp() }
+                : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+
+            batch[isUpdate ? 'update' : 'set'](docRef, { ...itemData, ...timestampData }, { merge: isUpdate });
+          });
 
           try {
-            await batch.commit()
+            await batch.commit();
           } catch (error) {
-            console.error('Contact category batch update failed:', error)
+            console.error(`Batch update failed for ${collectionName}:`, error);
+          }
+        }
+    }
+
+      // async function processBatchUpdates(collectionName, items){
+      //   if(!items || items.length === 0) return
+
+      //   const collectionRef = collection(fireDb, collectionName)
+      //   for (let i = 0; i < items.length; i += batchSize) {
+      //     const batch = writeBatch(fireDb)
+      //     const currentBatch = items.slice(i, Math.min(i + batchSize, items.length))
+
+      //     for (const item of currentBatch) {
+      //       const { id, ...itemData } = item
+      //       if (id && typeof id === 'string') {
+      //         const docRef = doc(collectionRef, id)
+      //         const docSnapshot = await getDoc(docRef)
+      //         if (docSnapshot.exists()) {
+      //           batch.update(docRef, {
+      //             ...itemData,
+      //             updatedAt: serverTimestamp()
+      //           })
+      //         } else {
+      //           batch.set(docRef, {
+      //             ...itemData,
+      //             createdAt: serverTimestamp(),
+      //             updatedAt: serverTimestamp()
+      //           })
+      //         }
+      //       } else {
+      //         const newDocRef = doc(collectionRef)
+      //         batch.set(newDocRef, {
+      //           ...itemData,
+      //           createdAt: serverTimestamp(),
+      //           updatedAt: serverTimestamp()
+      //         })
+      //       }
+      //     }
+
+      //     try {
+      //       await batch.commit()
+      //     } catch (error) {
+      //       console.error(`${collectionName} batch update failed:`, error)
+      //     }
+      //   }
+      // }
+
+      async function deleteDuplicates(collectionName, uniqueField) {
+        const collectionRef = collection(fireDb, collectionName)
+        const querySnapshot = await getDocs(collectionRef)
+        const existingItems = new Map()
+        const batch = writeBatch(fireDb)
+        let deleteCount = 0
+
+        querySnapshot.forEach(doc => {
+          const data = doc.data()
+          const key = data[uniqueField]
+          if (existingItems.has(key)){
+            batch.delete(doc.ref)
+            deleteCount++
+          }
+          else
+            existingItems.set(key, data)
+        })
+
+        if (deleteCount > 0) {
+          try {
+            await batch.commit()
+            console.log(`Deleted ${deleteCount} duplicate documents from ${collectionName}`)
+          } catch (error) {
+            console.error(`Error deleting duplicates from ${collectionName}:`, error)
           }
         }
       }
+
+      await Promise.all([
+        processBatchUpdates('contactCategories', mergedContactCategories),
+        processBatchUpdates('contactsList', mergedContacts)
+      ])
+
+      await Promise.all([
+        deleteDuplicates('contactCategories', 'name'),
+        deleteDuplicates('contactsList', 'name')
+      ])
+      // if (mergedContactCategories.length > 0) {
+      //   const contactCategoriesRef = collection(fireDb, 'contactCategories')
+      //   for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
+      //     const batch = writeBatch(fireDb)
+      //     const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
+
+      //     for (const category of currentBatch) {
+      //       const { id, ...categoryData } = category
+      //       if (id && typeof id === 'string') {
+      //         const docRef = doc(contactCategoriesRef, id)
+      //         const docSnapshot = await getDoc(docRef)
+      //         if (docSnapshot.exists()) {
+      //           batch.update(docRef, {
+      //             ...categoryData,
+      //             updatedAt: serverTimestamp()
+      //           })
+      //         } else {
+      //           batch.set(docRef, {
+      //             ...categoryData,
+      //             createdAt: serverTimestamp(),
+      //             updatedAt: serverTimestamp()
+      //           })
+      //         }
+      //       } else {
+      //         const newDocRef = doc(contactCategoriesRef)
+      //         batch.set(newDocRef, {
+      //           ...categoryData,
+      //           createdAt: serverTimestamp(),
+      //           updatedAt: serverTimestamp()
+      //         })
+      //       }
+      //     }
+
+      //     try {
+      //       await batch.commit()
+      //     } catch (error) {
+      //       console.error('Contact category batch update failed:', error)
+      //     }
+      //   }
+      // }
 
       // Update contacts in Firebase
-      if (mergedContacts.length > 0) {
-        const contactsRef = collection(fireDb, 'contactsList')
-        for (let i = 0; i < mergedContacts.length; i += batchSize) {
-          const batch = writeBatch(fireDb)
-          const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
+      // if (mergedContacts.length > 0) {
+      //   const contactsRef = collection(fireDb, 'contactsList')
+      //   for (let i = 0; i < mergedContacts.length; i += batchSize) {
+      //     const batch = writeBatch(fireDb)
+      //     const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
 
-          for (const contact of currentBatch) {
-            const { id, ...contactData } = contact
-            if (id && typeof id === 'string') {
-              const docRef = doc(contactsRef, id)
-              const docSnapshot = await getDoc(docRef)
-              if (docSnapshot.exists()) {
-                batch.update(docRef, {
-                  ...contactData,
-                  updatedAt: serverTimestamp()
-                })
-              } else {
-                batch.set(docRef, {
-                  ...contactData,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                })
-              }
-            } else {
-              const newDocRef = doc(contactsRef)
-              batch.set(newDocRef, {
-                ...contactData,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
-            }
-          }
+      //     for (const contact of currentBatch) {
+      //       const { id, ...contactData } = contact
+      //       if (id && typeof id === 'string') {
+      //         const docRef = doc(contactsRef, id)
+      //         const docSnapshot = await getDoc(docRef)
+      //         if (docSnapshot.exists()) {
+      //           batch.update(docRef, {
+      //             ...contactData,
+      //             updatedAt: serverTimestamp()
+      //           })
+      //         } else {
+      //           batch.set(docRef, {
+      //             ...contactData,
+      //             createdAt: serverTimestamp(),
+      //             updatedAt: serverTimestamp()
+      //           })
+      //         }
+      //       } else {
+      //         const newDocRef = doc(contactsRef)
+      //         batch.set(newDocRef, {
+      //           ...contactData,
+      //           createdAt: serverTimestamp(),
+      //           updatedAt: serverTimestamp()
+      //         })
+      //       }
+      //     }
 
-          try {
-            await batch.commit()
-          } catch (error) {
-            console.error('Contact batch update failed:', error)
-          }
-        }
-      }
+      //     try {
+      //       await batch.commit()
+      //     } catch (error) {
+      //       console.error('Contact batch update failed:', error)
+      //     }
+      //   }
+      // }
     },
 
     /**
@@ -621,6 +727,7 @@ export const useContactsStore = defineStore('contacts', {
 
       const mergedItems = new Map()
       const usedIds = new Set()
+      const itemsToDelete = new Set()
 
       console.log('localItems:', localItems)
       console.log('firestoreItems:', firestoreItems)
