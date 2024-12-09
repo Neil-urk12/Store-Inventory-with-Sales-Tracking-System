@@ -2,6 +2,67 @@
  * @fileoverview Validation utilities for contacts and categories
  */
 
+import { date } from "quasar"
+
+/**
+ *  later
+*/
+export async function validateSales(sales){
+  if (!Array.isArray(sales)) {
+    return {
+      isValid: false,
+      errors: ['Input must be an array of sales'],
+      sales: null
+    }
+  }
+  const errors = []
+  const validatedSales = []
+
+  for (let i = 0; i < sales.length; i++) {
+    const sale = sales[i];
+    let saleErrors = [];
+
+    if (!sale.total || typeof sale.total !== 'number' || sale.total <= 0) 
+      saleErrors.push(`Sale at index ${i}: Total payment must be a positive number`)
+
+    if (!sale.paymentMethod || typeof sale.paymentMethod !== 'string' || sale.paymentMethod.trim() === '') 
+      saleErrors.push(`Sale at index ${i}: Payment method is required and must be a non-empty string`)
+
+    if (!Array.isArray(sale.items)) 
+      saleErrors.push(`Sale at index ${i}: Items must be an array`)
+    else if (sale.items.length === 0)
+      saleErrors.push(`Sale at index ${i}: At least one item is required`)
+    else {
+      // Validate each item in the items array
+      sale.items.forEach((item, itemIndex) => {
+        if (!item || typeof item !== 'object') 
+          saleErrors.push(`Sale at index ${i}, item at index ${itemIndex} must be an object`);
+        else {
+          if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') saleErrors.push(`Sale at index ${i}, item name at index ${itemIndex} is required`);
+          if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) saleErrors.push(`Sale at index ${i}, item quantity at index ${itemIndex} must be a positive number`);
+          if (!item.price || typeof item.price !== 'number' || item.price <= 0) saleErrors.push(`Sale at index ${i}, item price at index ${itemIndex} must be a positive number`);
+          if (item.total !== undefined && (typeof item.total !== 'number' || item.total !== item.price * item.quantity)) saleErrors.push(`Sale at index ${i}, item total at index ${itemIndex} is incorrect`);
+        }
+      })
+    }
+    if (sale.date) {
+      if (isNaN(Date.parse(sale.date))) 
+        saleErrors.push(`Sale at index ${i}: Invalid date format. Date should be a valid date string`)
+      else 
+        sale.date = new Date(sale.date)
+    } else 
+      saleErrors.push(`Sale at index ${i}: Date is required`)
+
+    if (saleErrors.length > 0) errors.push(...saleErrors)
+    else validatedSales.push(sale)
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  }
+}
+
 /**
  * Validates a contact object
  * @param {Object} contact - Contact to validate
