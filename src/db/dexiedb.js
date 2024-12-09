@@ -236,6 +236,15 @@ class AppDatabase extends Dexie {
   }
   /**
    * @async
+   * @method getAllSales
+   * @returns {Promise<Array>}
+   * @description Returns an array of all sales in the database.
+  */
+  async getAllSales() {
+    return await this.sales.toArray();
+  }
+  /**
+   * @async
    * @method addCashFlowTransaction
    * @param {Object} transaction
    * @returns {Promise<Object>}
