@@ -157,7 +157,7 @@ export const useAuthStore = defineStore('auth', {
      */
     async resetPassword(email) {
       if (!email) throw new Error('Email is required')
-      
+
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(email)) throw new Error('Invalid email format')
 

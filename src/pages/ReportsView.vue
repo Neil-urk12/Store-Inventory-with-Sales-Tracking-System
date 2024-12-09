@@ -19,6 +19,7 @@ const financialStore = useFinancialStore()
 const stockModal = ref(false)
 const salesReportDialog = ref(false)
 const cashFlowDialog = ref(false)
+const cashFlowReportData = ref([])
 const selectedPaymentMethod = ref('')
 
 const selectedTimeframe = computed(() => inventoryStore.selectedTimeframe)
@@ -127,6 +128,17 @@ const renderCategoryChart = async () => {
   })
 }
 
+const generateCashFlowReport = async () => {
+  try {
+    cashFlowReportData.value = await financialStore.generateCashFlowReport()
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to generate cash flow report.'
+    })
+  }
+}
+
 const rerenderCategoryChart = async () => {
   if (isRenderingCategory.value) return
   isRenderingCategory.value = true
@@ -183,13 +195,40 @@ const viewStockLevels = () => {
                 <div class="report-section">
                   <div class="text-h6 q-mb-sm" :style="textColor">Sales Reports</div>
                   <q-btn
-                    color="primary"
-                    label="Generate Report"
+                    color="primary q-my-sm"
+                    label="Sales Report"
                     @click="salesReportDialog = true"
+                    class="full-width"
+                    dense
+                    icon="assessment"
+                  />
+                  <q-btn
+                    color="primary"
+                    dense
+                    label="Cash Flow Report"
+                    @click="generateCashFlowReport"
                     class="full-width"
                     icon="assessment"
                   />
                 </div>
+                <q-card-section v-if="cashFlowReportData.length">
+                  <div class="text-h6 q-mb-md" :style="textColor">Cash Flow Report</div>
+                  <q-table
+                    :rows="cashFlowReportData"
+                    :columns="[
+                      { name: 'date', label: 'Date', field: 'date', align: 'left' },
+                      { name: 'totalIncome', label: 'Total Income', field: 'totalIncome', align: 'right', format: val => financialStore.formatCurrency(val) },
+                      { name: 'totalExpenses', label: 'Total Expenses', field: 'totalExpenses', align: 'right', format: val => financialStore.formatCurrency(val) },
+                      { name: 'netCashFlow', label: 'Net Cash Flow', field: 'netCashFlow', align: 'right', format: val => financialStore.formatCurrency(val) }
+                    ]"
+                    :rows-per-page-options="[10, 20, 50, 100]"
+                    rows-per-page-label="Rows per page"
+                    :pagination="{ rowsPerPage: 10 }"
+                    hide-bottom
+                    dense
+                    class="custom-table"
+                  />
+                </q-card-section>
               </div>
               <div class="col-12 col-sm-4">
                 <div class="report-section">
@@ -313,5 +352,13 @@ const viewStockLevels = () => {
   .chart-container {
     height: 300px;
   }
+}
+
+.custom-table {
+  background-color: transparent; /* Set table background to transparent */
+}
+
+.custom-table thead tr th { /* Style table header cells */
+  background-color: transparent !important; /* Set header background to transparent */
 }
 </style>

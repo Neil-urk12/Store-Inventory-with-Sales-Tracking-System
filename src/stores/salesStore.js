@@ -4,12 +4,29 @@
 
 import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  writeBatch,
+  serverTimestamp
+} from 'firebase/firestore'
+import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { formatDate } from '../utils/dateUtils'
 import { useInventoryStore } from './inventoryStore'
+import { useFinancialStore } from './financialStore'
+import { validateSales } from 'src/utils/validation'
+import { syncQueue } from 'src/services/syncQueue'
 
 const { isOnline } = useNetworkStatus()
 const inventoryStore = useInventoryStore()
+const financialStore = useFinancialStore()
 
 /**
  * @const {Store} useSalesStore
@@ -19,6 +36,7 @@ export const useSalesStore = defineStore('sales', {
   state: () => ({
     products: [],
     cart: [],
+    sales: [],
     searchQuery: '',
     selectedCategory: '',
     selectedPaymentMethod: null,
@@ -27,25 +45,37 @@ export const useSalesStore = defineStore('sales', {
     dateRange: {
       from: formatDate(new Date(), 'YYYY-MM-DD'),
       to: formatDate(new Date(), 'YYYY-MM-DD')
-    }
+    },
+    syncStatus: {
+      lastSync: null,
+      inProgress: false,
+      error: null,
+      pendingChanges: 0,
+      totalItems: 0,
+      processedItems: 0,
+      failedItems: [],
+      retryCount: 0,
+      maxRetries: 3,
+      retryDelay: 1000 // 1 second delay between retries
+    },
   }),
 
   getters: {
-     /**
+    /**
      * @getter
      * @returns {Array} Returns array of products
      */
     getProducts: (state) => {
       return inventoryStore.sortedItems || []
     },
-     /**
+    /**
      * @getter
      * @returns {Array} Returns array of carts
      */
     getCart: (state) => {
       return state.cart
     },
-     /**
+    /**
      * @getter
      * @returns {Array} Filtered products based on search query and category
      */
@@ -62,6 +92,139 @@ export const useSalesStore = defineStore('sales', {
   },
 
   actions: {
+    /**
+     * initializeDB
+    */
+   async initializeDb(){
+    try {
+      const existingSales = await db.sales.count()
+      if (isOnline.value) {
+        await this.syncWithFirestore()
+        await syncQueue.processQueue()
+      }
+
+      if(existingSales === 0 && !isOnline.value) 
+        console.error ('No local data available. Waiting for network connection...')
+
+      await this.loadSales()
+    } catch (error) {
+      console.error (error, 'Failed to initialize database')
+    }
+   },
+    /**
+     *  Unya na
+     *
+    */
+    async loadSales(){
+      try {
+        this.loading = true
+        const localSales = await db.sales.orderBy('date').reverse().toArray()
+        const validation = await validateSales(localSales)
+        if (!validation.isValid) throw new Error(validation.errors)
+        this.sales = localSales
+        if(localSales.length === 0 && isOnline.value)
+          await this.syncWithFirestore()
+      } catch (error) {
+        console.error('Error loading sales:', error)
+      } finally {
+        this.loading = false
+      }
+    },
+    /**
+     *  Sync with firestore unya na
+    */
+    async syncWithFirestore(){
+      if (!isOnline.value) return
+
+      try {
+        const localSales = await db.sales.orderBy('date').reverse().toArray()
+        const firestoreSnapshot = await getDocs(
+          query(collection(fireDb, 'sales'), orderBy('updatedAt', 'desc'))
+        )
+        const firestoreSales = firestoreSnapshot.docs.map(doc => ({
+          ...doc.data(),
+          firebaseId: doc.id
+        }))
+
+        await db.transaction('rw', db.sales, async () => {
+          for(const firestoreSale of firestoreSales) {
+            try {
+              const existingSales = await db.sales
+                .where('firebaseId')
+                .equals(firestoreSale.firebaseId)
+                .toArray()
+  
+              if (existingSales.length === 0 && !firestoreSale.localId) {
+                await db.sales.add({
+                  ...firestoreSale,
+                  syncStatus: 'synced'
+                })
+                continue
+              }
+  
+              if (existingSales.length === 0 && firestoreSale.localId) {
+                const existingSale = await db.sales
+                  .where('id')
+                  .equals(parseInt(firestoreSale.localId))
+                  .first()
+  
+                if(!existingSale){
+                  await db.sales.add({
+                    ...firestoreSale,
+                    syncStatus: 'synced'
+                  })
+                }
+                continue
+              }
+  
+              const [ saleToKeep, ...duplicates ] = existingSales
+  
+              if (saleToKeep.syncStatus === 'pending' || new Date(firestoreSale.updatedAt) > new Date(saleToKeep.updatedAt)) {
+                for (const duplicate of duplicates)
+                  await db.sales.delete(duplicate.id)
+  
+                continue
+              }
+  
+              await db.sales.update(saleToKeep.id, {
+                ...firestoreSale,
+                id: saleToKeep.id,
+                syncStatus: 'synced'
+              })
+  
+              for (const duplicate of duplicates) 
+                await db.items.delete(duplicate.id)
+  
+  
+            } catch (error) {
+              this.syncStatus.failedItems.push({
+                ...firestoreSale,
+                error: error.message,
+                syncOperation: 'create'
+              })
+            }
+          }
+        })
+        
+        for (const localSale of localSales) {
+          if (
+            !localSale.firebaseId || 
+            firestoreItems.find ((sale) => sale.firebaseId === localSale.firebaseId)
+          ) continue
+
+          const currentSaleItem = await db.sales.get(localSale.id)
+
+          if (currentSaleItem && currentSaleItem.syncStatus === 'pending')
+            continue
+
+          await db.delete(localSale.id)
+        }
+        this.sales = await db.getAllSales()
+      } catch (error) {
+        console.error('Error syncing with Firestore : ', error)
+        throw error
+      }
+    },
     /**
      * @method updateCartQuantity
      * @returns {Promise<void>}
@@ -121,7 +284,7 @@ export const useSalesStore = defineStore('sales', {
       return { success: true }
     },
 
-    processCheckout() {
+    async processCheckout() {
       if (!this.selectedPaymentMethod)
         return { success: false, error: 'Please select a payment method' }
 
@@ -143,17 +306,25 @@ export const useSalesStore = defineStore('sales', {
           paymentMethod: this.selectedPaymentMethod,
           date: new Date().toISOString()
         }
-
         // Update inventory quantities
         this.cart.forEach(async (item) => {
           const product = this.getProducts.find(p => p.id === item.id)
-          if (product) {
-            await inventoryStore.updateItemQuantity(item.id, product.quantity - item.quantity)
-          }
+          product.quantity = product.quantity - item.quantity
+          if (product)
+            await inventoryStore.updateExistingItem(item.id, product)
         })
 
         // Save sale to database
-        db.sales.add(sale)
+        await db.sales.add(sale)
+
+        // Create cash flow entry
+        await financialStore.addTransaction({
+          paymentMethod: this.selectedPaymentMethod,
+          type: 'income',
+          amount: sale.total,
+          date: sale.date,
+          description: 'Sale',
+        })
 
         // Clear cart and reset checkout state
         this.clearCart()

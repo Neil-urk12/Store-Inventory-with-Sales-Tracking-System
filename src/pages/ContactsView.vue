@@ -6,10 +6,12 @@ import { useContactsStore } from "../stores/contacts";
 const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
 const contactsStore = useContactsStore();
+const isLoading = ref(true);
 
 onMounted(async () => {
   try {
     await contactsStore.initializeDb();
+    isLoading.value = false;
   } catch (error) {
     $q.notify({
       type: 'negative',
@@ -261,6 +263,7 @@ const saveContact = async () => {
 
 // Computed property for contact categories from store
 const contactCategories = computed(() => contactsStore.contactCategories)
+const hasContacts = computed(() => contactCategories.value.some(category => category.contacts.length > 0));
 </script>
 
 <template>
@@ -278,67 +281,83 @@ const contactCategories = computed(() => contactsStore.contactCategories)
     </div>
 
     <!-- Contact Categories Grid -->
-    <div class="row q-col-gutter-md">
-      <div v-for="category in contactCategories" :key="category.id" class="col-12 col-sm-6 col-md-4">
-        <q-card flat bordered class="category-card">
-          <q-card-section class="bg-primary text-white">
-            <div class="row items-center justify-between">
-              <div class="text-h6">{{ category.name }}</div>
-              <div>
-                <q-btn flat round dense icon="edit" @click="editContactCategory(category)" />
-                <q-btn flat round dense icon="delete" @click="deleteContactCategory(category)" />
+    <q-inner-loading :showing="isLoading">
+      <q-spinner-gears size="50px" color="primary" />
+    </q-inner-loading>
+
+    <div v-if="!isLoading">
+      <div v-if="hasContacts" class="row q-col-gutter-md">
+        <div v-for="category in contactCategories" :key="category.id" class="col-12 col-sm-6 col-md-4">
+          <q-card flat bordered class="category-card">
+            <q-card-section class="bg-primary text-white">
+              <div class="row items-center justify-between">
+                <div class="text-h6">{{ category.name }}</div>
+                <div>
+                  <q-btn flat round dense icon="edit" @click="editContactCategory(category)" />
+                  <q-btn flat round dense icon="delete" @click="deleteContactCategory(category)" />
+                </div>
               </div>
-            </div>
-          </q-card-section>
+            </q-card-section>
 
-          <q-card-section>
-            <div class="row q-col-gutter-sm">
-              <div v-for="contact in category.contacts" :key="contact.id" class="col-12">
-                <q-item class="contact-item q-pa-sm rounded-borders">
-                  <q-item-section avatar>
-                    <q-avatar>
-                      <img :src="contact.avatar" loading="lazy"
-                    </q-avatar>
-                  </q-item-section>
+            <q-card-section>
+              <div class="row q-col-gutter-sm">
+                <div v-for="contact in category.contacts" :key="contact.id" class="col-12">
+                  <q-item class="contact-item q-pa-sm rounded-borders">
+                    <q-item-section avatar role="listitem">
+                      <q-avatar>
+                        <img :src="contact.avatar" loading="lazy" />
+                      </q-avatar>
+                    </q-item-section>
 
-                  <q-item-section>
-                    <q-item-label class="text-weight-bold">{{ contact.name }}</q-item-label>
-                    <q-item-label caption>
-                      <div class="row items-center">
-                        <q-icon name="email" size="xs" class="q-mr-xs" />
-                        {{ contact.email }}
+                    <q-item-section>
+                      <q-item-label class="text-weight-bold" aria-label="Contact Name">{{ contact.name }}</q-item-label>
+                      <q-item-label caption>
+                        <div class="row items-center">
+                          <q-icon name="email" size="xs" class="q-mr-xs" />
+                          <span aria-label="Email Address">{{ contact.email }}</span>
+                        </div>
+                        <div class="row items-center">
+                          <q-icon name="phone" size="xs" class="q-mr-xs" />
+                          {{ contact.phone }}
+                        </div>
+                      </q-item-label>
+                    </q-item-section>
+
+                    <q-item-section side>
+                      <div class="row q-gutter-sm">
+                        <q-btn flat round dense color="primary" icon="phone" @click="callContact(contact.phone)" />
+                        <q-btn flat round dense color="primary" icon="email" @click="emailContact(contact.email)" />
+                        <q-btn flat round dense color="primary" icon="edit" @click="editContact(category, contact)" />
+                        <q-btn
+                          flat
+                          round
+                          dense
+                          color="negative"
+                          icon="delete"
+                          @click="deleteContact(category, contact)"
+                        />
                       </div>
-                      <div class="row items-center">
-                        <q-icon name="phone" size="xs" class="q-mr-xs" />
-                        {{ contact.phone }}
-                      </div>
-                    </q-item-label>
-                  </q-item-section>
-
-                  <q-item-section side>
-                    <div class="row q-gutter-sm">
-                      <q-btn flat round dense color="primary" icon="phone" @click="callContact(contact.phone)" />
-                      <q-btn flat round dense color="primary" icon="email" @click="emailContact(contact.email)" />
-                      <q-btn flat round dense color="primary" icon="edit" @click="editContact(category, contact)" />
-                      <q-btn flat round dense color="negative" icon="delete" @click="deleteContact(category, contact)" />
-                    </div>
-                  </q-item-section>
-                </q-item>
+                    </q-item-section>
+                  </q-item>
+                </div>
               </div>
-            </div>
 
-            <div class="text-center q-mt-md">
-              <q-btn
-                color="primary"
-                outline
-                icon="person_add"
-                label="Add Contact"
-                @click="addContact(category)"
-                class="full-width"
-              />
-            </div>
-          </q-card-section>
-        </q-card>
+              <div class="text-center q-mt-md">
+                <q-btn
+                  color="primary"
+                  outline
+                  icon="person_add"
+                  label="Add Contact"
+                  @click="addContact(category)"
+                  class="full-width"
+                />
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+      </div>
+      <div v-else class="text-center text-grey-7 q-mt-lg">
+        No contacts yet. Add a contact category and start adding contacts.
       </div>
     </div>
 

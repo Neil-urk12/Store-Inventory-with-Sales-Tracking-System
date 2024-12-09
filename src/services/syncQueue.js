@@ -39,7 +39,7 @@ const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000] // Exponential backoff
  * // Initialize and start sync
  * const queue = new SyncQueue()
  * queue.startPeriodicSync()
- * 
+ *
  * // Queue an operation
  * await queue.addToQueue({
  *   type: 'add',
@@ -260,16 +260,15 @@ class SyncQueue {
 
         case 'delete': {
           try {
+            if(docId)
+              await deleteDoc(doc(fireDb, collectionName, docId))
+            else console.warn('No firebaseId found for delete operation')
+
             const localRecord = await db[collectionName].get(docId)
-            if (localRecord?.firebaseId) {
-              await deleteDoc(doc(fireDb, collectionName, localRecord.firebaseId))
-            }
+            if (localRecord?.id)
+              await deleteDoc(doc(fireDb, collectionName, localRecord.id))
           } catch (error) {
-            // If delete operation fails, try to update local record with error
-            await db[collectionName].update(docId, {
-              syncStatus: 'failed',
-              error: error.message
-            })
+            console.error('Error deleting document:', error)
             throw error
           }
           break

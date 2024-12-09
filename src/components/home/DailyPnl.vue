@@ -127,30 +127,30 @@ const netProfit = computed(() => {
 </script>
 
 <template>
-  <div class="dailyPNLcontainer fit column justify-center">
-    <div v-if="isLoading" class="q-pa-md">
-      <q-skeleton type="text" class="text-subtitle1" />
-      <q-skeleton type="text" class="text-subtitle1 q-mt-sm" />
+  <div class="dailyPNLcontainer fit column justify-center" role="region" aria-live="polite" aria-atomic="true" aria-label="Daily Profit and Loss Summary">
+    <div v-if="isLoading" class="q-pa-md" role="alert" aria-busy="true" aria-label="Loading financial data">
+      <q-skeleton type="text" class="text-subtitle1" role="progressbar" aria-label="Loading today's profit" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Loading" aria-describedby="profitSummary" />
+      <q-skeleton type="text" class="text-subtitle1 q-mt-sm" role="progressbar" aria-label="Loading today's expenses" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Loading" aria-describedby="expenseSummary" />
     </div>
-    <div v-else class="profitBox q-mb-none fit row justify-evenly items-center q-pa-md">
-      <div class="text-center">
-        <div class="text-subtitle2 q-mb-xs" :style="{ color: textColor }">Today's Profit</div>
-        <div class="text-h6" :class="dailyProfit >= 0 ? 'text-positive' : 'text-negative'">
-          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" />
+    <div v-else class="profitBox q-mb-none fit row justify-evenly items-center q-pa-md" role="group" aria-labelledby="profitSummary expenseSummary netProfitSummary">
+      <div class="text-center" role="presentation">
+        <div id="profitLabel" class="text-subtitle2 q-mb-xs" :style="{ color: textColor }" aria-hidden="true">Today's Profit</div>
+        <div id="profitSummary" class="text-h6" :class="dailyProfit >= 0 ? 'text-positive' : 'text-negative'" aria-label="Today's profit is {{ financialStore.formatCurrency(dailyProfit) }}" role="status">
+          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" role="progressbar" aria-label="Refreshing profit data" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Refreshing" aria-live="assertive"/>
           {{ financialStore.formatCurrency(dailyProfit) }}
         </div>
       </div>
-      <div class="text-center">
-        <div class="text-subtitle2 q-mb-xs" :style="{ color: textColor }">Today's Expenses</div>
-        <div class="text-h6 text-negative">
-          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" />
+      <div class="text-center" role="presentation">
+        <div id="expenseLabel" class="text-subtitle2 q-mb-xs" :style="{ color: textColor }" aria-hidden="true">Today's Expenses</div>
+        <div id="expenseSummary" class="text-h6 text-negative" aria-label="Today's expenses are {{ financialStore.formatCurrency(dailyExpense) }}" role="status">
+          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" role="progressbar" aria-label="Refreshing expense data" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Refreshing" aria-live="assertive"/>
           {{ financialStore.formatCurrency(dailyExpense) }}
         </div>
       </div>
-      <div class="text-center">
-        <div class="text-subtitle2 q-mb-xs" :style="{ color: textColor }">Today's Net Profit</div>
-        <div class="text-h6" :class="netProfit >= 0 ? 'text-positive' : 'text-negative'">
-          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" />
+      <div class="text-center" role="presentation">
+        <div id="netProfitLabel" class="text-subtitle2 q-mb-xs" :style="{ color: textColor }" aria-hidden="true">Today's Net Profit</div>
+        <div id="netProfitSummary" class="text-h6" :class="netProfit >= 0 ? 'text-positive' : 'text-negative'" aria-label="Today's net profit is {{ financialStore.formatCurrency(netProfit) }}" role="status">
+          <q-spinner-dots v-if="isRefreshing" size="1em" class="q-mr-xs" role="progressbar" aria-label="Refreshing net profit data" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Refreshing" aria-live="assertive"/>
           {{ financialStore.formatCurrency(netProfit) }}
         </div>
       </div>
