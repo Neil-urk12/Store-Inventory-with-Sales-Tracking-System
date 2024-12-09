@@ -405,6 +405,44 @@ D
       }
     },
 
+    async generateCashFlowReport() {
+      try {
+        const { from, to } = this.dateRange
+
+        const transactions = await db.cashFlow
+          .where('date')
+          .between(from, to)
+          .toArray()
+
+        const dailyTotals = transactions.reduce((acc, transaction) => {
+          const date = transaction.date
+          if (!acc[date]) {
+            acc[date] = {
+              date,
+              totalIncome: 0,
+              totalExpenses: 0,
+              netCashFlow: 0
+            }
+          }
+
+          const amount = Number(transaction.amount) || 0
+          if (transaction.type === 'income') {
+            acc[date].totalIncome += amount
+          } else if (transaction.type === 'expense') {
+            acc[date].totalExpenses += amount
+          }
+          acc[date].netCashFlow = acc[date].totalIncome - acc[date].totalExpenses
+
+          return acc
+        }, {})
+
+        return Object.values(dailyTotals)
+      } catch (error) {
+        console.error('Error generating cash flow report:', error)
+        return [] // Return an empty array in case of error
+      }
+    },
+
     async validateTransactionData(data) {
       const errors = []
 
