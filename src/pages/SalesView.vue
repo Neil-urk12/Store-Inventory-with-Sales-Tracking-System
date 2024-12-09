@@ -46,12 +46,14 @@ const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
 const processCheckout = async () => {
   // const result = salesStore.clearCart()
   const result = await salesStore.processCheckout()
-  if (result.success) 
+  if (result.success) {
     $q.notify({
       type: 'positive',
       message: 'Purchase completed successfully!'
     })
-  else 
+    salesStore.clearCart()
+    inventoryStore.loadInventory()
+  } else
     $q.notify({
       type: 'negative',
       message: result.error
@@ -59,8 +61,10 @@ const processCheckout = async () => {
 }
 
 onMounted(() => {
-  inventoryStore.loadInventory()
-  inventoryStore.loadCategories()
+  if(inventoryStore.items.length === 0)
+    inventoryStore.loadInventory()
+  if(inventoryStore.categories.length === 0)
+    inventoryStore.loadCategories()
 })
 </script>
 

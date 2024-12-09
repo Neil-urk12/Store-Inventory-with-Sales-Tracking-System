@@ -145,7 +145,7 @@ onMounted(() => {
               </template>
               <template v-slot:body-cell-total="props">
                 <q-td :props="props">
-                  ₱{{ financialStore.formatCurrency(props.row.total) }}
+                  {{ financialStore.formatCurrency(props.row.total) }}
                 </q-td>
               </template>
             </q-table>
@@ -179,17 +179,17 @@ onMounted(() => {
                 <q-item-section>
                   <q-item-label>{{ item.name }}</q-item-label>
                   <q-item-label caption>
-                    Quantity: {{ item.quantity }} × ₱{{ financialStore.formatCurrency(item.price) }}
+                    Quantity: {{ item.quantity }} × {{ financialStore.formatCurrency(item.price) }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  ₱{{ financialStore.formatCurrency(item.total) }}
+                  {{ financialStore.formatCurrency(item.total) }}
                 </q-item-section>
               </q-item>
             </q-list>
           </div>
           <div class="text-h6 text-right">
-            Total: ₱{{ selectedSale ? financialStore.formatCurrency(selectedSale.total) : '0.00' }}
+            Total: {{ selectedSale ? financialStore.formatCurrency(selectedSale.total) : '0.00' }}
           </div>
         </q-card-section>
       </q-card>
