@@ -295,18 +295,22 @@ const contactCategories = computed(() => contactsStore.contactCategories)
             <div class="row q-col-gutter-sm">
               <div v-for="contact in category.contacts" :key="contact.id" class="col-12">
                 <q-item class="contact-item q-pa-sm rounded-borders">
-                  <q-item-section avatar>
+                  <q-item-section avatar
+                                   role="listitem">
                     <q-avatar>
                       <img :src="contact.avatar" loading="lazy"
                     </q-avatar>
                   </q-item-section>
 
                   <q-item-section>
-                    <q-item-label class="text-weight-bold">{{ contact.name }}</q-item-label>
+                    <q-item-label class="text-weight-bold"
+                                   aria-label="Contact Name">{{ contact.name }}</q-item-label>
                     <q-item-label caption>
                       <div class="row items-center">
                         <q-icon name="email" size="xs" class="q-mr-xs" />
-                        {{ contact.email }}
+                        <span aria-label="Email Address">
+                          {{ contact.email }}
+                        </span>
                       </div>
                       <div class="row items-center">
                         <q-icon name="phone" size="xs" class="q-mr-xs" />

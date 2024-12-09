@@ -60,8 +60,8 @@
     <q-card style="min-width: 350px">
       <q-card-section class="row items-center q-pb-none">
         <div class="text-h6">Add Category</div>
-        <q-space />
-        <q-btn icon="close" flat round dense v-close-popup />
+        <q-space/>
+        <q-btn icon="close" flat round dense v-close-popup aria-label="Close dialog" />
       </q-card-section>
 
       <q-card-section>

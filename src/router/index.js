@@ -29,7 +29,6 @@ export default route(function (/* { store, ssrContext } */) {
           { path: '/sales/history', component: () => import('pages/SalesHistoryView.vue'), meta: { requiresAuth: false } },
           { path: '/reports', component: () => import('pages/ReportsView.vue'), meta: { requiresAuth: false } },
           { path: '/contacts', component: () => import('pages/ContactsView.vue'), meta: { requiresAuth: false } },
-          { path: '/profile', component: () => import('pages/ProfileView.vue'), meta: { requiresAuth: false } },
         ]
       },
       { path: '/:catchAll(.*)*', component: () => import('pages/ErrorNotFound.vue') }
