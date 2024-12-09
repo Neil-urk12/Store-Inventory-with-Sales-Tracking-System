@@ -49,9 +49,11 @@ const SalesChart = defineAsyncComponent(() => import('../components/reports/Sale
       </div>
       <div class="col-12 col-md-6">
         <q-card class="dashboard-card text-white">
-      <div class="col-12 col-md-6" role="group" aria-label="Recent Sales">
-        <q-card class="dashboard-card text-white" aria-label="Recent Sales Card">
-          <q-card-section class="q-pa-md" aria-label="Recent Sales Section"><DashboardTable aria-label="Recent Sales Table"/></q-card-section>
+          <div class="col-12 col-md-6" role="group" aria-label="Recent Sales">
+            <q-card class="dashboard-card text-white" aria-label="Recent Sales Card">
+              <q-card-section class="q-pa-md" aria-label="Recent Sales Section"><DashboardTable aria-label="Recent Sales Table"/></q-card-section>
+            </q-card>
+          </div>
         </q-card>
       </div>
     </div>
