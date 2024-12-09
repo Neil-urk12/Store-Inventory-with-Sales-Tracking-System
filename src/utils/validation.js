@@ -43,7 +43,6 @@ export const validateContact = async (contact, contactsList, newContactId = null
     existingContactsPromises
   )
 
-  console.log('existingContacts', existingContactsResults);
 
   // Check for fulfilled promises and if their value (the filtered array) has any elements
   if (

@@ -70,8 +70,6 @@ export const useContactsStore = defineStore('contacts', {
      * @returns {Array} Contacts in the specified category
      */
     getContactsByCategory: (state) => (contactCategoryId) => {
-      // const contactCategory = state.contactCategories.find(c => c.id === contactCategoryId)
-      // return contactCategory ? contactCategory.contacts : []
       return state.contactCategories.find(c => c.id === contactCategoryId)?.contacts || []
     },
 
@@ -91,7 +89,6 @@ export const useContactsStore = defineStore('contacts', {
      * @private
      */
     _handleActionError(error, context) {
-      console.error(`Error in ${context}:`, error)
       if (error instanceof ContactError) this.error = error.message
       else if (error instanceof ValidationError) this.error = `Validation error: ${error.message}`
       else if (error instanceof DatabaseError) this.error = `Database error: ${error.message}`
@@ -158,13 +155,10 @@ export const useContactsStore = defineStore('contacts', {
      */
     async addContact(contact) {
       try {
-        // this.contactsList = await db.getAllContacts()
         if(this.contactsList.length === 0) this.contactsList = await db.getAllContacts()
         const validation = await validateContact(contact, this.contactsList, contact.id)
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
-        console.log("VALID")
-        console.log(validation)
         const id = await db.addContact(contact)
 
         if (isOnline.value) {
@@ -303,11 +297,9 @@ export const useContactsStore = defineStore('contacts', {
     async deleteContact(contactId) {
       try {
         const localRecord = await this.contactCategories.flatMap(c => c.contacts).find(c => c.id === contactId || c.localId === contactId)
-        console.log(localRecord)
         const firebaseRecord = localRecord ? localRecord.localId : localRecord.id
         await db.deleteContact(contactId)
 
-        console.log(firebaseRecord)
         const deleteOperation = {
           type: 'delete',
           collection: 'contactsList',
@@ -387,9 +379,6 @@ export const useContactsStore = defineStore('contacts', {
       const { firestoreContactCategories, firestoreContactsList } = firestoreData
       const mergedContactCategories = await this.mergeChanges(localContactCategories, firestoreContactCategories, 'name')
       const mergedContacts = await this.mergeChanges(localContacts, firestoreContactsList, 'name')
-      console.log("HOOOOH")
-      console.log('mergedContactCategories:', mergedContactCategories)
-      console.log('mergedContacts:', mergedContacts)
       return { mergedContactCategories, mergedContacts }
     },
 
@@ -640,8 +629,6 @@ export const useContactsStore = defineStore('contacts', {
      * @description Updates the local IndexedDB with the merged data.
      */
     async updateLocalDatabase(mergedContactCategories, mergedContacts) {
-      console.log('mergedContacts:', mergedContacts)
-      console.log('mergedContactCategories:', mergedContactCategories)
       if (mergedContactCategories.length > 0)
         await db.syncWithFirestoreSimple(mergedContactCategories, 'contactCategories')
 
@@ -796,9 +783,6 @@ export const useContactsStore = defineStore('contacts', {
       const usedIds = new Set()
       const duplicateItems = []
 
-      console.log('localItems:', localItems)
-      console.log('firestoreItems:', firestoreItems)
-
       function isLocalItemNewer(localItem, existingItem) {
         const localDate = new Date(localItem.updatedAt || 0)
         const existingDate = new Date(existingItem.updatedAt || 0)
@@ -817,7 +801,6 @@ export const useContactsStore = defineStore('contacts', {
       for (const localItem of localItems) {
         const key = getItemKey(localItem)
         if (localItemKeys.has(key)) {
-          console.warn('Duplicate local item detected:', localItem)
           duplicateItems.push(localItem)
         } else
           localItemKeys.add(key)
@@ -827,7 +810,6 @@ export const useContactsStore = defineStore('contacts', {
       for (const firestoreItem of firestoreItems) {
         const key = getItemKey(firestoreItem)
         if (firestoreItemKeys.has(key)) {
-          console.warn('Duplicate firestore item detected:', firestoreItem)
           duplicateItems.push(firestoreItem)
         } else
           firestoreItemKeys.add(key)
@@ -858,25 +840,20 @@ export const useContactsStore = defineStore('contacts', {
         if(duplicateItems.includes(localItem)) continue
 
         const existingItem = mergedItems.get(key)
-        console.log('existingItem:', existingItem)
 
         if(!existingItem || isLocalItemNewer(localItem, existingItem)) {
           if(existingItem && existingItem.name === localItem.name){
-            console.warn('Duplicate item detected (local newer than Firestore):', localItem)
             duplicateItems.push(localItem)
             continue
           }
 
           let itemToMerge = {...localItem}
 
-          console.log('itemToMerge:', itemToMerge)
-
           if(existingItem && existingItem.id)
             itemToMerge.id = existingItem.id
           else if(localItem.id && usedIds.has(localItem.id)){
             itemToMerge.id = generateNewId(localItem)
             itemToMerge.localId = localItem.id
-            console.warn('Id generated for local item:', itemToMerge)
           }
 
           mergedItems.set(key, itemToMerge)
@@ -895,11 +872,10 @@ export const useContactsStore = defineStore('contacts', {
           // console.log('itemToMerge:', itemToMerge)
           // usedIds.add(itemToMerge.id)
         } else if (existingItem.name === localItem.name){
-          console.warn('Duplicate item detected:', localItem)
           duplicateItems.push(localItem)
         }
       }
-      console.log('mergedItems:', mergedItems)
+
       return Array.from(mergedItems.values())
 
       // localItems.forEach(localItem => {

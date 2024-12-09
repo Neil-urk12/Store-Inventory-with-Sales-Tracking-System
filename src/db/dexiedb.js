@@ -331,7 +331,6 @@ class AppDatabase extends Dexie {
 
       if (contactPerson.phone?.trim() && contactPerson.phone?.trim() !== '')
         query = query.or('phone').equals(contactPerson.phone.trim())
-      console.log('Query',await query.first())
       const existingContact = await query.first()
       if (existingContact) {
         const errorMessage = existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
