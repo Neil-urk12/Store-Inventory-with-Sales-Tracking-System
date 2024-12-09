@@ -7,7 +7,7 @@
  * @param {Object} contact - Contact to validate
  * @returns {Object} Validation result with isValid and errors
  */
-export const validateContact = async (contact, contactsList) => {
+export const validateContact = async (contact, contactsList, newContactId = null) => {
   if(!contactsList) throw new Error('Contacts list is required')
 
   const errors = []
@@ -21,11 +21,52 @@ export const validateContact = async (contact, contactsList) => {
   if (!contact.categoryId)
     errors.push('Contact category is required')
 
-  const existingContacts = await Promise.allSettled([
-    contact.phone?.trim() ? contactsList.filter(c => c.phone?.trim() === contact.phone?.trim() && c.id !== contact.id) : [],
-    contactsList.filter(c => c.name === contact.name && c.id !== contact.id),
-    contact.email?.trim() ? contactsList.filter(c => c.email?.trim() === contact.email?.trim() && c.id !== contact.id) : []
-  ])
+  const existingContactsPromises = [
+    contact.phone?.trim()
+      ? contactsList.filter(
+          (c) =>
+            c.phone?.trim() === contact.phone?.trim() && c.id !== newContactId
+        )
+      : Promise.resolve([]), // Resolve with an empty array if phone is empty
+    contactsList.filter(
+      (c) => c.name.trim() === contact.name.trim() && c.id !== newContactId
+    ), // Added trim() to name comparison for consistency
+    contact.email?.trim()
+      ? contactsList.filter(
+          (c) =>
+            c.email?.trim() === contact.email?.trim() && c.id !== newContactId
+        )
+      : Promise.resolve([]), // Resolve with an empty array if email is empty
+  ];
+
+  const existingContactsResults = await Promise.allSettled(
+    existingContactsPromises
+  )
+
+  console.log('existingContacts', existingContactsResults);
+
+  // Check for fulfilled promises and if their value (the filtered array) has any elements
+  if (
+    existingContactsResults[0].status === 'fulfilled' &&
+    existingContactsResults[0].value.length > 0
+  )
+    errors.push('Contact with this phone number already exists');
+  if (
+    existingContactsResults[1].status === 'fulfilled' &&
+    existingContactsResults[1].value.length > 0
+  )
+    errors.push('Contact with this name already exists');
+  if (
+    existingContactsResults[2].status === 'fulfilled' &&
+    existingContactsResults[2].value.length > 0
+  )
+    errors.push('Contact with this email already exists');
+
+  // const existingContacts = await Promise.allSettled([
+  //   contact.phone?.trim() ? contactsList.filter(c => c.phone?.trim() === contact.phone?.trim() && c.id !== contact.id) : [],
+  //   contactsList.filter(c => c.name === contact.name),
+  //   contact.email?.trim() ? contactsList.filter(c => c.email?.trim() === contact.email?.trim() && c.id !== contact.id) : []
+  // ])
 
   // const existingContacts = await Promise.all([
   //   contactsList.filter(c => c.phone === contact.phone && c.id !== contact.id),
@@ -33,12 +74,13 @@ export const validateContact = async (contact, contactsList) => {
   //   contactsList.filter(c => c.email === contact.email && c.id !== contact.id)
   // ])
 
-  if(existingContacts[0].length > 0)
-    errors.push('Contact with this phone number already exists')
-  if(existingContacts[1].length > 0)
-    errors.push('Contact with this name already exists')
-  if(existingContacts[2].length > 0)
-    errors.push('Contact with this email already exists')
+  // console.log('existingContacts', existingContacts)
+  // if(existingContacts[0].length > 0)
+  //   errors.push('Contact with this phone number already exists')
+  // if(existingContacts[1].length > 0)
+  //   errors.push('Contact with this name already exists')
+  // if(existingContacts[2].length > 0)
+  //   errors.push('Contact with this email already exists')
 
   // const existingPhone = await contactsList.where('phone').equals(contact.phone).first()
   // if (existingPhone && existingPhone.id !== contact.id)

@@ -12,7 +12,10 @@ import {
   writeBatch,
   doc,
   serverTimestamp,
-  getDoc
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -152,10 +155,12 @@ export const useContactsStore = defineStore('contacts', {
      */
     async addContact(contact) {
       try {
-        const validation = await validateContact(contact, this.contactsList)
+        const validation = await validateContact(contact, this.contactsList, contact.id)
+        console.log(validation)
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
-
+        console.log("VALID")
+        console.log(validation)
         const id = await db.addContact(contact)
 
         if (isOnline.value) {
@@ -381,16 +386,52 @@ export const useContactsStore = defineStore('contacts', {
           const batch = writeBatch(fireDb);
           const currentBatch = items.slice(i, Math.min(i + batchSize, items.length));
 
-          currentBatch.forEach(item => {
-            const { id, ...itemData } = item
-            const docRef = id && typeof id === 'string' ? doc(collectionRef, id) : doc(collectionRef);
-            const isUpdate = id && typeof id === 'string';
-            const timestampData = isUpdate
-                ? { updatedAt: serverTimestamp() }
-                : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+          await Promise.all(currentBatch.map(async (item) => {
+            const { id, ...itemData } = item;
 
-            batch[isUpdate ? 'update' : 'set'](docRef, { ...itemData, ...timestampData }, { merge: isUpdate });
-          });
+            // Validate ID
+            if (id && typeof id !== 'string') {
+              console.error(`Invalid ID type for item in ${collectionName}:`, item);
+              return; // Skip this item
+            }
+
+            const docRef = id ? doc(collectionRef, id) : doc(collectionRef);
+            const isUpdate = !!id; // More concise way to check for existence of id
+            const timestampData = {
+              updatedAt: serverTimestamp(),
+              ...(isUpdate ? {} : { createdAt: serverTimestamp() }),
+            };
+
+            try {
+              if (isUpdate) {
+                // Check for document existence before updating
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                  await updateDoc(docRef, { ...itemData, ...timestampData });
+                } else {
+                  console.warn(`Document with ID ${id} not found in ${collectionName}. Creating it.`);
+                  await setDoc(docRef, { ...itemData, ...timestampData }); // No need for merge: true here
+                }
+              } else {
+                // New document, use set
+                await setDoc(docRef, { ...itemData, ...timestampData }); // No need for merge: true here
+              }
+            } catch (error) {
+              console.error(`Error updating/creating document in ${collectionName}:`, error, item);
+              // Implement more sophisticated error handling (retry, logging, etc.)
+            }
+          }))
+
+          // currentBatch.forEach(item => {
+          //   const { id, ...itemData } = item
+          //   const docRef = id && typeof id === 'string' ? doc(collectionRef, id) : doc(collectionRef);
+          //   const isUpdate = id && typeof id === 'string';
+          //   const timestampData = isUpdate
+          //       ? { updatedAt: serverTimestamp() }
+          //       : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+
+          //   batch[isUpdate ? 'update' : 'set'](docRef, { ...itemData, ...timestampData }, { merge: isUpdate });
+          // });
 
           try {
             await batch.commit();
@@ -470,16 +511,16 @@ export const useContactsStore = defineStore('contacts', {
           }
         }
       }
-
+      await Promise.all([
+        deleteDuplicates('contactCategories', 'name'),
+        deleteDuplicates('contactsList', 'name')
+      ])
       await Promise.all([
         processBatchUpdates('contactCategories', mergedContactCategories),
         processBatchUpdates('contactsList', mergedContacts)
       ])
 
-      await Promise.all([
-        deleteDuplicates('contactCategories', 'name'),
-        deleteDuplicates('contactsList', 'name')
-      ])
+
       // if (mergedContactCategories.length > 0) {
       //   const contactCategoriesRef = collection(fireDb, 'contactCategories')
       //   for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
@@ -727,23 +768,34 @@ export const useContactsStore = defineStore('contacts', {
 
       const mergedItems = new Map()
       const usedIds = new Set()
-      const itemsToDelete = new Set()
+      const duplicateItems = []
 
       console.log('localItems:', localItems)
       console.log('firestoreItems:', firestoreItems)
+
       function isLocalItemNewer(localItem, existingItem) {
-        const localDate = new Date(localItem.updatedAt || 0);
-        const existingDate = new Date(existingItem.updatedAt || 0);
+        const localDate = new Date(localItem.updatedAt || 0)
+        const existingDate = new Date(existingItem.updatedAt || 0)
         return localDate > existingDate;
       }
 
-      const useCompoundKey = uniqueField === 'name' && localItems[0]?.categoryId !== undefined;
+      const useCompoundKey = uniqueField === 'name' && localItems[0]?.categoryId !== undefined
 
       const getItemKey = (item) => useCompoundKey
       ? `${item.categoryId}-${item.name}`
       : item[uniqueField]
 
-      const generateNewId = (item) => `new-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+      const generateNewId = () => `new-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+
+      const localItemKeys = new Set()
+      for (const localItem of localItems) {
+        const key = getItemKey(localItem)
+        if (localItemKeys.has(key)) {
+          console.warn('Duplicate local item detected:', localItem)
+          duplicateItems.push(localItem)
+        } else
+          localItemKeys.add(key)
+      }
 
       for(const firestoreItem of firestoreItems) {
         const key = getItemKey(firestoreItem)
@@ -767,26 +819,48 @@ export const useContactsStore = defineStore('contacts', {
           continue
         }
 
+        if(duplicateItems.includes(localItem)) continue
+
         const existingItem = mergedItems.get(key)
         console.log('existingItem:', existingItem)
 
-        if(existingItem || isLocalItemNewer(localItem, existingItem)) {
+        if(!existingItem || isLocalItemNewer(localItem, existingItem)) {
+          if(existingItem && existingItem.name === localItem.name){
+            console.warn('Duplicate item detected (local newer than Firestore):', localItem)
+            duplicateItems.push(localItem)
+            continue
+          }
+
           let itemToMerge = {...localItem}
+
           console.log('itemToMerge:', itemToMerge)
-          if(localItem.id && usedIds.has(localItem.id)){
+
+          if(existingItem && existingItem.id)
+            itemToMerge.id = existingItem.id
+          else if(localItem.id && usedIds.has(localItem.id)){
             itemToMerge.id = generateNewId(localItem)
             itemToMerge.localId = localItem.id
-            console.log('itemToMerge:', itemToMerge)
+            console.warn('Id generated for local item:', itemToMerge)
           }
-          if(existingItem.name === localItem.name){
-            console.warn('Duplicate item detected:', localItem)
-            mergedItems.delete(key)
-          }
+
           mergedItems.set(key, itemToMerge)
+
+          // if(localItem.id && usedIds.has(localItem.id)){
+          //   itemToMerge.id = generateNewId(localItem)
+          //   itemToMerge.localId = localItem.id
+          //   console.log('itemToMerge:', itemToMerge)
+          // }
+          // if(existingItem.name === localItem.name){
+          //   console.warn('Duplicate item detected:', localItem)
+          //   mergedItems.delete(key)
+          // }
           // console.log('mergedItems:', mergedItems)
           // console.log('usedIds:', usedIds)
           // console.log('itemToMerge:', itemToMerge)
           // usedIds.add(itemToMerge.id)
+        } else if (existingItem.name === localItem.name){
+          console.warn('Duplicate item detected:', localItem)
+          duplicateItems.push(localItem)
         }
       }
       console.log('mergedItems:', mergedItems)
