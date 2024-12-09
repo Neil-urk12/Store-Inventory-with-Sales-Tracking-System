@@ -310,12 +310,12 @@ export const useContactsStore = defineStore('contacts', {
         if (isOnline.value) {
           if (firebaseRecord) {
             try {
-              await deleteDoc(doc(fireDb, 'contactsList', firebaseRecord));
+              await deleteDoc(doc(fireDb, 'contactsList', firebaseRecord))
             } catch (error) {
               if (error.code === 'not-found')
-                console.warn(`Firebase document with ID ${firebaseRecord} not found.`);
+                console.warn(`Firebase document with ID ${firebaseRecord} not found.`)
               else {
-                console.error('Error deleting from Firebase:', error);
+                console.error('Error deleting from Firebase:', error)
                 if (this.handleSyncError(error))
                   await syncQueue.processQueue(deleteOperation)
                 else
@@ -391,48 +391,45 @@ export const useContactsStore = defineStore('contacts', {
      * @description Updates Firestore with merged data in batches.
      */
     async updateFirestoreData(mergedContactCategories, mergedContacts) {
-      const batchSize = 500;
+      const batchSize = 500
 
       async function processBatchUpdates(collectionName, items) {
-        if (!items || items.length === 0) return;
+        if (!items || items.length === 0) return
 
-        const collectionRef = collection(fireDb, collectionName);
+        const collectionRef = collection(fireDb, collectionName)
         for (let i = 0; i < items.length; i += batchSize) {
-          const batch = writeBatch(fireDb);
-          const currentBatch = items.slice(i, Math.min(i + batchSize, items.length));
+          const batch = writeBatch(fireDb)
+          const currentBatch = items.slice(i, Math.min(i + batchSize, items.length))
 
           await Promise.all(currentBatch.map(async (item) => {
-            const { id, ...itemData } = item;
+            const { id, ...itemData } = item
 
             // Validate ID
-            if (id && typeof id !== 'string') {
-              console.error(`Invalid ID type for item in ${collectionName}:`, item);
-              return; // Skip this item
-            }
+            if (id && typeof id !== 'string') 
+              return console.error(`Invalid ID type for item in ${collectionName}:`, item)
 
-            const docRef = id ? doc(collectionRef, id) : doc(collectionRef);
-            const isUpdate = !!id; // More concise way to check for existence of id
+            const docRef = id ? doc(collectionRef, id) : doc(collectionRef)
+            const isUpdate = !!id // More concise way to check for existence of id
             const timestampData = {
               updatedAt: serverTimestamp(),
               ...(isUpdate ? {} : { createdAt: serverTimestamp() }),
-            };
+            }
 
             try {
               if (isUpdate) {
                 // Check for document existence before updating
-                const docSnap = await getDoc(docRef);
+                const docSnap = await getDoc(docRef)
                 if (docSnap.exists()) {
-                  await updateDoc(docRef, { ...itemData, ...timestampData });
+                  await updateDoc(docRef, { ...itemData, ...timestampData })
                 } else {
-                  console.warn(`Document with ID ${id} not found in ${collectionName}. Creating it.`);
-                  await setDoc(docRef, { ...itemData, ...timestampData }); // No need for merge: true here
+                  console.warn(`Document with ID ${id} not found in ${collectionName}. Creating it.`)
+                  await setDoc(docRef, { ...itemData, ...timestampData }) // No need for merge: true here
                 }
-              } else {
-                // New document, use set
-                await setDoc(docRef, { ...itemData, ...timestampData }); // No need for merge: true here
-              }
+              } else 
+                await setDoc(docRef, { ...itemData, ...timestampData }) // No need for merge: true here
+              
             } catch (error) {
-              console.error(`Error updating/creating document in ${collectionName}:`, error, item);
+              console.error(`Error updating/creating document in ${collectionName}:`, error, item)
               // Implement more sophisticated error handling (retry, logging, etc.)
             }
           }))
@@ -449,9 +446,9 @@ export const useContactsStore = defineStore('contacts', {
           // });
 
           try {
-            await batch.commit();
+            await batch.commit()
           } catch (error) {
-            console.error(`Batch update failed for ${collectionName}:`, error);
+            console.error(`Batch update failed for ${collectionName}:`, error)
           }
         }
     }
@@ -648,7 +645,7 @@ export const useContactsStore = defineStore('contacts', {
       const contactCategoriesRef = collection(fireDb, 'contactCategories')
       const contactsRef = collection(fireDb, 'contactsList')
 
-      const batchSize = 500;
+      const batchSize = 500
 
       // Upload contact categories
       if (localContactCategories.length > 0) {
@@ -786,7 +783,7 @@ export const useContactsStore = defineStore('contacts', {
       function isLocalItemNewer(localItem, existingItem) {
         const localDate = new Date(localItem.updatedAt || 0)
         const existingDate = new Date(existingItem.updatedAt || 0)
-        return localDate > existingDate;
+        return localDate > existingDate
       }
 
       const useCompoundKey = uniqueField === 'name' && localItems[0]?.categoryId !== undefined

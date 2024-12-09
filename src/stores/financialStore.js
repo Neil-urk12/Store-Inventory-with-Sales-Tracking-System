@@ -292,7 +292,7 @@ export const useFinancialStore = defineStore('financial', {
           throw new Error('Transaction not found')
 
         await db.cashFlow.delete(id)
-D
+
         if (isOnline.value && transaction.firestoreId) {
           try {
             const docRef = doc(fireDb, 'cashFlow', transaction.firestoreId)
