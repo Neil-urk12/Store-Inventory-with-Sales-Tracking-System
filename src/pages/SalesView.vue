@@ -43,14 +43,19 @@ const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
   // if (index > -1) cart.value.splice(index, 1)
   // if(cart.value.indexOf(item) > -1) cart.value.splice(index, 1)  //optimized 1
 
-const processCheckout = () => {
-  const result = salesStore.clearCart()
-  if (result.success) {
+const processCheckout = async () => {
+  // const result = salesStore.clearCart()
+  const result = await salesStore.processCheckout()
+  if (result.success) 
     $q.notify({
       type: 'positive',
       message: 'Purchase completed successfully!'
     })
-  }
+  else 
+    $q.notify({
+      type: 'negative',
+      message: result.error
+    })
 }
 
 onMounted(() => {
@@ -121,7 +126,7 @@ onMounted(() => {
                 <q-item-section>
                   <q-item-label class="text-bold bg-primary q-pa-xs">{{ item.name }}</q-item-label>
                   <q-item-label caption>
-                    ₱{{ financialStore.formatCurrency(item.price) }} × {{ item.quantity }}
+                    {{ financialStore.formatCurrency(item.price) }} × {{ item.quantity }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
