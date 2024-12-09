@@ -114,8 +114,12 @@ export const useContactsStore = defineStore('contacts', {
      */
     async initializeDb() {
       try {
-        await this.loadContactCategories()
-
+        if(this.contactsList.length === 0 || this.contactCategories.length === 0)
+          await this.loadContactCategories()
+        else {
+          this.contactCategories = await db.getAllContactCategories()
+          this.contactsList = await db.getAllContacts()
+        }
         if (isOnline.value) {
           await this.syncWithFirestore()
           await processQueueDebounced()
@@ -135,9 +139,8 @@ export const useContactsStore = defineStore('contacts', {
       this.loading = true
       try {
         const categories = await db.getAllContactCategories()
-        for (const category of categories) {
+        for (const category of categories)
           category.contacts = await db.getContactsByCategory(category.id)
-        }
         this.contactCategories = categories
       } catch (error) {
         this._handleActionError(error, 'loadContactCategories')
@@ -155,8 +158,9 @@ export const useContactsStore = defineStore('contacts', {
      */
     async addContact(contact) {
       try {
+        // this.contactsList = await db.getAllContacts()
+        if(this.contactsList.length === 0) this.contactsList = await db.getAllContacts()
         const validation = await validateContact(contact, this.contactsList, contact.id)
-        console.log(validation)
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
         console.log("VALID")
@@ -316,14 +320,14 @@ export const useContactsStore = defineStore('contacts', {
             try {
               await deleteDoc(doc(fireDb, 'contactsList', firebaseRecord));
             } catch (error) {
-              if (error.code === 'not-found') {
-                  console.warn(`Firebase document with ID ${firebaseRecord} not found.`);
-              } else {
-                  console.error('Error deleting from Firebase:', error);
-                  if (this.handleSyncError(error))
-                    await syncQueue.processQueue(deleteOperation)
-                  else
-                    throw error
+              if (error.code === 'not-found')
+                console.warn(`Firebase document with ID ${firebaseRecord} not found.`);
+              else {
+                console.error('Error deleting from Firebase:', error);
+                if (this.handleSyncError(error))
+                  await syncQueue.processQueue(deleteOperation)
+                else
+                  throw error
               }
             }
           } else
@@ -817,6 +821,16 @@ export const useContactsStore = defineStore('contacts', {
           duplicateItems.push(localItem)
         } else
           localItemKeys.add(key)
+      }
+
+      const firestoreItemKeys = new Set()
+      for (const firestoreItem of firestoreItems) {
+        const key = getItemKey(firestoreItem)
+        if (firestoreItemKeys.has(key)) {
+          console.warn('Duplicate firestore item detected:', firestoreItem)
+          duplicateItems.push(firestoreItem)
+        } else
+          firestoreItemKeys.add(key)
       }
 
       for(const firestoreItem of firestoreItems) {
