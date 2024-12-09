@@ -296,18 +296,40 @@ export const useContactsStore = defineStore('contacts', {
      * @returns {Promise<void>}
      * @throws {ContactError} If deleting contact fails
      */
-    async deleteContact(id) {
+    async deleteContact(contactId) {
       try {
-        await db.deleteContact(id)
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'delete',
-            collection: 'contactsList',
-            docId: id.toString(),
-            timestamp: new Date()
-          })
-          await processQueueDebounced()
+        const localRecord = await this.contactCategories.flatMap(c => c.contacts).find(c => c.id === contactId || c.localId === contactId)
+        console.log(localRecord)
+        const firebaseRecord = localRecord ? localRecord.localId : localRecord.id
+        await db.deleteContact(contactId)
+
+        console.log(firebaseRecord)
+        const deleteOperation = {
+          type: 'delete',
+          collection: 'contactsList',
+          docId: contactId.toString(),
+          firebaseId: firebaseRecord
         }
+
+        if (isOnline.value) {
+          if (firebaseRecord) {
+            try {
+              await deleteDoc(doc(fireDb, 'contactsList', firebaseRecord));
+            } catch (error) {
+              if (error.code === 'not-found') {
+                  console.warn(`Firebase document with ID ${firebaseRecord} not found.`);
+              } else {
+                  console.error('Error deleting from Firebase:', error);
+                  if (this.handleSyncError(error))
+                    await syncQueue.processQueue(deleteOperation)
+                  else
+                    throw error
+              }
+            }
+          } else
+            await syncQueue.processQueue(deleteOperation)
+        } else
+          await syncQueue.addToQueue(deleteOperation)
         await this.loadContactCategories()
       } catch (error) {
         this._handleActionError(error, 'deleteContact')
