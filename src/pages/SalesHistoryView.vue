@@ -1,18 +1,19 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { db } from '../db/dexiedb'
 import { useSalesStore } from '../stores/salesStore'
 import { useFinancialStore } from 'src/stores/financialStore'
-import { date } from 'quasar'
+import { useQuasar } from 'quasar'
+
+const $q = useQuasar()
 
 const salesStore = useSalesStore()
 const financialStore = useFinancialStore()
-const loading = ref(false)
+const loading = computed ( () => salesStore.loading )
 const searchQuery = ref('')
 const dateRange = ref({ from: '', to: '' })
 const showDetails = ref(false)
 const selectedSale = ref(null)
-const sales = ref([])
+const sales = computed( () => salesStore.sales )
 
 const columns = [
   {
@@ -81,19 +82,23 @@ const showSaleDetails = (sale) => {
 }
 
 const loadSales = async () => {
-  loading.value = true
   try {
-    sales.value = await db.sales.orderBy('date').reverse().toArray()
+    const result = await salesStore.initializeDb()
+    if (result) 
+      $q.notify({
+        type: 'positive',
+        message: 'Sales loaded successfully'
+      })
   } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error loading sales'
+    })
     console.error('Error loading sales:', error)
-  } finally {
-    loading.value = false
-  }
+  } 
 }
 
-onMounted(() => {
-  loadSales()
-})
+onMounted(async () => await loadSales())
 </script>
 
 
@@ -137,10 +142,10 @@ onMounted(() => {
             >
               <template v-slot:body-cell-items="props">
                 <q-td :props="props">
-                  <q-btn flat round color="primary" icon="visibility" @click="showSaleDetails(props.row)">
+                  <q-btn v-if="props.row.items" flat round color="primary" icon="visibility" @click="showSaleDetails(props.row)">
                     <q-tooltip>View Items</q-tooltip>
                   </q-btn>
-                  {{ props.row.items.length }} items
+                  {{ props.row.items.length ? props.row.items.length : 0 }} items
                 </q-td>
               </template>
               <template v-slot:body-cell-total="props">
