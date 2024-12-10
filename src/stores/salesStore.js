@@ -88,7 +88,7 @@ export const useSalesStore = defineStore('sales', {
           product.category === state.selectedCategory
         return matchesSearch && matchesCategory
       })
-    }
+    },
   },
 
   actions: {
@@ -103,7 +103,7 @@ export const useSalesStore = defineStore('sales', {
         await syncQueue.processQueue()
       }
 
-      if(existingSales === 0 && !isOnline.value) 
+      if(existingSales === 0 && !isOnline.value)
         console.error ('No local data available. Waiting for network connection...')
 
       await this.loadSales()
@@ -153,7 +153,7 @@ export const useSalesStore = defineStore('sales', {
                 .where('firebaseId')
                 .equals(firestoreSale.firebaseId)
                 .toArray()
-  
+
               if (existingSales.length === 0 && !firestoreSale.localId) {
                 await db.sales.add({
                   ...firestoreSale,
@@ -161,13 +161,13 @@ export const useSalesStore = defineStore('sales', {
                 })
                 continue
               }
-  
+
               if (existingSales.length === 0 && firestoreSale.localId) {
                 const existingSale = await db.sales
                   .where('id')
                   .equals(parseInt(firestoreSale.localId))
                   .first()
-  
+
                 if(!existingSale){
                   await db.sales.add({
                     ...firestoreSale,
@@ -176,26 +176,26 @@ export const useSalesStore = defineStore('sales', {
                 }
                 continue
               }
-  
+
               const [ saleToKeep, ...duplicates ] = existingSales
-  
+
               if (saleToKeep.syncStatus === 'pending' || new Date(firestoreSale.updatedAt) > new Date(saleToKeep.updatedAt)) {
                 for (const duplicate of duplicates)
                   await db.sales.delete(duplicate.id)
-  
+
                 continue
               }
-  
+
               await db.sales.update(saleToKeep.id, {
                 ...firestoreSale,
                 id: saleToKeep.id,
                 syncStatus: 'synced'
               })
-  
-              for (const duplicate of duplicates) 
+
+              for (const duplicate of duplicates)
                 await db.items.delete(duplicate.id)
-  
-  
+
+
             } catch (error) {
               this.syncStatus.failedItems.push({
                 ...firestoreSale,
@@ -205,10 +205,10 @@ export const useSalesStore = defineStore('sales', {
             }
           }
         })
-        
+
         for (const localSale of localSales) {
           if (
-            !localSale.firebaseId || 
+            !localSale.firebaseId ||
             firestoreItems.find ((sale) => sale.firebaseId === localSale.firebaseId)
           ) continue
 
@@ -400,6 +400,50 @@ export const useSalesStore = defineStore('sales', {
       this.dateRange = {
         from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
         to: formatDate(new Date(range.to), 'YYYY-MM-DD')
+      }
+    },
+    /**
+     * @async
+     * @method generateSalesReport
+     * @returns {Promise<Array>} Array of daily sales report objects
+     * @description Calculates and returns sales report data
+     */
+    async generateSalesReport() {
+      try {
+        const salesData = await db.sales.toArray(); // Fetch all sales data from Dexie.js
+
+        const reportData = {};
+
+        // Aggregate data by date
+        salesData.forEach(sale => {
+          const saleDate = formatDate(new Date(sale.createdAt), 'YYYY-MM-DD');
+          if (!reportData[saleDate]) {
+            reportData[saleDate] = {
+              date: saleDate,
+              grossProfit: 0,
+              netProfit: 0,
+              loss: 0
+            };
+          }
+
+          // Calculate profit/loss based on payment method (example logic)
+          const profit = sale.total - sale.cost; // Assuming 'cost' property exists
+          if (sale.paymentMethod === 'cash') {
+            reportData[saleDate].grossProfit += profit;
+            reportData[saleDate].netProfit += profit; // Adjust for cash-specific expenses
+          } else if (sale.paymentMethod === 'credit') {
+            reportData[saleDate].grossProfit += profit;
+            reportData[saleDate].netProfit += profit * 0.95; // Adjust for credit card fees
+          } else {
+            reportData[saleDate].loss += profit < 0 ? profit : 0;
+          }
+        });
+
+        return Object.values(reportData);
+      } catch (error) {
+        console.error('Error generating sales report:', error);
+        // Return an empty array in case of error
+        return [];
       }
     },
   }

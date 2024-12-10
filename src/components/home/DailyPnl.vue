@@ -9,9 +9,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFinancialStore } from '../../stores/financialStore'
 import { useQuasar } from 'quasar'
+import { useSalesStore } from 'src/stores/salesStore';
 
 const $q = useQuasar()
 const financialStore = useFinancialStore()
+const salesStore = useSalesStore()
 
 /** @type {import('vue').Ref<boolean>} */
 const isLoading = ref(true)
@@ -65,20 +67,23 @@ const loadFinancialData = async () => {
 // Set up automatic refresh and initial load
 onMounted(async () => {
   await loadFinancialData()
-  // Refresh data every 5 minutes
+  if (financialStore.financialData.length === 0) 
+    await financialStore.loadTransactions()
+
+  if (salesStore.getDailyProfit === 0) 
+    await salesStore.loadSales()
+
   refreshInterval.value = setInterval(() => {
     // Only refresh if not already refreshing
-    if (!isRefreshing.value) {
+    if (!isRefreshing.value) 
       loadFinancialData()
-    }
   }, 300000)
 })
 
 // Clean up interval on component unmount
 onUnmounted(() => {
-  if (refreshInterval.value) {
+  if (refreshInterval.value) 
     clearInterval(refreshInterval.value)
-  }
 })
 
 /**

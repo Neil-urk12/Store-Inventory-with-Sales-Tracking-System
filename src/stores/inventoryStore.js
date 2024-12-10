@@ -1280,50 +1280,5 @@ export const useInventoryStore = defineStore('inventory', {
         retryDelay: 1000
       }
     },
-
-    /**
-     * @async
-     * @method generateSalesReport
-     * @returns {Promise<Array>} Array of daily sales report objects
-     * @description Calculates and returns sales report data
-     */
-    async generateSalesReport() {
-      try {
-        const salesData = await db.sales.toArray(); // Fetch all sales data from Dexie.js
-
-        const reportData = {};
-
-        // Aggregate data by date
-        salesData.forEach(sale => {
-          const saleDate = formatDate(new Date(sale.createdAt), 'YYYY-MM-DD');
-          if (!reportData[saleDate]) {
-            reportData[saleDate] = {
-              date: saleDate,
-              grossProfit: 0,
-              netProfit: 0,
-              loss: 0
-            };
-          }
-
-          // Calculate profit/loss based on payment method (example logic)
-          const profit = sale.total - sale.cost; // Assuming 'cost' property exists
-          if (sale.paymentMethod === 'cash') {
-            reportData[saleDate].grossProfit += profit;
-            reportData[saleDate].netProfit += profit; // Adjust for cash-specific expenses
-          } else if (sale.paymentMethod === 'credit') {
-            reportData[saleDate].grossProfit += profit;
-            reportData[saleDate].netProfit += profit * 0.95; // Adjust for credit card fees
-          } else {
-            reportData[saleDate].loss += profit < 0 ? profit : 0;
-          }
-        });
-
-        return Object.values(reportData);
-      } catch (error) {
-        console.error('Error generating sales report:', error);
-        // Return an empty array in case of error
-        return [];
-      }
-    },
   }
 })

@@ -32,24 +32,50 @@ export const useFinancialStore = defineStore('financial', {
   }),
 
   getters: {
-    getDailyProfit() {
-      const today = new Date()
-      const todayStr = formatDate(today, 'YYYY-MM-DD')
-      return this.financialData
-        .filter(item => item.date === todayStr)
-        .reduce((sum, item) => sum + item.profit, 0)
-    },
-
-    getDailyExpense() {
-      const today = new Date()
-      const todayStr = formatDate(today, 'YYYY-MM-DD')
-      return this.financialData
-        .filter(item => item.date === todayStr && item.type === 'expense')
+    getDailyExpense(state) {
+      const today = formatDate(new Date(), 'YYYY-MM-DD')
+      return state.financialData
+        .filter(item => item.date === today && item.type === 'expense')
         .reduce((sum, item) => sum + Number(item.amount), 0)
+    },
+    /**
+     * @getter
+     * @returns {Array} Returns array of sales
+    */
+    getDailyProfit(state) { 
+      const today = formatDate(new Date(), 'YYYY-MM-DD')
+      console.log(state.financialData.filter(item => item.date === today && item.type === 'income'), "gDaily")
+      return state.financialData
+        .filter(item => item.date === today && item.type === 'income')
+        .reduce((sum, item) => sum + Number(item.amount), 0)
+    },
+    getWeeklyExpense(state) {
+      const today = new Date()
+      const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()))
+      const endOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 6))
+      return state.financialData
+        .filter(item => {
+          const itemDate = new Date(item.date)
+          return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'
+        })
     }
   },
 
   actions: {
+    /**
+     * 
+     * 
+    */
+    async loadTransactions(){
+      try {
+        if(this.financialData.length === 0)
+          this.financialData = await db.getAllTransactions()
+
+        console.log(this.financialData)
+      } catch (error) {
+        console.error('Error loading transactions', error)
+      }
+    },
     /**
      * @method syncWithFirestore
      * @description Syncs unsynced transactions with Firestore when online
@@ -61,11 +87,17 @@ export const useFinancialStore = defineStore('financial', {
       if (!fireDb)
         return console.error('Firebase DB not initialized')
 
+      if (this.financialData.length === 0) 
+        this.loadTransactions()
+
       try {
-        const unsyncedTransactions = await db.cashFlow
-          .where('syncStatus')
-          .equals('pending')
-          .toArray()
+        // const unsyncedTransactions = await db.cashFlow
+        //   .where('syncStatus')
+        //   .equals('pending')
+        //   .toArray()
+        const unsyncedTransactions = this.financialData.filter(
+          transaction => transaction.syncStatus === 'pending'
+        )
 
         if (unsyncedTransactions.length === 0) return console.log('No transactions to sync')
 
@@ -84,7 +116,7 @@ export const useFinancialStore = defineStore('financial', {
                 syncStatus: 'validation_failed',
                 syncError: validation.errors.join(', ')
               })
-              continue // Skip to the next transaction
+              continue
             }
 
             const cleanTransaction = {
@@ -203,7 +235,7 @@ export const useFinancialStore = defineStore('financial', {
           paymentMethod: transactionData.paymentMethod,
           type: transactionData.type,
           amount: Number(transactionData.amount),
-          date: transactionData.date || formatDate(new Date(), 'YYYY-MM-DD'),
+          date: formatDate(transactionData.date, 'YYYY-MM-DD') || formatDate(new Date(), 'YYYY-MM-DD'),
           description: transactionData.description?.trim() || '',
           syncStatus: 'pending',
           createdAt: new Date().toISOString(),
