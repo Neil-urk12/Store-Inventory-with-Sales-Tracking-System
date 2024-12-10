@@ -155,14 +155,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .chart-container {
-  height: 300px;
+  height: 350px;
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
-  padding: 1rem;
 }
 
 .canvas-wrapper {
