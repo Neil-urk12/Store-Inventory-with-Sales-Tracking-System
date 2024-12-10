@@ -31,8 +31,7 @@
             emit-value
             map-options
             clearable
-            @clear="() => { inventoryStore.categoryFilter = null; inventoryStore.handleFilters(); }"
-            @update:model-value="inventoryStore.handleFilters"
+            @clear="() => inventoryStore.categoryFilter = null"
           />
         </div>
         <div class="col-6">
