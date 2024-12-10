@@ -13,7 +13,7 @@
         placeholder="Search inventory...."
         clearable
         @clear="() => { inventoryStore.searchQuery = ''; inventoryStore.handleSearch(); }"
-        @update:model-value="inventoryStore.handleSearch">
+        @update:model-value="debouncedSearch">
         <template v-slot:append>
           <q-icon name="search" />
         </template>
@@ -83,18 +83,19 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { onMounted, ref, watch } from 'vue'
-import { useQuasar } from 'quasar'
+import { useQuasar, debounce } from 'quasar'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const newCategoryName = ref('')
 
-// Reset category input when dialog closes
 watch(() => inventoryStore.categoryDialog, (newVal) => {
-  if (!newVal) {
+  if (!newVal)
     newCategoryName.value = ''
-  }
 })
+
+const debouncedSearch = debounce ((itemToSearch) =>
+  inventoryStore.handleSearch(itemToSearch), 500)
 
 const handleAddCategory = async () => {
   if (!newCategoryName.value) {
@@ -126,7 +127,8 @@ const handleAddCategory = async () => {
 }
 
 onMounted(async () => {
-  await inventoryStore.loadCategories()
+  if(inventoryStore.categories.length === 0)
+    await inventoryStore.loadCategories()
 })
 </script>
 

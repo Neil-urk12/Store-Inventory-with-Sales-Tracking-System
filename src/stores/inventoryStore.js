@@ -50,12 +50,6 @@ const SORT_OPTIONS = [
   { label: 'Quantity', value: 'quantity' },
   { label: 'Category', value: 'category' }
 ]
-
-// Debounced search function to prevent excessive database calls
-const debouncedSearch = debounce((store) => {
-  store.loadInventory()
-}, 300)
-
 /**
  * @const {Store} useInventoryStore
  * @description Pinia store for managing inventory state and operations
@@ -1080,8 +1074,8 @@ export const useInventoryStore = defineStore('inventory', {
      * @method handleSearch
      * @description Handles search query changes
      */
-    handleSearch(item) {
-      debouncedSearch(item)
+    handleSearch(itemToSearch) {
+      this.searchQuery = itemToSearch
     },
     /**
      * @method exportToCSV
@@ -1219,11 +1213,6 @@ export const useInventoryStore = defineStore('inventory', {
      * Used for cleanup before navigation or component unmount.
      */
     cleanup(fullCleanup = false) {
-      // Cancel any pending debounced operations
-      if (debouncedSearch && typeof debouncedSearch.cancel === 'function') {
-        debouncedSearch.cancel()
-      }
-
       // Reset UI state
       this.loading = false
       this.error = null
