@@ -77,6 +77,61 @@ const timeframeOptions = [
   { label: 'Yearly', value: 'yearly' }
 ]
 
+const getChartOptions = (textColor) => {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        ticks: {
+          color: textColor
+        },
+        grid: {
+          display: false
+        }
+      },
+      y: {
+        ticks: {
+          color: textColor,
+          beginAtZero: true
+        },
+        grid: {
+          color: $q.dark.isActive ? '#5c5c5c' : '#e0e0e0'
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: false
+      }
+    }
+  }
+}
+
+const getChartData = (timeframe) => {
+  const salesData = inventoryStore.getSalesDataByTimeframe(timeframe)
+
+  if (!salesData || Object.keys(salesData).length === 0) {
+    return null
+  }
+
+  const labels = Object.keys(salesData)
+  const data = Object.values(salesData).map(item => item.total)
+
+  return {
+    labels: labels,
+    datasets: [
+      {
+        label: 'Sales',
+        data: data,
+        backgroundColor: $q.dark.isActive ? '#4CAF50' : '#007bff',
+        borderColor: $q.dark.isActive ? '#4CAF50' : '#007bff',
+        borderWidth: 1
+      }
+    ]
+  }
+}
+
 const updateSalesTimeframe = (value) => {
   inventoryStore.updateSalesTimeframe(value)
   rerenderSalesChart()
@@ -91,7 +146,7 @@ const renderSalesChart = async () => {
   if (!ctx) return
 
   const textColor = $q.dark.isActive ? '#ffffff' : '#000000'
-  chartData.value = inventoryStore.getChartData(selectedTimeframe.value)
+  chartData.value = getChartData(selectedTimeframe.value)
 
   if (!chartData.value || !chartData.value.datasets[0].data.length) {
     return
@@ -100,7 +155,7 @@ const renderSalesChart = async () => {
   salesTrendChart.value = new Chart(ctx, {
     type: 'bar',
     data: chartData.value,
-    options: inventoryStore.getChartOptions(textColor)
+    options: getChartOptions(textColor)
   })
 }
 

@@ -24,10 +24,26 @@ import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 
+/**
+ * @const {Ref<boolean>} isOnline
+ * @description A reactive reference to the online/offline status of the application.
+ */
 const { isOnline } = useNetworkStatus()
+/**
+ * @const {string} DEFAULT_SORT
+ * @description The default sorting field for inventory items.
+ */
 const DEFAULT_SORT = 'name'
+/**
+ * @const {string} DEFAULT_SORT_DIRECTION
+ * @description The default sorting direction for inventory items.
+ */
 const DEFAULT_SORT_DIRECTION = 'asc'
-const SORT_OPTIONS = [
+/**
+ * @const {Array<Object>} SORT_OPTIONS
+ * @description Available sorting options for the inventory list.
+ */
+const SORT_OPTIONS = [ 
   { label: 'Name', value: 'name' },
   { label: 'Price', value: 'price' },
   { label: 'Quantity', value: 'quantity' },
@@ -44,50 +60,103 @@ const debouncedSearch = debounce((store) => {
  * @description Pinia store for managing inventory state and operations
  */
 export const useInventoryStore = defineStore('inventory', {
-  state: () => ({
-    loading: false,
-    error: null,
-    items: [],
-    searchQuery: '',
-    categoryFilter: null,
-    itemDialog: false,
-    deleteDialog: false,
-    editedItem: {},
-    itemToDelete: null,
-    editMode: false,
-    viewMode: 'list',
-    syncStatus: {
-      lastSync: null,
-      inProgress: false,
+  state: () => {
+    /**
+     * @type {Object}
+     * @property {boolean} loading - Indicates if the store is currently loading data.
+     * @property {string|null} error - Stores any error messages encountered during operations.
+     * @property {Array<Object>} items - Array of inventory items.
+     * @property {string} searchQuery - Current search query for filtering items.
+     * @property {string|null} categoryFilter - Current category filter for filtering items.
+     * @property {boolean} itemDialog - Indicates if the item dialog is open.
+     * @property {boolean} deleteDialog - Indicates if the delete confirmation dialog is open.
+     * @property {Object} editedItem - The item currently being edited in the dialog.
+     * @property {Object|null} itemToDelete - The item selected for deletion.
+     * @property {boolean} editMode - Indicates if the item dialog is in edit mode.
+     * @property {string} viewMode - Current view mode of the inventory list ('list' or 'grid').
+     * @property {Object} syncStatus - Status of the synchronization process.
+     * @property {string} sortBy - Current sorting field for inventory items.
+     * @property {string} sortDirection - Current sorting direction for inventory items.
+     * @property {Array<Object>} sortOptions - Available sorting options for the inventory list.
+     * @property {Array<Object>} categories - Array of inventory categories.
+     * @property {boolean} categoryDialog - Indicates if the category dialog is open.
+     * @property {Object|null} editedCategory - The category currently being edited in the dialog.
+     * @property {Array<string>} selectedItems - Array of IDs of selected items.
+     * @property {Object} dateRange - Selected date range for filtering data.
+     * @property {Array<Object>} inventoryData - Aggregated inventory data for reports.
+     * @property {Array<Object>} lowStockAlerts - Items with low stock levels.
+     * @property {Array<Object>} topSellingProducts - Top selling products.
+     * @property {Object} chartData - Chart data for various timeframes.
+     */
+    return {
+      loading: false,
       error: null,
-      pendingChanges: 0,
-      totalItems: 0,
-      processedItems: 0,
-      failedItems: [],
-      retryCount: 0,
-      maxRetries: 3,
-      retryDelay: 1000 // 1 second delay between retries
-    },
-    sortBy: DEFAULT_SORT,
-    sortDirection: DEFAULT_SORT_DIRECTION,
-    sortOptions: SORT_OPTIONS,
-    categories: [],
-    categoryDialog: false,
-    editedCategory: null,
-    selectedItems: [],
-    dateRange: {
-      from: formatDate(new Date(), 'YYYY-MM-DD'),
-      to: formatDate(new Date(), 'YYYY-MM-DD')
-    },
-    inventoryData: [],
-    lowStockAlerts: [],
-    topSellingProducts: [],
-    chartData: {
-      daily: { labels: [], datasets: [] },
-      weekly: { labels: [], datasets: [] },
-      monthly: { labels: [], datasets: [] }
+      items: [],
+      searchQuery: '',
+      categoryFilter: null,
+      itemDialog: false,
+      deleteDialog: false,
+      editedItem: {},
+      itemToDelete: null,
+      editMode: false,
+      viewMode: 'list',
+      /**
+       * @type {Object}
+       * @property {string|null} lastSync - Timestamp of the last successful sync.
+       * @property {boolean} inProgress - Indicates if a sync is currently in progress.
+       * @property {string|null} error - Stores any error messages encountered during sync.
+       * @property {number} pendingChanges - Number of pending local changes to be synced.
+       * @property {number} totalItems - Total number of items to be synced.
+       * @property {number} processedItems - Number of items processed during sync.
+       * @property {Array<Object>} failedItems - Array of items that failed to sync.
+       * @property {number} retryCount - Current retry attempt for failed syncs.
+       * @property {number} maxRetries - Maximum number of retry attempts for failed syncs.
+       * @property {number} retryDelay - Delay in milliseconds between retry attempts.
+       */
+      syncStatus: {
+        lastSync: null,
+        inProgress: false,
+        error: null,
+        pendingChanges: 0,
+        totalItems: 0,
+        processedItems: 0,
+        failedItems: [],
+        retryCount: 0,
+        maxRetries: 3,
+        retryDelay: 1000 // 1 second delay between retries
+      },
+      sortBy: DEFAULT_SORT,
+      sortDirection: DEFAULT_SORT_DIRECTION,
+      sortOptions: SORT_OPTIONS,
+      categories: [],
+      categoryDialog: false,
+      editedCategory: null,
+      selectedItems: [],
+      /**
+       * @type {Object}
+       * @property {string} from - Start date of the selected date range.
+       * @property {string} to - End date of the selected date range.
+       */
+      dateRange: {
+        from: formatDate(new Date(), 'YYYY-MM-DD'),
+        to: formatDate(new Date(), 'YYYY-MM-DD')
+      },
+      inventoryData: [],
+      lowStockAlerts: [],
+      topSellingProducts: [],
+      /**
+       * @type {Object}
+       * @property {Object} daily - Chart data for daily timeframe.
+       * @property {Object} weekly - Chart data for weekly timeframe.
+       * @property {Object} monthly - Chart data for monthly timeframe.
+       */
+      chartData: {
+        daily: { labels: [], datasets: [] },
+        weekly: { labels: [], datasets: [] },
+        monthly: { labels: [], datasets: [] }
+      }
     }
-  }),
+  },
 
   getters: {
     /**
@@ -1023,17 +1092,9 @@ export const useInventoryStore = defineStore('inventory', {
      * @method handleSearch
      * @description Handles search query changes
      */
-    handleSearch() {
-      // Reactive through state, but we can add logging or additional handling here
+    handleSearch(item) {
+      debouncedSearch(item)
     },
-
-    /**
-     * @method handleFilters
-     * @description Handles category filter changes
-     */
-    handleFilters() {
-    },
-
     /**
      * @method exportToCSV
      * @param {Array} data - Data to export
@@ -1049,10 +1110,10 @@ export const useInventoryStore = defineStore('inventory', {
         ...data.map(row =>
           headers.map(header => {
             let cell = row[header]
-            // Handle cells that contain commas or quotes
-            if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
-              cell = `"${cell.replace(/"/g, '""')}"` // escape double quotes
-            }
+
+            if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"')))
+              cell = `"${cell.replace(/"/g, '""')}"`
+
             return cell
           }).join(',')
         )
@@ -1070,96 +1131,12 @@ export const useInventoryStore = defineStore('inventory', {
       document.body.removeChild(link)
     },
 
-    getChartData(timeframe) {
-      const labels = []
-      const salesData = []
-
-      // Sample data generation based on timeframe
-      const now = new Date()
-      let dataPoints = 0
-
-      switch (timeframe) {
-        case 'daily':
-          dataPoints = 7
-          for (let i = dataPoints - 1; i >= 0; i--) {
-            const date = new Date(now)
-            date.setDate(date.getDate() - i)
-            labels.push(formatDate(date, 'MM/DD'))
-            salesData.push(Math.floor(Math.random() * 1000))
-          }
-          break
-        case 'weekly':
-          dataPoints = 4
-          for (let i = dataPoints - 1; i >= 0; i--) {
-            const date = new Date(now)
-            date.setDate(date.getDate() - (i * 7))
-            labels.push(`Week ${dataPoints - i}`)
-            salesData.push(Math.floor(Math.random() * 5000))
-          }
-          break
-        case 'monthly':
-          dataPoints = 12
-          for (let i = dataPoints - 1; i >= 0; i--) {
-            const date = new Date(now)
-            date.setMonth(date.getMonth() - i)
-            labels.push(formatDate(date, 'MMM'))
-            salesData.push(Math.floor(Math.random() * 20000))
-          }
-          break
-        case 'yearly':
-          dataPoints = 5
-          for (let i = dataPoints - 1; i >= 0; i--) {
-            const date = new Date(now)
-            date.setFullYear(date.getFullYear() - i)
-            labels.push(date.getFullYear().toString())
-            salesData.push(Math.floor(Math.random() * 100000))
-          }
-          break
-      }
-
-      return {
-        labels,
-        datasets: [{
-          label: 'Sales',
-          data: salesData,
-          backgroundColor: '#1976D2',
-          borderColor: '#1976D2',
-          borderWidth: 1
-        }]
-      }
-    },
-
-    getChartOptions(textColor) {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          y: {
-            beginAtZero: true,
-            grid: {
-              color: textColor + '20'
-            },
-            ticks: {
-              color: textColor
-            }
-          },
-          x: {
-            grid: {
-              display: false
-            },
-            ticks: {
-              color: textColor
-            }
-          }
-        },
-        plugins: {
-          legend: {
-            display: false
-          }
-        }
-      }
-    },
-
+    /**
+     * @method retryFailedSync
+     * @param {Object} item - The item to retry syncing.
+     * @returns {Promise<boolean>} True if the retry was successful, false otherwise.
+     * @description Retries syncing a failed item.
+     */
     async retryFailedSync(item) {
       const { retryCount, maxRetries, retryDelay } = this.syncStatus
 
@@ -1172,15 +1149,13 @@ export const useInventoryStore = defineStore('inventory', {
         this.syncStatus.retryCount++
         await new Promise(resolve => setTimeout(resolve, retryDelay))
 
-        if (item.syncOperation === 'create') {
+        if (item.syncOperation === 'create')
           await this.createNewItem(item)
-        } else if (item.syncOperation === 'update') {
+        else if (item.syncOperation === 'update')
           await this.updateExistingItem(item.id, item)
-        } else if (item.syncOperation === 'delete') {
+        else if (item.syncOperation === 'delete')
           await this.deleteItem(item.id)
-        }
 
-        // Remove from failed items if successful
         this.syncStatus.failedItems = this.syncStatus.failedItems.filter(
           failed => failed.id !== item.id
         )
@@ -1191,6 +1166,11 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
+    /**
+     * @method retryAllFailedItems
+     * @returns {Promise<number>} The number of items that were successfully retried.
+     * @description Retries syncing all failed items.
+     */
     async retryAllFailedItems() {
       const failedItems = [...this.syncStatus.failedItems]
       const results = await Promise.allSettled(
@@ -1200,6 +1180,12 @@ export const useInventoryStore = defineStore('inventory', {
       return results.filter(result => result.status === 'fulfilled' && result.value).length
     },
 
+    /**
+     * @async
+     * @method cleanupDuplicates
+     * @returns {Promise<void>}
+     * @description Cleans up duplicate items in the local database based on their firebaseId.
+     */
     async cleanupDuplicates() {
       try {
         this.loading = true
@@ -1238,6 +1224,12 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
+    /**
+     * @method cleanup
+     * @param {boolean} [fullCleanup=false] - Whether to perform a full data cleanup or just reset UI state
+     * @description Resets UI state and optionally clears all data.
+     * Used for cleanup before navigation or component unmount.
+     */
     cleanup(fullCleanup = false) {
       // Cancel any pending debounced operations
       if (debouncedSearch && typeof debouncedSearch.cancel === 'function') {
