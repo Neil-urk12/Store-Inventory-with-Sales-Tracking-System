@@ -22,15 +22,9 @@ import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
 import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
-import { date } from 'quasar'
-import { useFinancialStore } from './financialStore'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 
-// Get network status at the store level
 const { isOnline } = useNetworkStatus()
-const financialStore = useFinancialStore()
-// Constants
-const BATCH_SIZE = 500
 const DEFAULT_SORT = 'name'
 const DEFAULT_SORT_DIRECTION = 'asc'
 const SORT_OPTIONS = [
@@ -245,16 +239,15 @@ export const useInventoryStore = defineStore('inventory', {
         const existingItems = await db.items.count()
 
         // Always try to sync with Firestore when online, not just when empty
-          if (isOnline.value) {
-            await this.syncWithFirestore()
-            await syncQueue.processQueue()
-          }
+        if (isOnline.value) {
+          await this.syncWithFirestore()
+          await syncQueue.processQueue()
+        }
 
         // If we're still empty after sync attempt, and we're offline,
         // we'll wait for online status to try again
-        if (existingItems === 0 && !isOnline.value) {
+        if (existingItems === 0 && !isOnline.value)
           this.error = 'No local data available. Waiting for network connection...'
-        }
 
         await this.loadInventory()
         await this.loadCategories()
@@ -283,7 +276,6 @@ export const useInventoryStore = defineStore('inventory', {
           const updatedItems = await db.getAllItems()
           this.items = updatedItems.map(processItem)
         }
-
         else if (isOnline.value) await this.syncWithFirestore()
 
       } catch (error) {
@@ -305,7 +297,7 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         // Validate item before saving
         const errors = validateItem(item)
-        if (errors.length > 0) 
+        if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
 
         // Process item (format data, set defaults, etc.)
@@ -358,14 +350,11 @@ export const useInventoryStore = defineStore('inventory', {
       this.loading = true;
 
       try {
-        // Validate changes before updating
         const errors = validateItem({ ...changes, id });
-        if (errors.length > 0) {
+        if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`);
-        }
 
-        // Process changes
-        const processedChanges = processItem(changes);
+        const processedChanges = processItem(changes)
         const result = await db.updateExistingItem(id, processedChanges);
 
         if (isOnline.value) {
