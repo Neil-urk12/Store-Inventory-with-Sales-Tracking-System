@@ -28,67 +28,68 @@ export const useFinancialStore = defineStore('financial', {
     },
     profitTimeframe: 'daily',
     isLoading: false,
-    error: null
-    _cachedGetters: {} // Add this line
+    error: null,
+    cachedGetters: {} // Add this line
   }),
 
   getters: {
     getDailyExpense(state) {
       const today = formatDate(new Date(), 'YYYY-MM-DD')
-      return state.financialData
+      const cacheKey = JSON.stringify({ financialData: state.financialData, today })
+
+      if (this.cachedGetters[cacheKey])
+        return this.cachedGetters[cacheKey];
+
+      const result = state.financialData
         .filter(item => item.date === today && item.type === 'expense')
-        .reduce((sum, item) => sum + Number(item.amount), 0);
-      
-      const cacheKey = JSON.stringify({ financialData: state.financialData, today });
-      if (this._cachedGetters[cacheKey]) {
-        return this._cachedGetters[cacheKey];
-      }
-      const result = state.financialData.filter(item => item.date === today && item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0);
-      this._cachedGetters[cacheKey] = result;
-      return result;
+        .reduce((sum, item) => sum + Number(item.amount), 0)
+
+      this.cachedGetters[cacheKey] = result;
+      return result
     },
     /**
      * @getter
      * @returns {Array} Returns array of sales
     */
-    getDailyProfit(state) { 
-      const today = formatDate(new Date(), 'YYYY-MM-DD')
-      console.log(state.financialData.filter(item => item.date === today && item.type === 'income'), "gDaily")
-      return state.financialData
-      .filter(item => item.date === today && item.type === 'income')
-      .reduce((sum, item) => sum + Number(item.amount), 0);
-      
-      const cacheKey = JSON.stringify({ financialData: state.financialData, today });
-      if (this._cachedGetters[cacheKey]) {
-        return this._cachedGetters[cacheKey];
-      }
-      const result = state.financialData.filter(item => item.date === today && item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0);
-      this._cachedGetters[cacheKey] = result;
-      return result;
+    getDailyProfit(state) {
+      const today = formatDate(new Date(), 'YYYY-MM-DD');
+      const cacheKey = JSON.stringify({ financialData: state.financialData, today, type: 'income' })
+
+      if (this.cachedGetters[cacheKey])
+        return this.cachedGetters[cacheKey]
+
+      const result = state.financialData
+        .filter(item => item.date === today && item.type === 'income')
+        .reduce((sum, item) => sum + Number(item.amount), 0)
+
+      this.cachedGetters[cacheKey] = result
+      return result
     },
     getWeeklyExpense(state) {
-      const today = new Date()
+      const today = formatDate(new Date(), 'YYYY-MM-DD')
       const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()))
       const endOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 6))
-      return state.financialData
-      .filter(item => {
-        const itemDate = new Date(item.date)
-        return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'
-      });
-      const cacheKey = JSON.stringify({ financialData: state.financialData, startOfWeek, endOfWeek });
-      if (this._cachedGetters[cacheKey]) {
-        return this._cachedGetters[cacheKey];
-      }
-      const result = state.financialData.filter(item => { const itemDate = new Date(item.date); return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'; });
-      this._cachedGetters[cacheKey] = result;
-      return result;
+      const cacheKey = JSON.stringify({ financialData: state.financialData, startOfWeek, endOfWeek, type: 'expense' })
+
+      if (this._cachedGetters[cacheKey])
+        return this._cachedGetters[cacheKey]
+
+      const result = state.financialData
+        .filter(item => {
+          const itemDate = new Date(item.date);
+          return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'
+        })
+        .reduce((sum, item) => sum + Number(item.amount), 0)
+
+      this.cachedGetters[cacheKey] = result
+      return result
     }
   },
 
   actions: {
     /**
-     * 
-     * 
+     *
+     *
     */
     async loadTransactions(){
       try {
@@ -111,7 +112,7 @@ export const useFinancialStore = defineStore('financial', {
       if (!fireDb)
         return console.error('Firebase DB not initialized')
 
-      if (this.financialData.length === 0) 
+      if (this.financialData.length === 0)
         this.loadTransactions()
 
       try {

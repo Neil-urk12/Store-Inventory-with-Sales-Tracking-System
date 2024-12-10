@@ -56,7 +56,7 @@ export const useSalesStore = defineStore('sales', {
       failedItems: [],
       retryCount: 0,
       maxRetries: 3,
-      retryDelay: 1000 // 1 second delay between retries
+      retryDelay: 1000
     },
   }),
 
@@ -79,23 +79,17 @@ export const useSalesStore = defineStore('sales', {
      * @getter
      * @returns {Array} Filtered products based on search query and category
      */
-    filteredProducts: (state, getters) => {
-      // Memoization: Cache the result based on searchQuery and selectedCategory
-      const cacheKey = `${state.searchQuery}-${state.selectedCategory}`;
-      if (getters.filteredProductsCache[cacheKey]) {
-        return getters.filteredProductsCache[cacheKey];
-      }
+    filteredProducts: (state) => {
+      const products = inventoryStore.sortedItems || []
+      if (!state.searchQuery && !state.selectedCategory)
+        return products;
 
-      const filtered = getters.getProducts.filter(product => {
-        const matchesSearch = state.searchQuery === '' || product.name.toLowerCase().includes(state.searchQuery.toLowerCase());
-        const matchesCategory = !state.selectedCategory || product.category === state.selectedCategory;
-        return matchesSearch && matchesCategory;
-      });
-
-      getters.filteredProductsCache[cacheKey] = filtered;
-
-      return filtered;
-    },
+      return filterItems(products, {
+        searchQuery: state.searchQuery,
+        categoryFilter: state.selectedCategory,
+        getCategoryName: categoryId => inventoryStore.getCategoryName(categoryId)
+      })
+    }
   },
 
   actions: {

@@ -22,7 +22,10 @@ const handleAddToCart = (product) => {
   }
 }
 
-onMounted(() => inventoryStore.loadInventory())
+onMounted(() => {
+  if(filteredProducts.value === 0)
+    inventoryStore.loadInventory()
+})
 </script>
 
 <template>
