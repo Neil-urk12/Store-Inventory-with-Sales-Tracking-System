@@ -1,5 +1,5 @@
 function filterItems(items, { searchQuery = '', categoryFilter = '', getCategoryName = null }) {
-  const query = searchQuery.toLowerCase()
+  const query = searchQuery ? searchQuery.toLowerCase() : ''
 
   return items.filter(item => {
     const matchesSearch = !query || [
