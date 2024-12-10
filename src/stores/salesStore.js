@@ -23,6 +23,7 @@ import { useInventoryStore } from './inventoryStore'
 import { useFinancialStore } from './financialStore'
 import { validateSales } from 'src/utils/validation'
 import { syncQueue } from 'src/services/syncQueue'
+import filterItems from 'src/utils/filterUtils'
 
 const { isOnline } = useNetworkStatus()
 const inventoryStore = useInventoryStore()

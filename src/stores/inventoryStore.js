@@ -23,7 +23,7 @@ import { syncQueue } from '../services/syncQueue'
 import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
-import { filterItems } from 'src/utils/filterUtils'
+import filterItems from 'src/utils/filterUtils'
 
 /**
  * @const {Ref<boolean>} isOnline
