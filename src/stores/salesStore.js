@@ -360,93 +360,63 @@ export const useSalesStore = defineStore('sales', {
       this.selectedPaymentMethod = null
       return { success: true }
     },
-
-    /**
-     * @async
-     * @method generateSalesReport
-     * @returns {Promise<Array>} Sales report data
-     * @description Generates a sales report for the specified date range
-     */
-    async generateSalesReport() {
-      try {
-        this.loading = true
-        const { from, to } = this.dateRange
-
-        // Fetch sales data from database for the date range
-        const salesData = await db.sales
-          .where('date')
-          .between(from, to)
-          .toArray()
-
-        return salesData.map(sale => ({
-          id: sale.id,
-          date: sale.date,
-          items: sale.items,
-          quantity: sale.quantity,
-          total: sale.total
-        }))
-      } catch (error) {
-        console.error('Error generating sales report:', error)
-        throw error
-      } finally {
-        this.loading = false
-      }
-    },
-
     /**
      * @method setDateRange
      * @param {Object} range - Date range to set
      * @description Sets the date range for reports
      */
     setDateRange(range) {
-      this.dateRange = {
-        from: formatDate(new Date(range.from), 'YYYY-MM-DD'),
-        to: formatDate(new Date(range.to), 'YYYY-MM-DD')
-      }
+      this.dateRange = range;
     },
     /**
      * @async
+     * @updated Get all sales
      * @method generateSalesReport
      * @returns {Promise<Array>} Array of daily sales report objects
      * @description Calculates and returns sales report data
      */
     async generateSalesReport() {
       try {
-        const salesData = await db.sales.toArray(); // Fetch all sales data from Dexie.js
+        if (this.sales.length === 0)
+          await this.initializeDb()
 
-        const reportData = {};
+        const dailySalesReport = {}
+        const paymentMethods = ['cash', 'gcash', 'growsari']
 
-        // Aggregate data by date
-        salesData.forEach(sale => {
-          const saleDate = formatDate(new Date(sale.createdAt), 'YYYY-MM-DD');
-          if (!reportData[saleDate]) {
-            reportData[saleDate] = {
-              date: saleDate,
-              grossProfit: 0,
-              netProfit: 0,
-              loss: 0
-            };
+        this.sales.forEach(sale => {
+          const date = formatDate(new Date(sale.date), 'YYYY-MM-DD')
+          const paymentMethod = sale.paymentMethod.toLowerCase()
+
+          dailySalesReport[date] = dailySalesReport[date] || {
+            date,
+            'Cash Profits': 0,
+            'Gcash Profits': 0,
+            'Growsari Profits': 0,
+            'Total Profits': 0
           }
 
-          // Calculate profit/loss based on payment method (example logic)
-          const profit = sale.total - sale.cost; // Assuming 'cost' property exists
-          if (sale.paymentMethod === 'cash') {
-            reportData[saleDate].grossProfit += profit;
-            reportData[saleDate].netProfit += profit; // Adjust for cash-specific expenses
-          } else if (sale.paymentMethod === 'credit') {
-            reportData[saleDate].grossProfit += profit;
-            reportData[saleDate].netProfit += profit * 0.95; // Adjust for credit card fees
-          } else {
-            reportData[saleDate].loss += profit < 0 ? profit : 0;
+          if (paymentMethods.includes(paymentMethod)) {
+            dailySalesReport[date][`${paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)} Profits`] += sale.total
+            dailySalesReport[date]['Total Profits'] += sale.total
           }
-        });
+        })
 
-        return Object.values(reportData);
+        const totalProfits = {};
+        paymentMethods.forEach(method => {
+            totalProfits[`${method.charAt(0).toUpperCase() + method.slice(1)} Profits`] = this.sales
+                .filter(sale => sale.paymentMethod.toLowerCase() === method)
+                .reduce((total, sale) => total + sale.total, 0);
+        })
+
+        totalProfits['Total Profits'] = Object.values(totalProfits).reduce((sum, profit) => sum + profit, 0)
+
+        dailySalesReport['Total Profits'] = { date: 'Total Profits', ...totalProfits }
+
+        return Object.values(dailySalesReport)
       } catch (error) {
-        console.error('Error generating sales report:', error);
-        // Return an empty array in case of error
-        return [];
+        console.error('Error generating sales report:', error)
+        return []
       }
-    },
-  }
+    }
+  },
 })
