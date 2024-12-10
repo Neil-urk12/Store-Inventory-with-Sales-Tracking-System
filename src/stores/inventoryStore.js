@@ -23,6 +23,7 @@ import { syncQueue } from '../services/syncQueue'
 import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
+import { filterItems } from 'src/utils/filterUtils'
 
 /**
  * @const {Ref<boolean>} isOnline
@@ -43,7 +44,7 @@ const DEFAULT_SORT_DIRECTION = 'asc'
  * @const {Array<Object>} SORT_OPTIONS
  * @description Available sorting options for the inventory list.
  */
-const SORT_OPTIONS = [ 
+const SORT_OPTIONS = [
   { label: 'Name', value: 'name' },
   { label: 'Price', value: 'price' },
   { label: 'Quantity', value: 'quantity' },
@@ -164,23 +165,10 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Array} Filtered items based on search query and category
      */
     filteredItems(state) {
-      return state.items.filter(item => {
-        const searchQuery = state.searchQuery?.toLowerCase() || ''
-        const categoryFilter = state.categoryFilter
-
-        // Search in multiple fields
-        const matchesSearch = !searchQuery || [
-          item.name,
-          item.sku,
-          this.getCategoryName(item.categoryId)
-        ].some(field =>
-          String(field).toLowerCase().includes(searchQuery)
-        )
-
-        // Category filter
-        const matchesCategory = !categoryFilter || item.categoryId === categoryFilter
-
-        return matchesSearch && matchesCategory
+      return filterItems(state.items, {
+        searchQuery: state.searchQuery,
+        categoryFilter: state.categoryFilter,
+        getCategoryName: this.getCategoryName
       })
     },
 
