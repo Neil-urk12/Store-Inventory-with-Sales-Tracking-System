@@ -244,6 +244,23 @@ class AppDatabase extends Dexie {
     return await this.sales.toArray();
   }
   /**
+   *
+   * 
+  */
+    async getAllTransactions(){
+      try {
+        const transactions = await this.cashFlow.toArray()
+        return transactions.map(transaction => ({
+          ...transaction,
+          syncStatus: transaction.syncStatus || null,  // Example
+          syncError: transaction.syncError || null     // Example
+        }))
+      } catch (error) {
+        console.error('Error getting all transactions:', error)
+        throw error
+      }
+    }
+  /**
    * @async
    * @method addCashFlowTransaction
    * @param {Object} transaction
