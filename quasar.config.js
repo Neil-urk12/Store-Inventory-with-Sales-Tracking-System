@@ -8,9 +8,8 @@
 // Configuration for your app
 // https://v2.quasar.dev/quasar-cli-vite/quasar-config-js
 
-
-import { configure } from 'quasar/wrappers';
-
+// const { configure } = require('quasar/wrappers');
+import { configure } from 'quasar/wrappers'
 
 export default configure(function (/* ctx */) {
   return {
