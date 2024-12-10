@@ -79,15 +79,22 @@ export const useSalesStore = defineStore('sales', {
      * @getter
      * @returns {Array} Filtered products based on search query and category
      */
-    filteredProducts: (state) => {
-      const products = inventoryStore.sortedItems || []
-      return products.filter(product => {
-        const matchesSearch = state.searchQuery === '' ||
-          product.name.toLowerCase().includes(state.searchQuery.toLowerCase())
-        const matchesCategory = !state.selectedCategory ||
-          product.category === state.selectedCategory
-        return matchesSearch && matchesCategory
-      })
+    filteredProducts: (state, getters) => {
+      // Memoization: Cache the result based on searchQuery and selectedCategory
+      const cacheKey = `${state.searchQuery}-${state.selectedCategory}`;
+      if (getters.filteredProductsCache[cacheKey]) {
+        return getters.filteredProductsCache[cacheKey];
+      }
+
+      const filtered = getters.getProducts.filter(product => {
+        const matchesSearch = state.searchQuery === '' || product.name.toLowerCase().includes(state.searchQuery.toLowerCase());
+        const matchesCategory = !state.selectedCategory || product.category === state.selectedCategory;
+        return matchesSearch && matchesCategory;
+      });
+
+      getters.filteredProductsCache[cacheKey] = filtered;
+
+      return filtered;
     },
   },
 

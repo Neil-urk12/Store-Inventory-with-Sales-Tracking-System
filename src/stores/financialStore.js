@@ -29,6 +29,7 @@ export const useFinancialStore = defineStore('financial', {
     profitTimeframe: 'daily',
     isLoading: false,
     error: null
+    _cachedGetters: {} // Add this line
   }),
 
   getters: {
@@ -36,7 +37,15 @@ export const useFinancialStore = defineStore('financial', {
       const today = formatDate(new Date(), 'YYYY-MM-DD')
       return state.financialData
         .filter(item => item.date === today && item.type === 'expense')
-        .reduce((sum, item) => sum + Number(item.amount), 0)
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+      
+      const cacheKey = JSON.stringify({ financialData: state.financialData, today });
+      if (this._cachedGetters[cacheKey]) {
+        return this._cachedGetters[cacheKey];
+      }
+      const result = state.financialData.filter(item => item.date === today && item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0);
+      this._cachedGetters[cacheKey] = result;
+      return result;
     },
     /**
      * @getter
@@ -46,18 +55,33 @@ export const useFinancialStore = defineStore('financial', {
       const today = formatDate(new Date(), 'YYYY-MM-DD')
       console.log(state.financialData.filter(item => item.date === today && item.type === 'income'), "gDaily")
       return state.financialData
-        .filter(item => item.date === today && item.type === 'income')
-        .reduce((sum, item) => sum + Number(item.amount), 0)
+      .filter(item => item.date === today && item.type === 'income')
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+      
+      const cacheKey = JSON.stringify({ financialData: state.financialData, today });
+      if (this._cachedGetters[cacheKey]) {
+        return this._cachedGetters[cacheKey];
+      }
+      const result = state.financialData.filter(item => item.date === today && item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0);
+      this._cachedGetters[cacheKey] = result;
+      return result;
     },
     getWeeklyExpense(state) {
       const today = new Date()
       const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()))
       const endOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 6))
       return state.financialData
-        .filter(item => {
-          const itemDate = new Date(item.date)
-          return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'
-        })
+      .filter(item => {
+        const itemDate = new Date(item.date)
+        return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'
+      });
+      const cacheKey = JSON.stringify({ financialData: state.financialData, startOfWeek, endOfWeek });
+      if (this._cachedGetters[cacheKey]) {
+        return this._cachedGetters[cacheKey];
+      }
+      const result = state.financialData.filter(item => { const itemDate = new Date(item.date); return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'; });
+      this._cachedGetters[cacheKey] = result;
+      return result;
     }
   },
 
