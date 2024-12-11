@@ -83,10 +83,20 @@ const showSaleDetails = (sale) => {
 const loadSales = async () => {
   try {
     const result = await salesStore.initializeDb()
-    if (result)
+    if (result && salesStore.sales.length === 0)
+      $q.notify({
+        type: 'positive',
+        message: 'There are no sales yet'
+      })
+    else if (result)
       $q.notify({
         type: 'positive',
         message: 'Sales loaded successfully'
+      })
+    else
+      $q.notify({
+        type: 'negative',
+        message: 'Error loading sales'
       })
   } catch (error) {
     $q.notify({
