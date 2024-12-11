@@ -65,8 +65,21 @@ class SyncQueue {
     this.isProcessing = false
     this.lockId = 'sync_lock'
     this.processId = Math.random().toString(36).substring(7)
+    this.startNetworkListener()
   }
 
+  startNetworkListener() {
+    window.addEventListener('online', this.checkAndProcessQueue())
+    // window.addEventListener('offline', this.processQueue)
+  }
+  async checkAndProcessQueue() {
+    const { isOnline } = useNetworkStatus()
+    if (isOnline.value) {
+      const pendingOperations = await db.syncQueue.where('status').equals('pending').toArray();
+      if (pendingOperations.length > 0)
+        await this.processQueue()
+    }
+  }
   /**
    * @async
    * @method addToQueue
