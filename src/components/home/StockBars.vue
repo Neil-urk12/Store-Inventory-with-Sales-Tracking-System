@@ -27,46 +27,45 @@ const textColor = computed(() => $q.dark.isActive ? '#ffffff' : '#000000')
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the total quantity of all items in stock
+ * @description Computes the total number of items in the inventory
  */
-const totalStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + item.quantity, 0))
+const totalItems = computed(() => inventoryStore.items.length)
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the quantity of items with normal stock levels
+ * @description Computes the number of items with normal stock levels
  */
-const inStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, item.quantity), 0))
+const inStock = computed(() => inventoryStore.items.filter(item => item.quantity > lowStockThreshold).length)
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the quantity of items with low stock (below threshold)
+ * @description Computes the number of items with low stock (below threshold)
  */
-const lowStock = computed(() => inventoryStore.items.reduce((sum, item) =>
-    sum + (item.quantity > 0 && item.quantity < lowStockThreshold ? 1 : 0), 0))
+const lowStock = computed(() => inventoryStore.items.filter(item => item.quantity > 0 && item.quantity <= lowStockThreshold).length)
 
 /**
  * @type {import('vue').ComputedRef<number>}
- * @description Computes the quantity of items out of stock
+ * @description Computes the number of items out of stock
  */
-const noStock = computed(() => inventoryStore.items.reduce((sum, item) => sum + Math.max(0, Math.min(0, item.quantity)), 0))
+const noStock = computed(() => inventoryStore.items.filter(item => item.quantity <= 0).length)
 
 /**
  * @type {import('vue').ComputedRef<string>}
  * @description Computes the width percentage for the in-stock bar
  */
-const inStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(inStock.value / totalStock.value) * 100}%`)
+const inStockWidth = computed(() => totalItems.value === 0 ? '10%' : `${(inStock.value / totalItems.value) * 100}%`)
 
 /**
  * @type {import('vue').ComputedRef<string>}
  * @description Computes the width percentage for the low-stock bar
  */
-const lowStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(lowStock.value / totalStock.value) * 100}%`)
+const lowStockWidth = computed(() => totalItems.value === 0 ? '10%' : `${(lowStock.value / totalItems.value) * 100}%`)
 
 /**
  * @type {import('vue').ComputedRef<string>}
  * @description Computes the width percentage for the no-stock bar
  */
-const noStockWidth = computed(() => totalStock.value === 0 ? '10%' : `${(noStock.value / totalStock.value) * 100}%`)
+const noStockWidth = computed(() => totalItems.value === 0 ? '10%' : `${(noStock.value / totalItems.value) * 100}%`)
 
 onMounted(() => {
   inventoryStore.loadInventory()
