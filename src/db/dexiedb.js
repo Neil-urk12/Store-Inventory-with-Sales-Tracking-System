@@ -34,13 +34,13 @@ class AppDatabase extends Dexie {
   constructor() {
     super('inventoryDb'); // Name of the database
 
-    this.version(2).stores({
+    this.version(3).stores({
       // Inventory tables
       categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
       items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
 
       // Sales tables
-      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId',
+      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
 
       cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
