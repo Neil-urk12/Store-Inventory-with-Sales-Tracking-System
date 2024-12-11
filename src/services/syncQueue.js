@@ -12,7 +12,14 @@
  */
 
 import { db } from '../db/dexiedb'
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore'
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDoc
+} from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
 
@@ -177,14 +184,14 @@ class SyncQueue {
               localId: data.id.toString(),
               updatedAt: new Date().toISOString()
             })
-            // Update local record with Firebase ID
             await db[collectionName].update(data.id, {
               firebaseId: docRef.id,
               syncStatus: 'synced'
             })
           } catch (error) {
-            // If add operation fails, try to update local record with error
+            // If add operation fails, update local record with error and set syncStatus to 'failed'
             await db[collectionName].update(data.id, {
+              firebaseId: null, // Clear firebaseId if add operation failed
               syncStatus: 'failed',
               error: error.message
             })
@@ -200,7 +207,6 @@ class SyncQueue {
               throw new Error('No Firebase ID found for update operation')
             }
 
-            // Get Firebase document to check if it exists and handle conflicts
             const docRef = doc(fireDb, collectionName, localRecord.firebaseId)
             const docSnap = await getDoc(docRef)
 
@@ -210,37 +216,39 @@ class SyncQueue {
 
             const firebaseData = docSnap.data()
 
-            // Handle conflict resolution
             if (firebaseData.version > data.version) {
-              // Firebase has newer version, need to merge changes
-              const mergedData = await this.resolveConflict(firebaseData, data)
+              const mergedData = await this.resolveConflict(
+                firebaseData,
+                data
+              )
               await updateDoc(docRef, {
                 ...mergedData,
                 localId: data.id.toString(),
                 updatedAt: new Date().toISOString()
               })
-
-              // Update local with merged data
-              await db[collectionName].update(data.id, {
-                ...mergedData,
-                syncStatus: 'synced'
+              .then(() => {
+                // Update local record with merged data and set syncStatus to 'synced'
+                db[collectionName].update(data.id, {
+                  ...mergedData,
+                  syncStatus: 'synced'
+                })
               })
             } else {
-              // Our version is newer or same, proceed with update
               await updateDoc(docRef, {
                 ...data,
                 localId: data.id.toString(),
                 updatedAt: new Date().toISOString()
               })
-
-              await db[collectionName].update(data.id, {
-                syncStatus: 'synced'
+              .then(() => {
+                // Update local record and set syncStatus to 'synced'
+                db[collectionName].update(data.id, {
+                  syncStatus: 'synced'
+                })
               })
             }
           } catch (error) {
             const shouldRetry = this.handleSyncError(error)
             if (shouldRetry) {
-              // Increment retry count and requeue with delay
               const retryCount = (operation.retryCount || 0) + 1
               if (retryCount <= MAX_RETRIES) {
                 await this.requeueWithDelay(operation, retryCount)
@@ -248,7 +256,7 @@ class SyncQueue {
               }
             }
 
-            // Update local record with error if we're not retrying
+            // Update local record with error and set syncStatus to 'failed'
             await db[collectionName].update(data.id, {
               syncStatus: 'failed',
               error: error.message
@@ -260,13 +268,14 @@ class SyncQueue {
 
         case 'delete': {
           try {
-            if(docId)
+            if (docId){
               await deleteDoc(doc(fireDb, collectionName, docId))
-            else console.warn('No firebaseId found for delete operation')
-
-            const localRecord = await db[collectionName].get(docId)
-            if (localRecord?.id)
-              await deleteDoc(doc(fireDb, collectionName, localRecord.id))
+              await db[collectionName].delete(docId)
+            } else {
+              console.warn('No firebaseId found for delete operation')
+              // You might want to handle this case differently,
+              // e.g., by marking the local record as deleted or retrying later.
+            }
           } catch (error) {
             console.error('Error deleting document:', error)
             throw error
@@ -296,7 +305,9 @@ class SyncQueue {
   async resolveConflict(firebaseData, localData) {
     // Simple last-write-wins strategy
     // Could be enhanced with field-level merging if needed
-    return localData.updatedAt > firebaseData.updatedAt ? localData : firebaseData
+    return localData.updatedAt > firebaseData.updatedAt
+      ? localData
+      : firebaseData
   }
 
   /**
@@ -310,7 +321,8 @@ class SyncQueue {
    * @private
    */
   async requeueWithDelay(operation, retryCount) {
-    const delay = RETRY_DELAYS[retryCount - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1]
+    const delay =
+      RETRY_DELAYS[retryCount - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1]
     await new Promise(resolve => setTimeout(resolve, delay))
     await this.addToQueue({
       ...operation,
@@ -329,7 +341,10 @@ class SyncQueue {
    */
   handleSyncError(error) {
     // Network errors should be retried
-    if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+    if (
+      error.code === 'unavailable' ||
+      error.code === 'network-request-failed'
+    ) {
       return true
     }
     // Document not found or permission errors should not be retried
@@ -353,7 +368,7 @@ class SyncQueue {
       const lock = await db.syncLocks.get(this.lockId)
       const now = Date.now()
 
-      if (lock && (now - lock.timestamp < LOCK_TIMEOUT)) {
+      if (lock && now - lock.timestamp < LOCK_TIMEOUT) {
         return false
       }
 
