@@ -44,8 +44,10 @@ const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
   // if(cart.value.indexOf(item) > -1) cart.value.splice(index, 1)  //optimized 1
 
 const processCheckout = async () => {
-  // const result = salesStore.clearCart()
+  salesStore.isCheckoutProcessing = true
   const result = await salesStore.processCheckout()
+  salesStore.isCheckoutProcessing = false
+
   if (result.success) {
     $q.notify({
       type: 'positive',
@@ -195,8 +197,9 @@ onMounted(() => {
                 color="primary"
                 class="full-width"
                 label="Checkout"
-                :disable="!salesStore.getCart.length"
-                @click="salesStore.showCheckoutDialog = true"
+                :disable="!salesStore.getCart.length || salesStore.isCheckoutProcessing"
+                @click="salesStore.showCheckoutDialog = !salesStore.isCheckoutProcessing ? true : salesStore.showCheckoutDialog"
+                :loading="salesStore.isCheckoutProcessing"
               />
             </div>
           </q-card-section>
@@ -218,12 +221,18 @@ onMounted(() => {
             <div class="text-subtitle2">Payment Method</div>
             <div>{{ salesStore.selectedPaymentMethod }}</div>
           </div>
-          <div class="text-h6">Total: ₱{{ financialStore.formatCurrency(total) }}</div>
+          <div class="text-h6">Total: {{ financialStore.formatCurrency(total) }}</div>
         </q-card-section>
 
         <q-card-actions align="right">
           <q-btn flat label="Cancel" color="primary" v-close-popup />
-          <q-btn flat label="Confirm" color="primary" @click="processCheckout" />
+          <q-btn
+            flat
+            label="Confirm"
+            color="primary"
+            @click="processCheckout"
+            :disable="salesStore.isCheckoutProcessing"
+            :loading="salesStore.isCheckoutProcessing"/>
         </q-card-actions>
       </q-card>
     </q-dialog>
