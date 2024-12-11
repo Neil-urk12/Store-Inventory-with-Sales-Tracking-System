@@ -262,7 +262,12 @@ export const useSalesStore = defineStore('sales', {
                   docId: saleToKeep.firebaseId
                 })
 
-                await db.sales.update(saleToKeep.id, { syncStatus: 'synced' })
+                await db.sales.update(saleToKeep.id, {
+                  ...firestoreSale,
+                  syncStatus: 'synced',
+                  date: formatDate(new Date(firestoreSale.date)),
+                  updatedAt: serverTimestamp()
+                })
               } else if (
                 new Date(firestoreSale.updatedAt) >
                 new Date(saleToKeep.updatedAt)
@@ -531,7 +536,7 @@ export const useSalesStore = defineStore('sales', {
             0
           ),
           paymentMethod: this.selectedPaymentMethod,
-          date: new Date().toISOString(),
+          date: formatDate(new Date(), 'YYYY-MM-DD'),
           createdAt: new Date().toISOString() // Add createdAt timestamp
         }
         // Update inventory quantities
