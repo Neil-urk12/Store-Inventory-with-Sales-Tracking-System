@@ -195,6 +195,7 @@ class SyncQueue {
             const docRef = await addDoc(collection(fireDb, collectionName), {
               ...data,
               localId: data.id.toString(),
+              date: formatDate(data.date),
               updatedAt: new Date().toISOString()
             })
             await db[collectionName].update(data.id, {

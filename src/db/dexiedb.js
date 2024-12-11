@@ -5,6 +5,7 @@
 
 import Dexie from 'dexie';
 import { useInventoryStore } from 'src/stores/inventoryStore';
+import { formatDate } from '../utils/dateUtils';
 
 
 export class ValidationError extends Error {
@@ -53,8 +54,8 @@ class AppDatabase extends Dexie {
     });
 
     this.items.hook('creating', (primKey, obj) => {
-      obj.createdAt = new Date().toISOString();
-      obj.updatedAt = new Date().toISOString();
+      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD');
+      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
       // Ensure category information is preserved
       if (obj.categoryId && !obj.category) {
         const store = useInventoryStore();
@@ -63,7 +64,7 @@ class AppDatabase extends Dexie {
     });
 
     this.items.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = new Date().toISOString();
+      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
       // Ensure category information is preserved during updates
       if (modifications.categoryId && !modifications.category) {
         const store = useInventoryStore();
@@ -72,12 +73,12 @@ class AppDatabase extends Dexie {
     });
 
     this.categories.hook('creating', (primKey, obj) => {
-      obj.createdAt = new Date().toISOString();
-      obj.updatedAt = new Date().toISOString();
+      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD');
+      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
     });
 
     this.categories.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = new Date().toISOString();
+      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
     });
   }
 
@@ -117,8 +118,8 @@ class AppDatabase extends Dexie {
       price: parseFloat(item.price),
       image: item.image?.trim() || null,
       syncStatus: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
+      updatedAt: formatDate(new Date(), 'YYYY-MM-DD')
     }
 
     try {
@@ -180,7 +181,7 @@ class AppDatabase extends Dexie {
         quantity: changes.quantity !== undefined ? Math.max(0, parseInt(changes.quantity)) : existingItem.quantity,
         price: changes.price !== undefined ? parseFloat(changes.price) : existingItem.price,
         image: changes.image?.trim() || existingItem.image,
-        updatedAt: new Date().toISOString(),
+        updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
         syncStatus: 'pending'
       };
 
@@ -231,7 +232,7 @@ class AppDatabase extends Dexie {
   async addSale(sale) {
     return await this.sales.add({
       ...sale,
-      date: new Date().toISOString()
+      date: formatDate(new Date(), 'YYYY-MM-DD')
     });
   }
   /**
@@ -303,7 +304,7 @@ class AppDatabase extends Dexie {
   async addCashFlowTransaction(transaction) {
     return await this.cashFlow.add({
       ...transaction,
-      date: new Date().toISOString()
+      date: formatDate(new Date(), 'YYYY-MM-DD')
     });
   }
 //--------------------------------------------------------------------
@@ -438,8 +439,8 @@ class AppDatabase extends Dexie {
         name: contactPerson.name.trim(),
         email: contactPerson.email?.trim().toLowerCase() || null,
         phone: contactPerson.phone?.trim() || null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
+        updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
         syncStatus: 'pending'
       }
 
