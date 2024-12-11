@@ -1,3 +1,34 @@
+<script setup>
+import { defineAsyncComponent, ref } from 'vue'
+const EssentialLink = defineAsyncComponent(() => import('src/components/layout/EssentialLink.vue'))
+const ColorToggle = defineAsyncComponent(() => import('src/components/layout/ColorToggle.vue'))
+import { useAuthStore } from 'src/stores/authStore'
+import { useRouter } from 'vue-router';
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+defineOptions({
+  name: 'MainLayout'
+})
+
+async function logout (){
+  await authStore.logout()
+  localStorage.removeItem("isAuthenticated")
+  router.push('/login')
+}
+
+const linksList = [
+  { title: 'Dashboard', icon: 'dashboard', link: '/' },
+  { title: 'Sales', icon: 'point_of_sale', link: '/sales' },
+  { title: 'Inventory', icon: 'inventory', link: '/inventory' },
+  { title: 'Reports', icon: 'analytics', link: '/reports' },
+  { title: 'Contacts', icon: 'contacts', link: '/contacts' },
+]
+
+const leftDrawerOpen = ref(false)
+</script>
+
 <template>
   <q-layout view="hHh lpR lFf">
     <q-header elevated>
@@ -61,34 +92,3 @@
     </q-footer> -->
   </q-layout>
 </template>
-
-<script setup>
-import { defineAsyncComponent, ref } from 'vue'
-const EssentialLink = defineAsyncComponent(() => import('src/components/layout/EssentialLink.vue'))
-const ColorToggle = defineAsyncComponent(() => import('src/components/layout/ColorToggle.vue'))
-import { useAuthStore } from 'src/stores/authStore'
-import { useRouter } from 'vue-router';
-
-const router = useRouter()
-const authStore = useAuthStore()
-
-defineOptions({
-  name: 'MainLayout'
-})
-
-async function logout (){
-  await authStore.logout()
-  localStorage.removeItem("isAuthenticated")
-  router.push('/login')
-}
-
-const linksList = [
-  { title: 'Dashboard', icon: 'dashboard', link: '/' },
-  { title: 'Sales', icon: 'point_of_sale', link: '/sales' },
-  { title: 'Inventory', icon: 'inventory', link: '/inventory' },
-  { title: 'Reports', icon: 'analytics', link: '/reports' },
-  { title: 'Contacts', icon: 'contacts', link: '/contacts' },
-]
-
-const leftDrawerOpen = ref(false)
-</script>
