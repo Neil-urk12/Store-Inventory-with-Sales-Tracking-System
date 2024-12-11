@@ -1075,7 +1075,12 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Handles search query changes
      */
     handleSearch(itemToSearch) {
-      this.searchQuery = itemToSearch
+        // Debounced search function to prevent excessive filtering
+        const debouncedSearch = debounce((query) => {
+            this.searchQuery = query;
+        }, 300);
+
+        debouncedSearch(itemToSearch);
     },
     /**
      * @method exportToCSV
