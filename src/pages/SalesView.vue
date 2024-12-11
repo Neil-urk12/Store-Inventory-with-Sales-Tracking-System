@@ -61,9 +61,11 @@ const processCheckout = async () => {
 }
 
 onMounted(() => {
-  if(inventoryStore.items.length === 0)
+  if (salesStore.sales.length === 0)
+    salesStore.initializeDb()
+  if (inventoryStore.items.length === 0)
     inventoryStore.loadInventory()
-  if(inventoryStore.categories.length === 0)
+  if (inventoryStore.categories.length === 0)
     inventoryStore.loadCategories()
 })
 </script>

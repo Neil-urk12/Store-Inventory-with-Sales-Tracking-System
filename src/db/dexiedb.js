@@ -259,6 +259,23 @@ class AppDatabase extends Dexie {
       throw error; // Re-throw the error for handling by the caller
     }
   }
+
+  /**
+   * @async
+   * @method bulkDeleteSales
+   * @param {Array<number>} saleIds - An array of sale IDs to delete.
+   * @returns {Promise<void>}
+   * @description Deletes multiple sales from the database by their IDs.
+   * @throws {Error} If an error occurs during deletion.
+   */
+  async bulkDeleteSales(saleIds) {
+    try {
+      await this.sales.bulkDelete(saleIds);
+    } catch (error) {
+      console.error('Database error deleting sales:', error);
+      throw error; // Re-throw the error for handling by the caller
+    }
+  }
   /**
    *
    *

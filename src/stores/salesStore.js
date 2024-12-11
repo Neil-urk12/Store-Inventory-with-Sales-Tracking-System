@@ -136,7 +136,7 @@ export const useSalesStore = defineStore('sales', {
      *  Sync with firestore unya na
     */
     async syncWithFirestore(){
-      if (!isOnline.value) return
+      if (!isOnline.value) return console.error('Cannot sync while offline')
 
       try {
         const localSales = await db.sales.orderBy('date').reverse().toArray()
@@ -148,6 +148,13 @@ export const useSalesStore = defineStore('sales', {
           firebaseId: doc.id
         }))
 
+        const firestoreValidationResult = validateSales(localSales)
+        const localValidationResult = validateSales(firestoreSales)
+
+        if (!firestoreValidationResult.isValid && !localValidationResult)
+          throw new Error(firestoreValidationResult.errors || localValidationResult.errors)
+
+        console.log("success")
         await db.transaction('rw', db.sales, async () => {
           for(const firestoreSale of firestoreSales) {
             try {
@@ -180,10 +187,11 @@ export const useSalesStore = defineStore('sales', {
               }
 
               const [ saleToKeep, ...duplicates ] = existingSales
+              const duplicateIdsToDelete = []
 
               if (saleToKeep.syncStatus === 'pending' || new Date(firestoreSale.updatedAt) > new Date(saleToKeep.updatedAt)) {
                 for (const duplicate of duplicates)
-                  await db.sales.delete(duplicate.id)
+                  duplicateIdsToDelete.push(duplicate.id)
 
                 continue
               }
@@ -194,9 +202,8 @@ export const useSalesStore = defineStore('sales', {
                 syncStatus: 'synced'
               })
 
-              for (const duplicate of duplicates)
-                await db.items.delete(duplicate.id)
-
+              if (duplicateIdsToDelete.length > 0)
+                await db.bulkDeleteSales(duplicateIdsToDelete)
 
             } catch (error) {
               this.syncStatus.failedItems.push({
@@ -211,7 +218,7 @@ export const useSalesStore = defineStore('sales', {
         for (const localSale of localSales) {
           if (
             !localSale.firebaseId ||
-            firestoreItems.find ((sale) => sale.firebaseId === localSale.firebaseId)
+            firestoreSales.find ((sale) => sale.firebaseId === localSale.firebaseId)
           ) continue
 
           const currentSaleItem = await db.sales.get(localSale.id)
@@ -219,7 +226,7 @@ export const useSalesStore = defineStore('sales', {
           if (currentSaleItem && currentSaleItem.syncStatus === 'pending')
             continue
 
-          await db.delete(localSale.id)
+          await db.deleteSale(localSale.id)
         }
         this.sales = await db.getAllSales()
       } catch (error) {

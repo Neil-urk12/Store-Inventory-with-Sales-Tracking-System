@@ -95,8 +95,6 @@ export const useFinancialStore = defineStore('financial', {
       try {
         if(this.financialData.length === 0)
           this.financialData = await db.getAllTransactions()
-
-        console.log(this.financialData)
       } catch (error) {
         console.error('Error loading transactions', error)
       }
