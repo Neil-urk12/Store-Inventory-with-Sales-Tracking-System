@@ -38,7 +38,7 @@ const pagination = ref({
   sortBy: 'name',
   descending: false,
   page: 1,
-  rowsPerPage: 10
+  rowsPerPage: 5
 })
 
 async function updateField(item, field, value) {
@@ -243,7 +243,7 @@ function customSort(rows, sortBy, descending) {
 
 <style lang="scss" scoped>
 .inventory-table {
-  height: calc(100vh - 150px);
+  height: calc(80vh - 150px);
   :deep(.q-table) {
     td[style*="position: sticky"],
     th[style*="position: sticky"] {
