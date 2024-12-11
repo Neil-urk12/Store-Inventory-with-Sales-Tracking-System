@@ -244,8 +244,24 @@ class AppDatabase extends Dexie {
     return await this.sales.toArray();
   }
   /**
+   * @async
+   * @method deleteSale
+   * @param {number} saleId
+   * @returns {Promise<void>}
+   * @description Deletes a sale from the database by its ID.
+   * @throws {Error} If an error occurs during deletion.
+   */
+  async deleteSale(saleId) {
+    try {
+      await this.sales.delete(saleId);
+    } catch (error) {
+      console.error('Database error deleting sale:', error);
+      throw error; // Re-throw the error for handling by the caller
+    }
+  }
+  /**
    *
-   * 
+   *
   */
     async getAllTransactions(){
       try {
