@@ -304,7 +304,7 @@ export const useContactsStore = defineStore('contacts', {
     async deleteContact(contactId) {
       try {
         const localRecord = await this.contactCategories.flatMap(c => c.contacts).find(c => c.id === contactId || c.localId === contactId)
-        const firebaseRecord = localRecord ? localRecord.localId : localRecord.id
+        const firebaseRecord = localRecord ? localRecord.firebaseId : localRecord.localId || localRecord.id
         await db.deleteContact(contactId)
 
         const deleteOperation = {
