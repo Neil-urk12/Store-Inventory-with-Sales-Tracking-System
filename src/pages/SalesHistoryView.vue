@@ -58,10 +58,9 @@ const filteredSales = computed(() => {
 
   if (dateRange.value.from && dateRange.value.to) {
     filtered = filtered.filter(sale => {
-      const saleDate = new Date(sale.date)
-      const from = new Date(dateRange.value.from)
-      const to = new Date(dateRange.value.to)
-      return saleDate >= from && saleDate <= to
+      const from = formatDate(new Date(dateRange.value.from), 'YYYY-MM-DD')
+      const to = formatDate(new Date(dateRange.value.to), 'YYYY-MM-DD')
+      return sale.date >= from && sale.date <= to
     })
   }
 
@@ -84,7 +83,7 @@ const showSaleDetails = (sale) => {
 const loadSales = async () => {
   try {
     const result = await salesStore.initializeDb()
-    if (result) 
+    if (result)
       $q.notify({
         type: 'positive',
         message: 'Sales loaded successfully'
@@ -95,7 +94,7 @@ const loadSales = async () => {
       message: 'Error loading sales'
     })
     console.error('Error loading sales:', error)
-  } 
+  }
 }
 
 onMounted(async () => await loadSales())

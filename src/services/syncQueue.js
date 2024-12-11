@@ -69,7 +69,7 @@ class SyncQueue {
   }
 
   startNetworkListener() {
-    window.addEventListener('online', this.checkAndProcessQueue())
+    window.addEventListener('online', () => this.checkAndProcessQueue())
     // window.addEventListener('offline', this.processQueue)
   }
   async checkAndProcessQueue() {
