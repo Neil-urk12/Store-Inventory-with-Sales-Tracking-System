@@ -208,6 +208,11 @@ class SyncQueue {
               syncStatus: 'failed',
               error: error.message
             })
+            console.error(`Sync Error for ${operation.type} operation:`, {
+              operation,
+              error: error.message,
+              timestamp: new Date().toISOString()
+            })
             throw error
           }
           break
