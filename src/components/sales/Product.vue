@@ -4,8 +4,10 @@ import { useSalesStore } from 'src/stores/salesStore'
 import { useFinancialStore } from 'src/stores/financialStore'
 import { computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
+import { useNetworkStatus } from 'src/services/networkStatus'
 
 const $q = useQuasar()
+const { isOnline } = useNetworkStatus()
 
 const salesStore = useSalesStore()
 const inventoryStore = useInventoryStore()
@@ -22,9 +24,9 @@ const handleAddToCart = (product) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if(filteredProducts.value === 0)
-    inventoryStore.loadInventory()
+    await inventoryStore.loadInventory()
 })
 </script>
 
@@ -39,9 +41,11 @@ onMounted(() => {
         class="product-card cursor-pointer"
         @click="handleAddToCart(product)"
         :class="{ 'out-of-stock': product.quantity <= 0 }"
+
       >
         <q-img
-          :src="product.image || 'https://cdn.quasar.dev/img/parallax2.jpg'"
+          v-if="isOnline"
+          :src="'https://cdn.quasar.dev/img/parallax2.jpg'"
           :ratio="1"
           basic
           loading="lazy"
@@ -50,6 +54,11 @@ onMounted(() => {
             {{ product.name }}
           </div>
         </q-img>
+        <div v-else class="offlineBg">
+          <div class="absolute-top text-subtitle2 text-center bg-primary q-pa-xs q-ma-none">
+            {{ product.name }}
+          </div>
+        </div>
         <q-card-section class="q-pt-xs">
           <div class="row items-center justify-between">
             <div class="text-subtitle1 text-weight-bold">
@@ -61,12 +70,37 @@ onMounted(() => {
           </div>
         </q-card-section>
       </q-card>
+      <!-- <q-card
+        class="product-card cursor-pointer"
+        @click="handleAddToCart(product)"
+        :class="{ 'out-of-stock': product.quantity <= 0 }"
+        v-else
+      >
+        <div class="row items-center justify-between q-mb-md">
+          <div class="absolute-bottom text-subtitle2 text-center bg-primary text-bold">
+            {{ product.name }}
+          </div>
+        </div>
+        <q-card-section class="q-pt-xs">
+          <div class="row items-center justify-between">
+            <div class="text-subtitle1 text-weight-bold">
+              {{ financialStore.formatCurrency(product.price) }}
+            </div>
+            <div class="text-caption">
+              Stock: {{ product.quantity }}
+            </div>
+          </div>
+        </q-card-section>
+      </q-card> -->
     </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.product-card {transition: all 0.3s ease;}
+.product-card {
+  transition: all 0.3s ease;
+  border: #7954f8 1px solid;
+}
 .product-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 5px 15px rgba(0,0,0,0.1);
@@ -77,5 +111,8 @@ onMounted(() => {
 .out-of-stock:hover {
   transform: none;
   cursor: not-allowed;
+}
+.offlineBg{
+  height: 60px;
 }
 </style>

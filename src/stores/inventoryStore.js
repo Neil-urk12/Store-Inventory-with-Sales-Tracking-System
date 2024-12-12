@@ -352,6 +352,7 @@ export const useInventoryStore = defineStore('inventory', {
           }
         } else {
           await this.queueForSync('add', processedItem, result)
+          await this.loadInventory()
           return { id: result, offline: true }
         }
       } catch (error) {
@@ -789,27 +790,27 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Promise<string>} Added item ID
      * @description Adds an item to the local database and queues for sync
      */
-    async addItem(item) {
-      try {
-        const id = await db.addItem(item)
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'inventory',
-            data: { ...item, localId: id },
-            timestamp: new Date()
-          })
-          await syncQueue.processQueue()
-        }
+    // async addItem(item) {
+    //   try {
+    //     const id = await db.addItem(item)
+    //     if (isOnline.value) {
+    //       await syncQueue.addToQueue({
+    //         type: 'add',
+    //         collection: 'inventory',
+    //         data: { ...item, localId: id },
+    //         timestamp: new Date()
+    //       })
+    //       await syncQueue.processQueue()
+    //     }
 
-        await this.loadInventory()
-        return id
-      } catch (error) {
-        console.error('Error adding item:', error)
-        this.error = error.message
-        throw error
-      }
-    },
+    //     await this.loadInventory()
+    //     return id
+    //   } catch (error) {
+    //     console.error('Error adding item:', error)
+    //     this.error = error.message
+    //     throw error
+    //   }
+    // },
 
     /**
      * @async

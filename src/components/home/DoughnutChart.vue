@@ -120,10 +120,12 @@ watch(() => $q.dark.isActive, () => createChart() )
 
 onMounted(async () => {
   try {
-    await inventoryStore.loadInventory()
+    if(inventoryStore.items.length === 0)
+      await inventoryStore.loadInventory()
+
     console.log('Inventory loaded')
     isLoading.value = false
-    await nextTick()
+    // await nextTick()
     await createChart()
   } catch (error) {
     console.error('Error in mount:', error)

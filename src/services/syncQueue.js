@@ -30,9 +30,14 @@ import { useNetworkStatus } from './networkStatus'
  * @property {number[]} RETRY_DELAYS - Delay in ms for each retry attempt [1s, 2s, 5s, 10s, 30s]
  * @description Configuration constants for sync operations
  */
-const LOCK_TIMEOUT = 5000 // 5 seconds
+const LOCK_TIMEOUT = 5000
 const MAX_RETRIES = 5
-const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000] // Exponential backoff
+const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000]
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,
+  resetTimeout: 60000,  //wip!!
+  halfOpenTimeout: 30000
+}
 
 /**
  * @class SyncQueue

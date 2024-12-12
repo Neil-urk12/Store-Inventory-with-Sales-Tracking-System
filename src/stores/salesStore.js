@@ -178,7 +178,8 @@ export const useSalesStore = defineStore('sales', {
           const localSales = await db.sales.orderBy('date').reverse().toArray()
           const validation = await validateSales(localSales)
           if (!validation.isValid) throw new Error(validation.errors)
-          if (localSales.length === 0 && isOnline.value)
+
+          if (localSales.length === 0)
             await this.syncWithFirestore()
         }
         this.sales = await db.getAllSales()
@@ -197,8 +198,6 @@ export const useSalesStore = defineStore('sales', {
         return console.error('Cannot sync while offline')
 
       const beforeSyncSales = await db.getAllSales()
-      if (!isOnline.value)
-        return console.error('Cannot sync while offline')
 
       try {
         const localSales = await db.sales.orderBy('date').reverse().toArray()
