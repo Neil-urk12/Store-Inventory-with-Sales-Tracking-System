@@ -7,7 +7,6 @@ import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
 import {
   collection,
-  getDocs,
   query,
   orderBy,
   addDoc,
@@ -16,7 +15,8 @@ import {
   doc,
   writeBatch,
   serverTimestamp,
-  where
+  where,
+  onSnapshot
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -150,7 +150,9 @@ export const useInventoryStore = defineStore('inventory', {
         daily: { labels: [], datasets: [] },
         weekly: { labels: [], datasets: [] },
         monthly: { labels: [], datasets: [] }
-      }
+      },
+      unsubscribeItems: null,
+      unsubscribeCategories: null
     }
   },
 
@@ -275,15 +277,10 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async initializeDb() {
       try {
-        const existingItems = await db.items.count()
-
         if (isOnline.value) {
           await this.syncWithFirestore()
           await syncQueue.processQueue()
         }
-
-        if (existingItems === 0 && !isOnline.value)
-          this.error = 'No local data available. Waiting for network connection...'
 
         await this.loadInventory()
         await this.loadCategories()
@@ -348,11 +345,21 @@ export const useInventoryStore = defineStore('inventory', {
             return { id: result, firebaseId: docRef.id, offline: false }
           } catch (firebaseError) {
             console.error('Firebase error:', firebaseError)
-            await this.queueForSync('add', processedItem, result)
+            await syncQueue.addToQueue({
+              type: 'add',
+              collection: 'items',
+              data: processedItem,
+              docId: result
+            })
             return { id: result, offline: true }
           }
         } else {
-          await this.queueForSync('add', processedItem, result)
+          await syncQueue.addToQueue({
+            type: 'add',
+            collection: 'items',
+            data: processedItem,
+            docId: result
+          })
           await this.loadInventory()
           return { id: result, offline: true }
         }
@@ -397,13 +404,23 @@ export const useInventoryStore = defineStore('inventory', {
               return { id, offline: false }
             } catch (firebaseError) {
               console.error('Firebase error:', firebaseError)
-              await this.queueForSync('update', processedChanges, id)
+              await syncQueue.addToQueue({
+                type: 'update',
+                collection: 'items',
+                data: processedChanges,
+                docId: id
+              })
               return { id, offline: true }
             }
           }
         }
 
-        await this.queueForSync('update', processedChanges, id)
+        await syncQueue.addToQueue({
+          type: 'update',
+          collection: 'items',
+          data: processedChanges,
+          docId: id
+        })
         await this.loadInventory()
         return { id, offline: true }
       } catch (error) {
@@ -427,17 +444,17 @@ export const useInventoryStore = defineStore('inventory', {
      * @param {string} docId - Document ID
      * @private
      */
-    async queueForSync(type, data, docId) {
-      await syncQueue.addToQueue({
-        type,
-        collection: 'items',
-        data,
-        docId,
-        timestamp: new Date().toISOString(),
-        attempts: 0,
-        status: 'pending'
-      })
-    },
+    // async queueForSync(type, data, docId) {
+    //   await syncQueue.addToQueue({
+    //     type,
+    //     collection: 'items',
+    //     data,
+    //     docId,
+    //     timestamp: new Date().toISOString(),
+    //     attempts: 0,
+    //     status: 'pending'
+    //   })
+    // },
 
     /**
      * @async
@@ -498,9 +515,14 @@ export const useInventoryStore = defineStore('inventory', {
       if (!isOnline.value) return
 
       try {
+        if (this.unsubscribeItems) {
+          this.unsubscribeItems()
+          this.unsubscribeItems = null
+        }
+
         const localItems = await db.items.toArray()
-        const lastSync = this.syncStatus.lastSync;
         let firestoreQuery = query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
+        const lastSync = this.syncStatus.lastSync;
 
         if (lastSync) {
           firestoreQuery = query(
@@ -510,108 +532,117 @@ export const useInventoryStore = defineStore('inventory', {
           )
         }
 
+        this.unsubscribeItems = onSnapshot(firestoreQuery, async (snapshot) => {
+          let batch = writeBatch(fireDb)
+          const localUpdates = []
+          let operationsCount = 0
 
-        const firestoreSnapshot = await getDocs(firestoreQuery)
-        const firestoreItems = firestoreSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          firebaseId: doc.id
-        }))
+          snapshot.docChanges().forEach(async change => {
+            const firestoreItem = { ...change.doc.data(), firebaseId: change.doc.id }
 
-        await this.loadCategories()
+            if (change.type === 'added' || change.type === 'modified') {
+              const existingItem = localItems.find(
+                (localItem) => localItem.firebaseId === firestoreItem.firebaseId
+              )
 
-        let batch = writeBatch(fireDb)
-        const localUpdates = []
-        let operationsCount = 0
+              if (existingItem) {
+                const firestoreDate = new Date(firestoreItem.updatedAt)
+                const localDate = new Date(existingItem.updatedAt)
 
-        for (const firestoreItem of firestoreItems) {
-          const existingItem = localItems.find(
-            (localItem) => localItem.firebaseId === firestoreItem.firebaseId
-          )
+                if (firestoreDate <= localDate || existingItem.syncStatus === 'pending')
+                  return
 
-          if (existingItem) {
-            const firestoreDate = new Date(firestoreItem.updatedAt)
-            const localDate = new Date(existingItem.updatedAt)
-
-            if (firestoreDate <= localDate || existingItem.syncStatus === 'pending')
-              continue
-
-            localUpdates.push({ id: existingItem.id, data: firestoreItem })
-            continue
-          }
-
-          if (firestoreItem.localId) {
-            const existingLocal = await db.items.get({ id: parseInt(firestoreItem.localId) })
-
-            if (!existingLocal) {
-              batch.delete(doc(fireDb, 'items', firestoreItem.firebaseId))
-              continue
-            }
-
-            if (!existingLocal.firebaseId) {
-              localUpdates.push({ id: existingLocal.id, data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } })
-              continue
-            }
-
-            if (existingLocal.firebaseId !== firestoreItem.firebaseId) {
-              const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
-              const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
-
-              const mostRecentData = (firestoreUpdatedAt && localUpdatedAt && firestoreUpdatedAt > localUpdatedAt) || !localUpdatedAt
-                ? firestoreItem : existingLocal
-
-              if (mostRecentData === firestoreItem)
-                localUpdates.push({ id: existingLocal.id, data: mostRecentData })
-
-              continue
-            }
-
-            const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
-            const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
-
-            if (firestoreUpdatedAt <= localUpdatedAt || existingLocal.syncStatus === 'pending')
-              continue
-
-            localUpdates.push({ id: existingLocal.id, data: firestoreItem })
-            continue
-          }
-
-          localUpdates.push({ data: firestoreItem })
-        }
-
-        await db.transaction('rw', db.items, async () => {
-          for (const update of localUpdates) {
-            if (update.id) {
-              batch.update(doc(fireDb, 'items', update.data.firebaseId), { ...update.data, syncStatus: 'synced', updatedAt: new Date().toISOString() })
-              await db.items.update(update.id, { ...update.data, syncStatus: 'synced' })
-            } else {
-              const docRef = await addDoc(collection(fireDb, 'items'), {...update.data, syncStatus: 'synced', updatedAt: new Date().toISOString() })
-              await db.items.add({...update.data, syncStatus: 'synced', firebaseId: docRef.id, updatedAt: new Date().toISOString() })
-            }
-            operationsCount++
-            if (operationsCount > 500) {
-              try {
-                await batch.commit()
-              } catch (error) {
-                console.error('Error committing batch update', error)
+                localUpdates.push({ id: existingItem.id, data: firestoreItem })
+                return
               }
-              batch = writeBatch(fireDb)
-              operationsCount = 0
+
+              if (firestoreItem.localId) {
+                const existingLocal = localItems.find(item => item.id === parseInt(firestoreItem.localId))
+
+                if (!existingLocal) {
+                  batch.delete(doc(fireDb, 'items', firestoreItem.firebaseId))
+                  return
+                }
+
+                if (!existingLocal.firebaseId) {
+                  localUpdates.push({ id: existingLocal.id, data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } })
+                  return
+                }
+
+                if (existingLocal.firebaseId !== firestoreItem.firebaseId) {
+                  const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
+                  const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
+
+                  const mostRecentData = (firestoreUpdatedAt && localUpdatedAt && firestoreUpdatedAt > localUpdatedAt) || !localUpdatedAt
+                    ? firestoreItem : existingLocal
+
+                  if (mostRecentData === firestoreItem)
+                    localUpdates.push({ id: existingLocal.id, data: mostRecentData })
+
+                  return
+                }
+
+                const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
+                const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
+
+                if (firestoreUpdatedAt <= localUpdatedAt || existingLocal.syncStatus === 'pending')
+                  return
+
+                localUpdates.push({ id: existingLocal.id, data: firestoreItem })
+                return
+              }
+
+              localUpdates.push({ data: firestoreItem })
+            } else if (change.type === 'removed') {
+              const existingItem = localItems.find(
+                (localItem) => localItem.firebaseId === firestoreItem.firebaseId
+              )
+              if (existingItem) {
+                await db.items.delete(existingItem.id)
+              }
+            }
+          })
+
+          await db.transaction('rw', db.items, async () => {
+            const batchSize = Math.min(500, localUpdates.length);
+            for (const update of localUpdates) {
+              if (update.id) {
+                batch.update(doc(fireDb, 'items', update.data.firebaseId), { ...update.data, syncStatus: 'synced', updatedAt: new Date().toISOString() })
+                await db.items.update(update.id, { ...update.data, syncStatus: 'synced' })
+              } else {
+                const docRef = await addDoc(collection(fireDb, 'items'), {...update.data, syncStatus: 'synced', updatedAt: new Date().toISOString() })
+                await db.items.add({...update.data, syncStatus: 'synced', firebaseId: docRef.id, updatedAt: new Date().toISOString() })
+              }
+              operationsCount++
+              if (operationsCount >= batchSize) {
+                try {
+                  await batch.commit()
+                } catch (error) {
+                  console.error('Error committing batch update', error)
+                }
+                batch = writeBatch(fireDb)
+                operationsCount = 0
+              }
+            }
+          })
+
+          if (operationsCount > 0) {
+            try {
+              await batch.commit()
+            } catch (error) {
+              console.error('Error commiting batch update', error)
             }
           }
+
+          await this.uploadPendingLocalChanges(localItems)
+          this.syncStatus.lastSync = new Date().toISOString()
+          await this.loadInventory()
+        }, (error) => {
+          console.error('Error syncing with Firestore:', error)
+          this.error = handleError(error, 'Failed to sync with Firestore')
         })
 
-        if (operationsCount > 0) {
-          try {
-            await batch.commit()
-          } catch (error) {
-            console.error('Error commiting batch update', error)
-          }
-        }
-
-        await this.uploadPendingLocalChanges(localItems)
-        this.syncStatus.lastSync = new Date().toISOString()
-        await this.loadInventory()
-        // this.items = await db.getAllItems()
+        await this.loadCategories()
       } catch (error) {
         console.error('Error syncing with Firestore:', error)
         this.error = handleError(error, 'Failed to sync with Firestore')
@@ -622,6 +653,7 @@ export const useInventoryStore = defineStore('inventory', {
     async uploadPendingLocalChanges(localItems){
       let batch = writeBatch(fireDb)
       let operationsCount = 0
+      const batchSize = Math.min(500, localItems.filter(item => item.syncStatus === 'pending').length);
 
       for(const localItem of localItems){
         if(localItem.syncStatus === 'pending'){
@@ -641,7 +673,7 @@ export const useInventoryStore = defineStore('inventory', {
             }
             operationsCount++
           }
-          if (operationsCount > 500) {
+          if (operationsCount >= batchSize) {
             try {
               await batch.commit()
             } catch (error) {
@@ -787,6 +819,11 @@ export const useInventoryStore = defineStore('inventory', {
 
         if (isOnline.value) {
           try {
+            if (this.unsubscribeCategories) {
+              this.unsubscribeCategories()
+              this.unsubscribeCategories = null
+            }
+
             const lastSync = this.syncStatus.lastSync
             let firestoreQuery = query(collection(fireDb, 'categories'), orderBy('updatedAt', 'desc'))
 
@@ -797,15 +834,19 @@ export const useInventoryStore = defineStore('inventory', {
                 orderBy('updatedAt', 'desc')
               )
             }
-            const snapshot = await getDocs(firestoreQuery)
-            const firestoreCategories = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-              createdAt: doc.data().createdAt?.toDate() || new Date(),
-              updatedAt: doc.data().updatedAt?.toDate() || new Date()
-            }))
 
-            await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+            this.unsubscribeCategories = onSnapshot(firestoreQuery, async (snapshot) => {
+              const firestoreCategories = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                createdAt: doc.data().createdAt?.toDate() || new Date(),
+                updatedAt: doc.data().updatedAt?.toDate() || new Date()
+              }))
+
+              await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
+            }, (error) => {
+              console.error('Error syncing categories with Firestore:', error)
+            })
           } catch (error) {
             console.error('Error syncing categories with Firestore:', error)
           }
