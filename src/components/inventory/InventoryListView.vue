@@ -38,7 +38,7 @@ const pagination = ref({
   sortBy: 'name',
   descending: false,
   page: 1,
-  rowsPerPage: 5
+  rowsPerPage: 8
 })
 
 async function updateField(item, field, value) {

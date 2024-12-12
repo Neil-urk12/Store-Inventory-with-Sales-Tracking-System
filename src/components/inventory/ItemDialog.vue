@@ -82,7 +82,6 @@ const validateAndSave = async () => {
         position: 'top'
       })
 
-    // Close dialog and reset form
     inventoryStore.itemDialog = false
     // formRef.value.resetValidation()
     await inventoryStore.loadInventory() // Refresh the inventory list

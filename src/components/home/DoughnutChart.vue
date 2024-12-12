@@ -48,7 +48,7 @@ const chartData = computed(() => {
   items.forEach(item => {
     const category = item.category || 'Uncategorized'
     const quantity = Number(item.quantity) || 0
-    console.log(`Processing item: ${item.name}, category: ${category}, quantity: ${quantity}`)
+    // console.log(`Processing item: ${item.name}, category: ${category}, quantity: ${quantity}`)
     categories[category] = (categories[category] || 0) + quantity
   })
 
@@ -66,7 +66,7 @@ const chartData = computed(() => {
  * @type {import('vue').ComputedRef<Object>}
  * @description Computes the chart options based on current theme.
  * @returns {Object} Chart.js configuration options
- */
+*/
 const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
