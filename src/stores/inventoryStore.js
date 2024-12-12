@@ -118,7 +118,7 @@ export const useInventoryStore = defineStore('inventory', {
         failedItems: [],
         retryCount: 0,
         maxRetries: 3,
-        retryDelay: 1000 // 1 second delay between retries
+        retryDelay: 1000
       },
       sortBy: DEFAULT_SORT,
       sortDirection: DEFAULT_SORT_DIRECTION,
@@ -155,7 +155,6 @@ export const useInventoryStore = defineStore('inventory', {
 
   getters: {
     /**
-     * @getter
      * @returns {Array} Filtered items based on search query and category
      */
     filteredItems(state) {
@@ -167,23 +166,19 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Function} Function to get category name from ID
      */
     getCategoryName: (state) => (categoryId) => {
-      // If no categoryId is provided, return Uncategorized
       if (!categoryId) return 'Uncategorized'
 
       if (typeof categoryId === 'string' && !state.categories.find(cat => cat.id === categoryId))
         return categoryId
 
-      // Otherwise look up the category by ID
       const category = state.categories.find(cat => cat.id === categoryId)
       return category ? category.name : 'Uncategorized'
     },
 
     /**
-     * @getter
      * @returns {Array} Sorted items based on the current sort options
      */
     sortedItems(state) {
@@ -193,7 +188,6 @@ export const useInventoryStore = defineStore('inventory', {
           let aVal = a[state.sortBy]
           let bVal = b[state.sortBy]
 
-          // Map categoryId to category name for sorting
           if (state.sortBy === 'category') {
             aVal = this.getCategoryName(a.categoryId)
             bVal = this.getCategoryName(b.categoryId)
@@ -215,7 +209,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Array} Stock data for all items
      */
     stockData(state) {
@@ -228,7 +221,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Array} Items with low stock levels
      */
     getLowStockItems(state) {
@@ -236,7 +228,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Array} Categories with their corresponding stock levels
      */
     getCategoryStocks() {
@@ -249,7 +240,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Array} List of unique categories
      */
     getCategories() {
@@ -257,7 +247,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Array} Recently added products
      */
     getRecentlyAddedProducts() {
@@ -267,7 +256,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @getter
      * @returns {Array} Formatted categories for display
      */
     formattedCategories(state) {
@@ -281,7 +269,6 @@ export const useInventoryStore = defineStore('inventory', {
   actions: {
     /**
      * @async
-     * @method initializeDb
      * @returns {Promise<void>}
      * @description Initializes the database and performs initial sync if needed
      */
@@ -289,14 +276,11 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         const existingItems = await db.items.count()
 
-        // Always try to sync with Firestore when online, not just when empty
         if (isOnline.value) {
           await this.syncWithFirestore()
           await syncQueue.processQueue()
         }
 
-        // If we're still empty after sync attempt, and we're offline,
-        // we'll wait for online status to try again
         if (existingItems === 0 && !isOnline.value)
           this.error = 'No local data available. Waiting for network connection...'
 
@@ -309,7 +293,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method loadInventory
      * @returns {Promise<void>}
      * @description Loads inventory from local database and syncs with Firestore if online
      */
@@ -317,11 +300,9 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         this.loading = true
 
-        // Load from local first
         const localItems = await db.getAllItems()
         this.items = localItems.map(processItem)
 
-        // If we have no items locally and we're online, force a sync
         if (localItems.length === 0 && isOnline.value) {
           await this.syncWithFirestore()
           const updatedItems = await db.getAllItems()
@@ -338,7 +319,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method createNewItem
      * @param {Object} item - New item to create
      * @returns {Promise<Object>} Created item result
      */
@@ -346,18 +326,15 @@ export const useInventoryStore = defineStore('inventory', {
       this.loading = true
 
       try {
-        // Validate item before saving
         const errors = validateItem(item)
         if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
 
-        // Process item (format data, set defaults, etc.)
         const processedItem = processItem(item)
         const result = await db.createItem(processedItem)
 
         if (isOnline.value) {
           try {
-            // Add to Firestore if online
             const docRef = await addDoc(collection(fireDb, 'items'), {
               ...processedItem,
               createdAt: serverTimestamp(),
@@ -370,12 +347,10 @@ export const useInventoryStore = defineStore('inventory', {
             return { id: result, firebaseId: docRef.id, offline: false }
           } catch (firebaseError) {
             console.error('Firebase error:', firebaseError)
-            // If Firebase fails, queue for sync
             await this.queueForSync('add', processedItem, result)
             return { id: result, offline: true }
           }
         } else {
-          // If offline, queue for sync
           await this.queueForSync('add', processedItem, result)
           return { id: result, offline: true }
         }
@@ -394,54 +369,51 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method updateExistingItem
      * @param {string} id - Item ID to update
      * @param {Object} changes - Changes to apply
      * @returns {Promise<Object>} Update result
      */
     async updateExistingItem(id, changes) {
-      this.loading = true;
+      this.loading = true
 
       try {
-        const errors = validateItem({ ...changes, id });
+        const errors = validateItem({ ...changes, id })
         if (errors.length > 0)
-          throw new Error(`Validation failed: ${errors.join(', ')}`);
+          throw new Error(`Validation failed: ${errors.join(', ')}`)
 
         const processedChanges = processItem(changes)
-        const result = await db.updateExistingItem(id, processedChanges);
+        const result = await db.updateExistingItem(id, processedChanges)
 
         if (isOnline.value) {
-          const item = await db.items.get(id);
+          const item = await db.items.get(id)
           if (item?.firebaseId) {
             try {
               await updateDoc(doc(fireDb, 'items', item.firebaseId), {
                 ...processedChanges,
                 updatedAt: serverTimestamp()
-              });
-              return { id, offline: false };
+              })
+              return { id, offline: false }
             } catch (firebaseError) {
-              console.error('Firebase error:', firebaseError);
-              // If Firebase fails, queue for sync
-              await this.queueForSync('update', processedChanges, id);
-              return { id, offline: true };
+              console.error('Firebase error:', firebaseError)
+              await this.queueForSync('update', processedChanges, id)
+              return { id, offline: true }
             }
           }
         }
 
-        // Queue for sync if offline
-        await this.queueForSync('update', processedChanges, id);
-        await this.loadInventory();
-        return { id, offline: true };
+        await this.queueForSync('update', processedChanges, id)
+        await this.loadInventory()
+        return { id, offline: true }
       } catch (error) {
-        console.error('Error updating item:', error);
+        console.error('Error updating item:', error)
         this.syncStatus.failedItems.push({
           ...changes,
           error: error.message,
           syncOperation: 'update'
         })
-        throw error;
+        throw error
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
 
@@ -462,12 +434,11 @@ export const useInventoryStore = defineStore('inventory', {
         timestamp: new Date().toISOString(),
         attempts: 0,
         status: 'pending'
-      });
+      })
     },
 
     /**
      * @async
-     * @method deleteItem
      * @param {string} id - Item ID to delete
      * @returns {Promise<string>} Deleted item ID
      * @description Deletes an item from the local database and queues for sync
@@ -481,14 +452,12 @@ export const useInventoryStore = defineStore('inventory', {
           await db.items.delete(id)
         })
 
-        // If online and item was synced with Firestore, delete from Firestore
         if (isOnline.value && item.firebaseId) {
           try {
             const docRef = doc(fireDb, 'items', item.firebaseId)
             await deleteDoc(docRef)
           } catch (error) {
             console.error('Error deleting from Firestore:', error)
-            // Queue for sync if Firestore delete fails
             await syncQueue.addToQueue({
               type: 'delete',
               collection: 'items',
@@ -497,7 +466,6 @@ export const useInventoryStore = defineStore('inventory', {
             })
           }
         } else if (item.firebaseId) {
-          // Offline but item exists in Firestore, queue for sync
           await syncQueue.addToQueue({
             type: 'delete',
             collection: 'items',
@@ -548,8 +516,8 @@ export const useInventoryStore = defineStore('inventory', {
           )
 
           if (existingItem) {
-            const firestoreDate = new Date(firestoreItem.updatedAt);
-            const localDate = new Date(existingItem.updatedAt);
+            const firestoreDate = new Date(firestoreItem.updatedAt)
+            const localDate = new Date(existingItem.updatedAt)
 
             if (firestoreDate <= localDate || existingItem.syncStatus === 'pending')
               continue
@@ -559,31 +527,28 @@ export const useInventoryStore = defineStore('inventory', {
           }
 
           if (firestoreItem.localId) {
-            const existingLocal = await db.items.get({ id: parseInt(firestoreItem.localId) });
+            const existingLocal = await db.items.get({ id: parseInt(firestoreItem.localId) })
 
             if (!existingLocal) {
-              // Item exists in firestore, but no longer locally. Delete it from Firestore.
-              batch.delete(doc(fireDb, 'items', firestoreItem.firebaseId));
-              continue; // Move to next firestoreItem
+              batch.delete(doc(fireDb, 'items', firestoreItem.firebaseId))
+              continue
             }
 
             if (!existingLocal.firebaseId) {
-              // Update the local record with the firebaseId.
-              localUpdates.push({ id: existingLocal.id, data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } });
-              continue; // Move to next firestoreItem
+              localUpdates.push({ id: existingLocal.id, data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } })
+              continue
             }
 
             if (existingLocal.firebaseId !== firestoreItem.firebaseId) {
-              // Potential merge conflict (different firebaseIds). Resolve carefully!
-              const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt);
-              const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt);
+              const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
+              const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
 
               const mostRecentData = (firestoreUpdatedAt && localUpdatedAt && firestoreUpdatedAt > localUpdatedAt) || !localUpdatedAt
                 ? firestoreItem : existingLocal
 
-              if (mostRecentData === firestoreItem) {
-                localUpdates.push({ id: existingLocal.id, data: mostRecentData });
-              }
+              if (mostRecentData === firestoreItem)
+                localUpdates.push({ id: existingLocal.id, data: mostRecentData })
+
               continue
             }
 
@@ -603,15 +568,15 @@ export const useInventoryStore = defineStore('inventory', {
         await db.transaction('rw', db.items, async () => {
           for (const update of localUpdates) {
             if (update.id) {
-              await db.items.update(update.id, { ...update.data, syncStatus: 'synced' });
+              await db.items.update(update.id, { ...update.data, syncStatus: 'synced' })
             } else {
-              await db.items.add({ ...update.data, syncStatus: 'synced' });
+              await db.items.add({ ...update.data, syncStatus: 'synced' })
             }
           }
         })
 
         if (batch.operations.length > 0) {
-          await batch.commit();
+          await batch.commit()
         }
 
 
@@ -708,7 +673,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method mergeChanges
      * @param {Array} localItems - Local items to merge
      * @param {Array} firestoreItems - Firestore items to merge
      * @returns {Promise<void>}
@@ -782,7 +746,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method addItem
      * @param {Object} item - Item to add
      * @returns {Promise<string>} Added item ID
      * @description Adds an item to the local database and queues for sync
@@ -811,20 +774,17 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method deleteSelected
      * @returns {Promise<void>}
      * @description Deletes selected items from the local database
      */
     async deleteSelected() {
       const selectedItems = this.selectedItems.filter(id => this.items.some(item => item.id === id))
-      // Uncomment the API call here
       this.items = this.items.filter(item => !selectedItems.includes(item.id))
       this.selectedItems = []
     },
 
     /**
      * @async
-     * @method loadCategories
      * @returns {Promise<void>}
      * @description Loads categories from the database and syncs with Firestore
      */
@@ -832,11 +792,9 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         this.loading = true
 
-        // Load from local DB first
         const localCategories = await db.categories.toArray()
         this.categories = localCategories
 
-        // Sync with Firestore if online
         if (isOnline.value) {
           try {
             const snapshot = await getDocs(query(collection(fireDb, 'categories'), orderBy('name')))
@@ -847,11 +805,9 @@ export const useInventoryStore = defineStore('inventory', {
               updatedAt: doc.data().updatedAt?.toDate() || new Date()
             }))
 
-            // Merge local and Firestore categories
             await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
           } catch (error) {
             console.error('Error syncing categories with Firestore:', error)
-            // Continue with local categories
           }
         }
       } catch (error) {
@@ -864,7 +820,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method mergeCategoriesWithFirestore
      * @param {Array} localCategories - Local categories to merge
      * @param {Array} firestoreCategories - Firestore categories to merge
      * @returns {Promise<void>}
@@ -876,13 +831,10 @@ export const useInventoryStore = defineStore('inventory', {
         const batch = writeBatch(fireDb)
         const updates = []
 
-        // Handle local categories not in Firestore
         for (const localCat of localCategories) {
           const firestoreCat = firestoreCategories.find(fc => fc.id === localCat.id)
           if (!firestoreCat) {
-            // Category exists locally but not in Firestore
             if (localCat.id.startsWith('temp_')) {
-              // This is a new local category, add to Firestore
               const docRef = doc(collection(fireDb, 'categories'))
               batch.set(docRef, {
                 name: localCat.name,
@@ -897,7 +849,6 @@ export const useInventoryStore = defineStore('inventory', {
               })
             }
           } else if (new Date(localCat.updatedAt) > new Date(firestoreCat.updatedAt)) {
-            // Local category is newer, update Firestore
             const docRef = doc(fireDb, 'categories', localCat.id)
             batch.update(docRef, {
               name: localCat.name,
@@ -906,11 +857,9 @@ export const useInventoryStore = defineStore('inventory', {
           }
         }
 
-        // Handle Firestore categories not in local DB
         for (const firestoreCat of firestoreCategories) {
           const localCat = localCategories.find(lc => lc.id === firestoreCat.id)
           if (!localCat) {
-            // Category exists in Firestore but not locally
             await db.categories.add({
               id: firestoreCat.id,
               name: firestoreCat.name,
@@ -918,7 +867,6 @@ export const useInventoryStore = defineStore('inventory', {
               updatedAt: firestoreCat.updatedAt
             })
           } else if (new Date(firestoreCat.updatedAt) > new Date(localCat.updatedAt)) {
-            // Firestore category is newer, update local
             await db.categories.update(localCat.id, {
               name: firestoreCat.name,
               updatedAt: firestoreCat.updatedAt
@@ -926,10 +874,8 @@ export const useInventoryStore = defineStore('inventory', {
           }
         }
 
-        // Commit Firestore changes
         await batch.commit()
 
-        // Update local IDs for new categories
         for (const update of updates) {
           if (update.type === 'update') {
             await db.categories.where('id').equals(update.oldId).modify(category => {
@@ -938,7 +884,6 @@ export const useInventoryStore = defineStore('inventory', {
           }
         }
 
-        // Reload categories from local DB
         const updatedCategories = await db.categories.toArray()
         this.categories = updatedCategories
       } catch (error) {
@@ -949,7 +894,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method addCategory
      * @param {string} categoryName - Category name to add
      * @returns {Promise<Object|null>} Added category object or null on error
      * @description Adds a category to the database and syncs with Firestore
@@ -1028,7 +972,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method deleteCategory
      * @param {string} categoryId - Category ID to delete
      * @returns {Promise<boolean>} Success flag
      * @description Deletes a category from the database
@@ -1071,7 +1014,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method openCategoryDialog
      * @returns {void}
      * @description Opens the category dialog
      */
@@ -1083,7 +1025,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method closeCategoryDialog
      * @returns {void}
      * @description Closes the category dialog
      */
@@ -1095,7 +1036,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method openItemDialog
      * @param {Object|null} item - Item to edit or null for new item
      * @returns {void}
      * @description Opens the item dialog
@@ -1120,7 +1060,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method closeItemDialog
      * @returns {void}
      * @description Closes the item dialog
      */
@@ -1132,7 +1071,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method confirmDelete
      * @param {Object} item - Item to delete
      * @returns {void}
      * @description Confirms deletion of an item
@@ -1144,7 +1082,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method handleDeleteConfirm
      * @returns {void}
      * @description Handles deletion confirmation
      */
@@ -1170,7 +1107,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @method handleSearch
      * @description Handles search query changes
      */
     handleSearch(itemToSearch) {
@@ -1218,7 +1154,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @method retryFailedSync
      * @param {Object} item - The item to retry syncing.
      * @returns {Promise<boolean>} True if the retry was successful, false otherwise.
      * @description Retries syncing a failed item.
@@ -1253,7 +1188,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @method retryAllFailedItems
      * @returns {Promise<number>} The number of items that were successfully retried.
      * @description Retries syncing all failed items.
      */
@@ -1268,7 +1202,6 @@ export const useInventoryStore = defineStore('inventory', {
 
     /**
      * @async
-     * @method cleanupDuplicates
      * @returns {Promise<void>}
      * @description Cleans up duplicate items in the local database based on their firebaseId.
      */
@@ -1311,7 +1244,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @method cleanup
      * @param {boolean} [fullCleanup=false] - Whether to perform a full data cleanup or just reset UI state
      * @description Resets UI state and optionally clears all data.
      * Used for cleanup before navigation or component unmount.
