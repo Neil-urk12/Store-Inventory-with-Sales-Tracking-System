@@ -28,10 +28,14 @@ const getChartOptions = async (textColor) => {
     scales: {
       x: {
         ticks: {
-          color: textColor
+          color: textColor,
+          autoSkip: true,
+          maxRotation: 45,
+          minRotation: 0
         },
         grid: {
-          display: true
+          display: true,
+          color: $q.dark.isActive ? '#5c5c5c' : '#e0e0e0'
         }
       },
       y: {
@@ -47,6 +51,28 @@ const getChartOptions = async (textColor) => {
     plugins: {
       legend: {
         display: false
+      },
+      tooltip: {
+        enabled: true,
+        mode: 'index',
+        intersect: false,
+        backgroundColor: $q.dark.isActive ? '#333' : '#fff',
+        titleColor: $q.dark.isActive ? '#fff' : '#333',
+        bodyColor: $q.dark.isActive ? '#fff' : '#333',
+        borderColor: $q.dark.isActive ? '#555' : '#ccc',
+        borderWidth: 1,
+        callbacks: {
+          label: (context) => {
+            let label = context.dataset.label || '';
+            if (label) {
+              label += ': ';
+            }
+            if (context.parsed.y !== null) {
+              label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'PHP' }).format(context.parsed.y);
+            }
+            return label;
+          }
+        }
       }
     }
   }
@@ -65,13 +91,13 @@ const getSalesDataByTimeframe = async (timeframe) => {
     const date = new Date(sale.dateTimeframe)
     let key
 
-    if (timeframe === 'daily') 
+    if (timeframe === 'daily')
       key = date.toLocaleDateString()
-    else if (timeframe === 'weekly') 
+    else if (timeframe === 'weekly')
       key = 'Week ' + getWeekNumber(date)
-    else if (timeframe === 'monthly') 
+    else if (timeframe === 'monthly')
       key = date.toLocaleString('default', { month: 'long', year: 'numeric' })
-    else if (timeframe === 'yearly') 
+    else if (timeframe === 'yearly')
       key = date.getFullYear().toString()
 
     salesData[key] = salesData[key] || { total: 0, count: 0 }
@@ -93,7 +119,7 @@ const getWeekNumber = (date) => {
 
 const getChartData = async (timeframe) => {
   if (!timeframe) return null
-  
+
   if (salesStore.sales.length === 0)
     await salesStore.loadSales()
 
@@ -110,9 +136,11 @@ const getChartData = async (timeframe) => {
       {
         label: 'Sales',
         data: data,
-        backgroundColor: $q.dark.isActive ? '#4CAF50' : '#007bff',
+        backgroundColor: $q.dark.isActive ? 'rgba(76, 175, 80, 0.2)' : 'rgba(0, 123, 255, 0.2)',
         borderColor: $q.dark.isActive ? '#4CAF50' : '#007bff',
-        borderWidth: 1
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
       }
     ]
   }
@@ -291,8 +319,5 @@ onUnmounted(() => {
   min-height: 300px;
 }
 
-canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
+
 </style>
