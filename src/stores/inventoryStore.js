@@ -362,27 +362,29 @@ export const useInventoryStore = defineStore('inventory', {
               ...processedItem,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
-            });
+            })
+
             await db.updateItem(result, { firebaseId: docRef.id })
-            return { id: result, offline: false }
+
+            await this.loadInventory()
+            return { id: result, firebaseId: docRef.id, offline: false }
           } catch (firebaseError) {
             console.error('Firebase error:', firebaseError)
             // If Firebase fails, queue for sync
-            await this.queueForSync('create', processedItem, result)
+            await this.queueForSync('add', processedItem, result)
             return { id: result, offline: true }
           }
+        } else {
+          // If offline, queue for sync
+          await this.queueForSync('add', processedItem, result)
+          return { id: result, offline: true }
         }
-
-        // Queue for sync if offline
-        await this.queueForSync('create', processedItem, result)
-        await this.loadInventory()
-        return { id: result, offline: true }
       } catch (error) {
         console.error('Error creating item:', error)
         this.syncStatus.failedItems.push({
           ...item,
           error: error.message,
-          syncOperation: 'create'
+          syncOperation: 'add'
         })
         throw error
       } finally {
@@ -452,7 +454,7 @@ export const useInventoryStore = defineStore('inventory', {
      * @private
      */
     async queueForSync(type, data, docId) {
-      await syncQueue.add({
+      await syncQueue.addToQueue({
         type,
         collection: 'items',
         data,
@@ -527,7 +529,6 @@ export const useInventoryStore = defineStore('inventory', {
 
       try {
         const localItems = await db.items.toArray()
-
         const firestoreSnapshot = await getDocs(
           query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
         )
@@ -536,75 +537,173 @@ export const useInventoryStore = defineStore('inventory', {
           firebaseId: doc.id
         }))
 
-        // Make sure categories are loaded before processing items
         await this.loadCategories()
 
+        const batch = writeBatch(fireDb)
+        const localUpdates = []
+
         for (const firestoreItem of firestoreItems) {
-          try {
-            // Check if item already exists by firebaseId
-            const existingItems = await db.items
-              .where('firebaseId')
-              .equals(firestoreItem.firebaseId)
-              .toArray()
+          const existingItem = localItems.find(
+            (localItem) => localItem.firebaseId === firestoreItem.firebaseId
+          )
 
-            if (existingItems.length > 0) {
-              // Update the first instance and delete any duplicates
-              const [itemToKeep, ...duplicates] = existingItems
+          if (existingItem) {
+            const firestoreDate = new Date(firestoreItem.updatedAt);
+            const localDate = new Date(existingItem.updatedAt);
 
-              if (itemToKeep.syncStatus !== 'pending') {
-                const firestoreDate = new Date(firestoreItem.updatedAt)
-                const localDate = new Date(itemToKeep.updatedAt)
+            if (firestoreDate <= localDate || existingItem.syncStatus === 'pending')
+              continue
 
-                if (firestoreDate > localDate) {
-                  await db.items.update(itemToKeep.id, {
-                    ...firestoreItem,
-                    id: itemToKeep.id,
-                    syncStatus: 'synced'
-                  })
-                }
-              }
-
-              // Delete any duplicate entries
-              for (const duplicate of duplicates) {
-                await db.items.delete(duplicate.id)
-              }
-            } else if (firestoreItem.localId) {
-              // This is a new item from another client
-              const existingLocal = await db.items
-                .where('id')
-                .equals(parseInt(firestoreItem.localId))
-                .first()
-
-              if (!existingLocal) {
-                await db.items.add({
-                  ...firestoreItem,
-                  syncStatus: 'synced'
-                })
-              }
-            } else {
-              // Completely new item
-              await db.items.add({
-                ...firestoreItem,
-                syncStatus: 'synced'
-              })
-            }
-          } catch (itemError) {
-            // Track failed items individually
-            this.syncStatus.failedItems.push({
-              ...firestoreItem,
-              error: itemError.message,
-              syncOperation: 'create'
-            })
+            localUpdates.push({ id: existingItem.id, data: firestoreItem })
+            continue
           }
+
+          if (firestoreItem.localId) {
+            const existingLocal = await db.items.get({ id: parseInt(firestoreItem.localId) });
+
+            if (!existingLocal) {
+              // Item exists in firestore, but no longer locally. Delete it from Firestore.
+              batch.delete(doc(fireDb, 'items', firestoreItem.firebaseId));
+              continue; // Move to next firestoreItem
+            }
+
+            if (!existingLocal.firebaseId) {
+              // Update the local record with the firebaseId.
+              localUpdates.push({ id: existingLocal.id, data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } });
+              continue; // Move to next firestoreItem
+            }
+
+            if (existingLocal.firebaseId !== firestoreItem.firebaseId) {
+              // Potential merge conflict (different firebaseIds). Resolve carefully!
+              const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt);
+              const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt);
+
+              const mostRecentData = (firestoreUpdatedAt && localUpdatedAt && firestoreUpdatedAt > localUpdatedAt) || !localUpdatedAt
+                ? firestoreItem : existingLocal
+
+              if (mostRecentData === firestoreItem) {
+                localUpdates.push({ id: existingLocal.id, data: mostRecentData });
+              }
+              continue
+            }
+
+            const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
+            const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
+
+            if (firestoreUpdatedAt <= localUpdatedAt || existingLocal.syncStatus === 'pending')
+              continue
+
+            localUpdates.push({ id: existingLocal.id, data: firestoreItem })
+            continue
+          }
+
+          localUpdates.push({ data: firestoreItem })
         }
 
-        await this.mergeChanges(localItems, firestoreItems)
-        this.items = await db.getAllItems()
+        await db.transaction('rw', db.items, async () => {
+          for (const update of localUpdates) {
+            if (update.id) {
+              await db.items.update(update.id, { ...update.data, syncStatus: 'synced' });
+            } else {
+              await db.items.add({ ...update.data, syncStatus: 'synced' });
+            }
+          }
+        })
+
+        if (batch.operations.length > 0) {
+          await batch.commit();
+        }
+
+
+
+        // for (const firestoreItem of firestoreItems) {
+        //   try {
+        //     // Check if item already exists by firebaseId
+        //     // const existingItems = await db.items
+        //     //   .where('firebaseId')
+        //     //   .equals(firestoreItem.firebaseId)
+        //     //   .toArray()
+        //     // const existingItems = localItems.filter(item => item.firebaseId === firestoreItem.firebaseId)
+        //     const existingItem = localItems.find(item => item.firebaseId === firestoreItem.firebaseId)
+
+        //     if (existingItem) {
+        //       // Update the first instance and delete any duplicates
+        //       // const [itemToKeep, ...duplicates] = existingItems
+
+        //       // if (itemToKeep.syncStatus !== 'pending') {
+        //         const firestoreDate = new Date(firestoreItem.updatedAt)
+        //         const localDate = new Date(itemToKeep.updatedAt)
+
+        //         if (firestoreDate > localDate && existingItem.syncStatus !== 'pending') {
+        //           localUpdates.push({id: existingItem.id, data: firestoreItem})
+        //           // await db.items.update(itemToKeep.id, {
+        //           //   ...firestoreItem,
+        //           //   id: itemToKeep.id,
+        //           //   syncStatus: 'synced'
+        //           // })
+        //         }
+        //       // }
+        //     } else if (firestoreItem.localId) {
+        //       // This is a new item from another client
+        //       const existingLocalItem = localItems.find(item => item.id === parseInt(firestoreItem.localId))
+        //       // const existingLocal = await db.items
+        //       //   .where('id')
+        //       //   .equals(parseInt(firestoreItem.localId))
+        //       //   .first()
+
+        //       if (!existingLocalItem) {
+        //         localUpdates.push({id: existingLocalItem.localId,  data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } })
+        //         await db.items.add({
+        //           ...firestoreItem,
+        //           syncStatus: 'synced'
+        //         })
+        //       }
+        //     } else {
+        //       // Completely new item
+        //       await db.items.add({
+        //         ...firestoreItem,
+        //         syncStatus: 'synced'
+        //       })
+        //     }
+        //   } catch (itemError) {
+        //     // Track failed items individually
+        //     this.syncStatus.failedItems.push({
+        //       ...firestoreItem,
+        //       error: itemError.message,
+        //       syncOperation: 'add'
+        //     })
+        //   }
+        // }
+
+        // await this.mergeChanges(localItems, firestoreItems)
+        await this.uploadPendingLocalChanges(localItems)
+        await this.loadInventory()
+        // this.items = await db.getAllItems()
       } catch (error) {
         console.error('Error syncing with Firestore:', error)
         this.error = handleError(error, 'Failed to sync with Firestore')
         throw error
       }
+    },
+
+    async uploadPendingLocalChanges(localItems){
+      const batch = writeBatch(fireDb)
+      for(const localItem of localItems){
+        if(localItem.syncStatus === 'pending'){
+          if(localItem.firebaseId){
+            batch.update(doc(fireDb, 'items', localItem.firebaseId), {...localItem, syncStatus: "synced", updatedAt: new Date().toISOString()})
+            await db.items.update(localItem.id, {syncStatus: 'synced', updatedAt: new Date().toISOString() })
+          } else {
+             const docRef = await addDoc(collection(fireDb, 'items'), {
+                  ...localItem,
+                  updatedAt: new Date().toISOString()
+                })
+                await db.items.update(localItem.id, { firebaseId: docRef.id, syncStatus: 'synced' })
+          }
+        }
+      }
+      if(batch.operations.length > 0)
+        await batch.commit()
     },
 
     /**
@@ -615,71 +714,71 @@ export const useInventoryStore = defineStore('inventory', {
      * @returns {Promise<void>}
      * @description Merges local and Firestore items, resolving conflicts
      */
-    async mergeChanges(localItems, firestoreItems) {
-      return await db.transaction('rw', db.items, async () => {
-        // Only process items that are already synced (not pending local changes)
-        for (const firestoreItem of firestoreItems) {
-          // Check if item already exists by firebaseId
-          const existingItems = await db.items
-            .where('firebaseId')
-            .equals(firestoreItem.firebaseId)
-            .toArray()
+    // async mergeChanges(localItems, firestoreItems) {
+    //   return await db.transaction('rw', db.items, async () => {
+    //     // Only process items that are already synced (not pending local changes)
+    //     for (const firestoreItem of firestoreItems) {
+    //       // Check if item already exists by firebaseId
+    //       const existingItems = await db.items
+    //         .where('firebaseId')
+    //         .equals(firestoreItem.firebaseId)
+    //         .toArray()
 
-          if (existingItems.length > 0) {
-            // Update the first instance and delete any duplicates
-            const [itemToKeep, ...duplicates] = existingItems
+    //       if (existingItems.length > 0) {
+    //         // Update the first instance and delete any duplicates
+    //         const [itemToKeep, ...duplicates] = existingItems
 
-            if (itemToKeep.syncStatus !== 'pending') {
-              const firestoreDate = new Date(firestoreItem.updatedAt)
-              const localDate = new Date(itemToKeep.updatedAt)
+    //         if (itemToKeep.syncStatus !== 'pending') {
+    //           const firestoreDate = new Date(firestoreItem.updatedAt)
+    //           const localDate = new Date(itemToKeep.updatedAt)
 
-              if (firestoreDate > localDate) {
-                await db.items.update(itemToKeep.id, {
-                  ...firestoreItem,
-                  id: itemToKeep.id,
-                  syncStatus: 'synced'
-                })
-              }
-            }
+    //           if (firestoreDate > localDate) {
+    //             await db.items.update(itemToKeep.id, {
+    //               ...firestoreItem,
+    //               id: itemToKeep.id,
+    //               syncStatus: 'synced'
+    //             })
+    //           }
+    //         }
 
-            // Delete any duplicate entries
-            for (const duplicate of duplicates) {
-              await db.items.delete(duplicate.id)
-            }
-          } else if (firestoreItem.localId) {
-            // This is a new item from another client
-            const existingLocal = await db.items
-              .where('id')
-              .equals(parseInt(firestoreItem.localId))
-              .first()
+    //         // Delete any duplicate entries
+    //         for (const duplicate of duplicates) {
+    //           await db.items.delete(duplicate.id)
+    //         }
+    //       } else if (firestoreItem.localId) {
+    //         // This is a new item from another client
+    //         const existingLocal = await db.items
+    //           .where('id')
+    //           .equals(parseInt(firestoreItem.localId))
+    //           .first()
 
-            if (!existingLocal) {
-              await db.items.add({
-                ...firestoreItem,
-                syncStatus: 'synced'
-              })
-            }
-          } else {
-            // Completely new item
-            await db.items.add({
-              ...firestoreItem,
-              syncStatus: 'synced'
-            })
-          }
-        }
+    //         if (!existingLocal) {
+    //           await db.items.add({
+    //             ...firestoreItem,
+    //             syncStatus: 'synced'
+    //           })
+    //         }
+    //       } else {
+    //         // Completely new item
+    //         await db.items.add({
+    //           ...firestoreItem,
+    //           syncStatus: 'synced'
+    //         })
+    //       }
+    //     }
 
-        // Don't delete local items that haven't been synced yet
-        for (const localItem of localItems) {
-          if (localItem.firebaseId &&
-              !firestoreItems.find(item => item.firebaseId === localItem.firebaseId)) {
-            const currentItem = await db.items.get(localItem.id)
-            if (currentItem.syncStatus !== 'pending') {
-              await db.items.delete(localItem.id)
-            }
-          }
-        }
-      })
-    },
+    //     // Don't delete local items that haven't been synced yet
+    //     for (const localItem of localItems) {
+    //       if (localItem.firebaseId &&
+    //           !firestoreItems.find(item => item.firebaseId === localItem.firebaseId)) {
+    //         const currentItem = await db.items.get(localItem.id)
+    //         if (currentItem.syncStatus !== 'pending') {
+    //           await db.items.delete(localItem.id)
+    //         }
+    //       }
+    //     }
+    //   })
+    // },
 
     /**
      * @async
@@ -897,7 +996,7 @@ export const useInventoryStore = defineStore('inventory', {
           } catch (error) {
             console.error('Error adding category to Firestore:', error)
             await syncQueue.addToQueue({
-              type: 'create',
+              type: 'add',
               collection: 'categories',
               data: {
                 name: categoryName,
@@ -910,7 +1009,7 @@ export const useInventoryStore = defineStore('inventory', {
           }
         } else {
           await syncQueue.addToQueue({
-            type: 'create',
+            type: 'add',
             collection: 'categories',
             data: {
               name: categoryName,
@@ -1136,7 +1235,7 @@ export const useInventoryStore = defineStore('inventory', {
         this.syncStatus.retryCount++
         await new Promise(resolve => setTimeout(resolve, retryDelay))
 
-        if (item.syncOperation === 'create')
+        if (item.syncOperation === 'add')
           await this.createNewItem(item)
         else if (item.syncOperation === 'update')
           await this.updateExistingItem(item.id, item)
