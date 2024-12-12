@@ -15,7 +15,8 @@ import {
   deleteDoc,
   doc,
   writeBatch,
-  serverTimestamp
+  serverTimestamp,
+  where
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -498,9 +499,19 @@ export const useInventoryStore = defineStore('inventory', {
 
       try {
         const localItems = await db.items.toArray()
-        const firestoreSnapshot = await getDocs(
-          query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
-        )
+        const lastSync = this.syncStatus.lastSync;
+        let firestoreQuery = query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
+
+        if (lastSync) {
+          firestoreQuery = query(
+            collection(fireDb, 'items'),
+            where('updatedAt', '>', new Date(lastSync)),
+            orderBy('updatedAt', 'desc')
+          )
+        }
+
+
+        const firestoreSnapshot = await getDocs(firestoreQuery)
         const firestoreItems = firestoreSnapshot.docs.map(doc => ({
           ...doc.data(),
           firebaseId: doc.id
@@ -597,69 +608,8 @@ export const useInventoryStore = defineStore('inventory', {
           }
         }
 
-
-
-        // for (const firestoreItem of firestoreItems) {
-        //   try {
-        //     // Check if item already exists by firebaseId
-        //     // const existingItems = await db.items
-        //     //   .where('firebaseId')
-        //     //   .equals(firestoreItem.firebaseId)
-        //     //   .toArray()
-        //     // const existingItems = localItems.filter(item => item.firebaseId === firestoreItem.firebaseId)
-        //     const existingItem = localItems.find(item => item.firebaseId === firestoreItem.firebaseId)
-
-        //     if (existingItem) {
-        //       // Update the first instance and delete any duplicates
-        //       // const [itemToKeep, ...duplicates] = existingItems
-
-        //       // if (itemToKeep.syncStatus !== 'pending') {
-        //         const firestoreDate = new Date(firestoreItem.updatedAt)
-        //         const localDate = new Date(itemToKeep.updatedAt)
-
-        //         if (firestoreDate > localDate && existingItem.syncStatus !== 'pending') {
-        //           localUpdates.push({id: existingItem.id, data: firestoreItem})
-        //           // await db.items.update(itemToKeep.id, {
-        //           //   ...firestoreItem,
-        //           //   id: itemToKeep.id,
-        //           //   syncStatus: 'synced'
-        //           // })
-        //         }
-        //       // }
-        //     } else if (firestoreItem.localId) {
-        //       // This is a new item from another client
-        //       const existingLocalItem = localItems.find(item => item.id === parseInt(firestoreItem.localId))
-        //       // const existingLocal = await db.items
-        //       //   .where('id')
-        //       //   .equals(parseInt(firestoreItem.localId))
-        //       //   .first()
-
-        //       if (!existingLocalItem) {
-        //         localUpdates.push({id: existingLocalItem.localId,  data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } })
-        //         await db.items.add({
-        //           ...firestoreItem,
-        //           syncStatus: 'synced'
-        //         })
-        //       }
-        //     } else {
-        //       // Completely new item
-        //       await db.items.add({
-        //         ...firestoreItem,
-        //         syncStatus: 'synced'
-        //       })
-        //     }
-        //   } catch (itemError) {
-        //     // Track failed items individually
-        //     this.syncStatus.failedItems.push({
-        //       ...firestoreItem,
-        //       error: itemError.message,
-        //       syncOperation: 'add'
-        //     })
-        //   }
-        // }
-
-        // await this.mergeChanges(localItems, firestoreItems)
         await this.uploadPendingLocalChanges(localItems)
+        this.syncStatus.lastSync = new Date().toISOString()
         await this.loadInventory()
         // this.items = await db.getAllItems()
       } catch (error) {
@@ -837,7 +787,17 @@ export const useInventoryStore = defineStore('inventory', {
 
         if (isOnline.value) {
           try {
-            const snapshot = await getDocs(query(collection(fireDb, 'categories'), orderBy('name')))
+            const lastSync = this.syncStatus.lastSync
+            let firestoreQuery = query(collection(fireDb, 'categories'), orderBy('updatedAt', 'desc'))
+
+            if (lastSync) {
+              firestoreQuery = query(
+                collection(fireDb, 'categories'),
+                where('updatedAt', '>', new Date(lastSync)),
+                orderBy('updatedAt', 'desc')
+              )
+            }
+            const snapshot = await getDocs(firestoreQuery)
             const firestoreCategories = snapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
