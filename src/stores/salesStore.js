@@ -125,7 +125,6 @@ export const useSalesStore = defineStore('sales', {
      * @returns {Promise<void>}
      */
     async uploadSalesData(changedSales) {
-    async uploadSalesData(changedSales) {
       if (!isOnline.value)
         return console.warn('Offline. Sales data will be uploaded when online.')
 
@@ -137,22 +136,15 @@ export const useSalesStore = defineStore('sales', {
       for (const sale of changedSales) {
         try {
           await runTransaction(fireDb, async (transaction) => {
-          await runTransaction(fireDb, async (transaction) => {
             const saleRef = doc(fireDb, 'sales', sale.id)
 
-            if (!saleDoc.exists()) {
-              console.log(`Creating new sale record for sale ID: ${sale.id}`);
-              transaction.set(saleRef, { ...sale, dateTimeframe: new Date().toISOString() });
+            if (!saleDoc) {
               console.log(`Creating new sale record for sale ID: ${sale.id}`);
               transaction.set(saleRef, { ...sale, dateTimeframe: new Date().toISOString() });
             } else {
               console.log(`Updating existing sale record for sale ID: ${sale.id}`);
               transaction.update(saleRef, { ...sale, dateTimeframe: new Date().toISOString() });
-              console.log(`Updating existing sale record for sale ID: ${sale.id}`);
-              transaction.update(saleRef, { ...sale, dateTimeframe: new Date().toISOString() });
             }
-          });
-          console.log(`Sale ${sale.id} uploaded/updated successfully!`);
           });
           console.log(`Sale ${sale.id} uploaded/updated successfully!`);
         } catch (error) {
@@ -228,24 +220,11 @@ export const useSalesStore = defineStore('sales', {
         await db.transaction('rw', db.sales, async () => {
           for (const firestoreSale of firestoreSales) {
             try {
-              // const existingSales = await db.sales
-              //   .where('firebaseId')
-              //   .equals(firestoreSale.firebaseId)
-              //   .toArray()
-
-              const existingSales = localSales.filter(sale => sale.firebaseId === firestoreSale.firebaseId)
-              // const existingSales = await db.sales
-              //   .where('firebaseId')
-              //   .equals(firestoreSale.firebaseId)
-              //   .toArray()
-
               const existingSales = localSales.filter(sale => sale.firebaseId === firestoreSale.firebaseId)
 
               if (existingSales.length === 0 && !firestoreSale.localId) {
                 await db.sales.add({
                   ...firestoreSale,
-                  syncStatus: 'synced',
-                  dateTimeframe: new Date().toISOString()
                   syncStatus: 'synced',
                   dateTimeframe: new Date().toISOString()
                 })
@@ -263,8 +242,6 @@ export const useSalesStore = defineStore('sales', {
                     ...firestoreSale,
                     syncStatus: 'synced',
                     dateTimeframe: new Date().toISOString()
-                    syncStatus: 'synced',
-                    dateTimeframe: new Date().toISOString()
                   })
                 }
                 continue
@@ -274,14 +251,12 @@ export const useSalesStore = defineStore('sales', {
               const duplicateIdsToDelete = []
 
               if (saleToKeep.syncStatus === 'pending') {
-                // Enqueue update operation for Firestore
                 await syncQueue.addToQueue({
                   operation: 'update',
                   collection: 'sales',
                   data: {
                     ...saleToKeep,
                     updatedAt: serverTimestamp(),
-                    dateTimeframe: new Date().toISOString()
                     dateTimeframe: new Date().toISOString()
                   },
                   docId: saleToKeep.firebaseId
@@ -293,8 +268,6 @@ export const useSalesStore = defineStore('sales', {
                   date: formatDate(new Date(firestoreSale.date)),
                   updatedAt: serverTimestamp(),
                   dateTimeframe: new Date().toISOString()
-                  updatedAt: serverTimestamp(),
-                  dateTimeframe: new Date().toISOString()
                 })
               } else if (
                 new Date(firestoreSale.updatedAt) >
@@ -304,11 +277,8 @@ export const useSalesStore = defineStore('sales', {
                   ...firestoreSale,
                   syncStatus: 'synced',
                   dateTimeframe: new Date().toISOString()
-                  syncStatus: 'synced',
-                  dateTimeframe: new Date().toISOString()
                 })
               } else {
-                // Local is newer or equal - enqueue update operation for Firestore
                 await syncQueue.addToQueue({
                   type: 'update',
                   collection: 'sales',
@@ -317,22 +287,12 @@ export const useSalesStore = defineStore('sales', {
                     updatedAt: serverTimestamp(),
                     syncStatus: 'synced',
                     dateTimeframe: new Date().toISOString()
-                    syncStatus: 'synced',
-                    dateTimeframe: new Date().toISOString()
                   },
                   docId: firestoreSale.firebaseId
                 })
 
-                // Update local db to reflect synced status
-                await db.sales.update(saleToKeep.id, { syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
                 await db.sales.update(saleToKeep.id, { syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
               }
-
-              // await db.sales.update(saleToKeep.id, {
-              //   ...firestoreSale,
-              //   id: saleToKeep.id,
-              //   syncStatus: 'synced'
-              // })
 
               for (const duplicate of duplicates)
                 duplicateIdsToDelete.push(duplicate.id)
@@ -352,7 +312,6 @@ export const useSalesStore = defineStore('sales', {
         for (const localSale of localSales) {
           if (!localSale.firebaseId) {
             try {
-              // Use Firestore transaction for creating new sales
               await runTransaction(fireDb, async (transaction) => {
                 const newSaleRef = doc(collection(fireDb, 'sales'))
                 const newSaleWithTimestamp = {
@@ -360,10 +319,8 @@ export const useSalesStore = defineStore('sales', {
                   createdAt: serverTimestamp(),
                   updatedAt: serverTimestamp(),
                   dateTimeframe: new Date().toISOString()
-                  dateTimeframe: new Date().toISOString()
                 }
 
-                // Check for conflicts based on unique ID and timestamp
                 const conflictQuery = query(
                   collection(fireDb, 'sales'),
                   where('id', '==', newSaleWithTimestamp.id),
@@ -383,8 +340,6 @@ export const useSalesStore = defineStore('sales', {
 
                 transaction.set(newSaleRef, newSaleWithTimestamp)
 
-                // Update the local sale with the firebaseId after successful creation
-                await db.sales.update(localSale.id, { firebaseId: newSaleRef.id, syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
                 await db.sales.update(localSale.id, { firebaseId: newSaleRef.id, syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
               })
             } catch (error) {
@@ -396,7 +351,6 @@ export const useSalesStore = defineStore('sales', {
               })
             }
           } else {
-            // Sale exists locally and in Firestore - check if it needs to be deleted from Firestore
             const firestoreFirebaseIds = new Set(firestoreSales.map(sale => sale.firebaseId))
 
             if (firestoreFirebaseIds.has(localSale.firebaseId))
@@ -407,43 +361,39 @@ export const useSalesStore = defineStore('sales', {
             if (currentSaleItem && currentSaleItem.syncStatus === 'pending')
               continue
 
-            // Sale exists locally but not in Firestore, and it's not pending
-            // Enqueue delete operation for Firestore with updatedAt
             await syncQueue.addToQueue({
               type: 'delete',
               collection: 'sales',
               docId: localSale.firebaseId,
               data: {
-                updatedAt: serverTimestamp(), // Update the timestamp on delete
-                dateTimeframe: new Date().toISOString()
+                updatedAt: serverTimestamp(),
                 dateTimeframe: new Date().toISOString()
               },
             })
 
             await db.deleteSale(localSale.id);
           }
+        }
 
-          const afterSyncSales = await db.getAllSales()
+        const afterSyncSales = await db.getAllSales()
 
-          // Identify changed sales records
-          const changedSales = afterSyncSales.filter(afterSale => {
-            const beforeSale = beforeSyncSales.find(
-              beforeSale => beforeSale.id === afterSale.id
-            )
-            return !beforeSale || JSON.stringify(beforeSale) !== JSON.stringify(afterSale)
-          })
+        const changedSales = afterSyncSales.filter(afterSale => {
+          const beforeSale = beforeSyncSales.find(
+            beforeSale => beforeSale.id === afterSale.id
+          )
+          return !beforeSale || JSON.stringify(beforeSale) !== JSON.stringify(afterSale)
+        })
 
-          if (changedSales.length > 0) {
-            console.log(
-              'Changes detected. Uploading',
-              changedSales.length,
-              'sales records...'
-            )
-            this.sales = afterSyncSales // Update the sales state with the latest data
-            this.uploadSalesData(changedSales)
-          } else {
-            console.log('No changes detected. Skipping upload.')
-          }
+        if (changedSales.length > 0) {
+          console.log(
+            'Changes detected. Uploading',
+            changedSales.length,
+            'sales records...'
+          )
+          this.sales = afterSyncSales
+          this.uploadSalesData(changedSales)
+        } else {
+          console.log('No changes detected. Skipping upload.')
         }
       } catch (error) {
         console.error('Error syncing with Firestore : ', error)
@@ -581,7 +531,6 @@ export const useSalesStore = defineStore('sales', {
         return { success: false, error: 'Cart is empty' }
 
       try {
-        // Create sale record with createdAt timestamp
         const sale = {
           id: crypto.randomUUID(),
           items: this.cart.map(item => ({
@@ -598,10 +547,8 @@ export const useSalesStore = defineStore('sales', {
           paymentMethod: this.selectedPaymentMethod,
           date: formatDate(new Date(), 'YYYY-MM-DD'),
           dateTimeframe: new Date().toISOString(),
-          dateTimeframe: new Date().toISOString(),
-          createdAt: new Date().toISOString() // Add createdAt timestamp
+          createdAt: new Date().toISOString()
         }
-        // Update inventory quantities
         this.cart.forEach(async item => {
           const product = this.getProducts.find(p => p.id === item.id)
           product.quantity = product.quantity - item.quantity
@@ -609,10 +556,8 @@ export const useSalesStore = defineStore('sales', {
             await inventoryStore.updateExistingItem(item.id, product)
         })
 
-        // Save sale to database
         await db.sales.add(sale)
 
-        // Create cash flow entry
         await financialStore.addTransaction({
           paymentMethod: this.selectedPaymentMethod,
           type: 'income',
@@ -620,11 +565,8 @@ export const useSalesStore = defineStore('sales', {
           date: sale.date,
           description: 'Sale',
           dateTimeframe: new Date().toISOString()
-          description: 'Sale',
-          dateTimeframe: new Date().toISOString()
         })
 
-        // Clear cart and reset checkout state
         this.clearCart()
 
         return { success: true, sale }
