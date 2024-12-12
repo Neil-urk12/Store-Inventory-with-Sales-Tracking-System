@@ -100,18 +100,13 @@ export const useSalesStore = defineStore('sales', {
      */
     async initializeDb() {
       try {
-        const existingSales = await db.sales.count()
+        this.loading = true
         if (isOnline.value) {
           await this.syncWithFirestore()
           await syncQueue.processQueue()
-        }
+        } else this.sales = await db.getAllSales()
 
-        if (existingSales === 0 && !isOnline.value)
-          console.error(
-            'No local data available. Waiting for network connection...'
-          )
-
-        await this.loadSales()
+        this.loading = false
         return true
       } catch (error) {
         console.error(error, 'Failed to initialize database')
@@ -174,16 +169,15 @@ export const useSalesStore = defineStore('sales', {
     async loadSales() {
       try {
         this.loading = true
-        if (this.sales.length === 0){
-          const localSales = await db.sales.orderBy('date').reverse().toArray()
-          const validation = await validateSales(localSales)
-          if (!validation.isValid) throw new Error(validation.errors)
 
-          if (localSales.length === 0)
-            await this.syncWithFirestore()
-        }
-        this.sales = await db.getAllSales()
-        await this.syncWithFirestore()
+        if(isOnline.value)
+          await this.syncWithFirestore()
+
+        const localSales = await db.getAllSales()
+        const validation = await validateSales(localSales)
+        if(!validation.isValid) throw new Error (validation.errors)
+
+        this.sales = localSales
       } catch (error) {
         console.error('Error loading sales:', error)
       } finally {
