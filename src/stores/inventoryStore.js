@@ -298,15 +298,18 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         this.loading = true
 
-        const localItems = await db.getAllItems()
+        let localItems = await db.getAllItems()
+        if (!localItems)
+          localItems = []
+
         this.items = localItems.map(processItem)
 
         if (localItems.length === 0 && isOnline.value) {
           await this.syncWithFirestore()
           const updatedItems = await db.getAllItems()
-          this.items = updatedItems.map(processItem)
+          this.items = updatedItems ? updatedItems.map(processItem) : []
         }
-        else if (isOnline.value) await this.syncWithFirestore()
+        else if (localItems.length > 0 && isOnline.value) await this.syncWithFirestore()
 
       } catch (error) {
         this.error = handleError(error, 'Failed to load inventory')
