@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
+import { ref } from 'vue'
 
 /**
  * @constant {Object} SYNC_CONFIG
@@ -67,10 +68,18 @@ class SyncQueue {
    * for lock management.
    */
   constructor() {
+    this.syncProgress = ref({
+      current: 0,
+      total: 0
+    })
+    this.pendingOperations = ref(0)
+    this.isSyncing = ref(false)
+    
     this.isProcessing = false
     this.lockId = 'sync_lock'
     this.processId = Math.random().toString(36).substring(7)
     this.startNetworkListener()
+    this.monitorPendingOperations()
   }
 
   startNetworkListener() {
@@ -134,6 +143,7 @@ class SyncQueue {
     if (!hasLock) return
 
     this.isProcessing = true
+    this.isSyncing.value = true
 
     try {
       const operations = await db.syncQueue
@@ -141,11 +151,16 @@ class SyncQueue {
         .equals('pending')
         .toArray()
 
+      this.syncProgress.value = {
+        current: 0,
+        total: operations.length
+      }
+
       for (const operation of operations) {
         try {
           await this.processOperation(operation)
-          // Only remove from queue if successfully processed
           await db.syncQueue.delete(operation.id)
+          this.syncProgress.value.current++
         } catch (error) {
           console.error('Error processing operation:', operation, error)
           const nextAttempt = (operation.attempts || 0) + 1
@@ -173,6 +188,8 @@ class SyncQueue {
       console.error('Error processing queue:', error)
     } finally {
       this.isProcessing = false
+      this.isSyncing.value = false
+      this.syncProgress.value = { current: 0, total: 0 }
       await this.releaseLock()
     }
   }
@@ -440,9 +457,29 @@ class SyncQueue {
       }
     }, interval)
   }
+
+  async monitorPendingOperations() {
+    // Update pending operations count periodically
+    setInterval(async () => {
+      const count = await db.syncQueue
+        .where('status')
+        .equals('pending')
+        .count()
+      this.pendingOperations.value = count
+    }, 5000)
+  }
 }
 
 /** @const {SyncQueue} syncQueue - Singleton instance of SyncQueue */
 export const syncQueue = new SyncQueue()
 
 syncQueue.checkAndProcessQueue()
+
+export function useSyncQueue() {
+  return {
+    pendingOperations: syncQueue.pendingOperations,
+    isSyncing: syncQueue.isSyncing,
+    syncProgress: syncQueue.syncProgress,
+    processQueue: () => syncQueue.processQueue()
+  }
+}
