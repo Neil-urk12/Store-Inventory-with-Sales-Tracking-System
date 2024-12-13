@@ -5,6 +5,7 @@
 <script setup>
 import { syncQueue } from 'src/services/syncQueue'
 import { onMounted } from 'vue'
+import { DataPruningService } from 'src/services/dataPruning'
 
 defineOptions({
   name: 'App'
@@ -12,5 +13,6 @@ defineOptions({
 
 onMounted(() => {
   syncQueue.checkAndProcessQueue()
+  DataPruningService.startAutoPrune()
 })
 </script>
