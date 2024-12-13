@@ -108,12 +108,14 @@ class AppDatabase extends Dexie {
       throw new ValidationError('Category is required')
     if (typeof item.price !== 'number' || item.price < 0)
       throw new ValidationError('Valid price is required')
+    if (!item.sku || item.sku.length > 9)
+      throw new ValidationError('Invalid SKU format')
 
     // Sanitize and prepare item data
     const newItem = {
       ...item,
       name: item.name.trim(),
-      sku: item.sku?.trim() || null,
+      sku: item.sku,
       quantity: Math.max(0, parseInt(item.quantity) || 0),
       price: parseFloat(item.price),
       image: item.image?.trim() || null,
@@ -123,16 +125,15 @@ class AppDatabase extends Dexie {
     }
 
     try {
-      // Check for duplicate SKU if provided
-      if (newItem.sku) {
-        const existingItem = await this.items.where('sku').equals(newItem.sku).first()
-        if (existingItem)
-          throw new ValidationError(`Item with SKU ${newItem.sku} already exists`);
-      }
+      // Check for duplicate SKU
+      const existingItem = await this.items.where('sku').equals(newItem.sku).first()
+      if (existingItem)
+        throw new ValidationError(`Item with SKU ${newItem.sku} already exists`)
+      
       return await this.items.add(newItem)
     } catch (error) {
       console.error('Database error creating item:', error)
-      throw DatabaseError('Failed to create item')
+      throw error instanceof ValidationError ? error : new DatabaseError('Failed to create item')
     }
   }
 
