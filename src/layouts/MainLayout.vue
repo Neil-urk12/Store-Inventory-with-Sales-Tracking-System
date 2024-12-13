@@ -3,7 +3,8 @@ import { defineAsyncComponent, ref } from 'vue'
 const EssentialLink = defineAsyncComponent(() => import('src/components/layout/EssentialLink.vue'))
 const ColorToggle = defineAsyncComponent(() => import('src/components/layout/ColorToggle.vue'))
 import { useAuthStore } from 'src/stores/authStore'
-import { useRouter } from 'vue-router';
+import { useRouter } from 'vue-router'
+const SyncStatus = defineAsyncComponent(() => import('src/components/global/SyncStatus.vue'))
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -90,5 +91,18 @@ const leftDrawerOpen = ref(false)
         </q-toolbar-title>
       </q-toolbar>
     </q-footer> -->
+    <SyncStatus />
   </q-layout>
 </template>
+
+<style>
+.q-header {
+  z-index: 2001;
+}
+.q-drawer {
+  z-index: 2002;
+}
+.sync-status-container {
+  z-index: 2000;
+}
+</style>
