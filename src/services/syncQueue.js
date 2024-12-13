@@ -18,11 +18,18 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  getDoc
+  getDoc,
+  serverTimestamp,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  where
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
 import { ref } from 'vue'
+import debounce from 'lodash/debounce'
 
 /**
  * @constant {Object} SYNC_CONFIG
@@ -78,6 +85,13 @@ class SyncQueue {
     this.isProcessing = false
     this.lockId = 'sync_lock'
     this.processId = Math.random().toString(36).substring(7)
+    this.listeners = new Map()
+    this.unsubscribers = new Map()
+    this.listenerConfig = {
+      batchSize: 100,
+      debounceTime: 1000
+    }
+    
     this.startNetworkListener()
     this.monitorPendingOperations()
   }
@@ -109,7 +123,6 @@ class SyncQueue {
    * @throws {Error} If operation is invalid or queue is full
    */
   async addToQueue(operation) {
-    // Always add to queue first, process later when online
     await db.syncQueue.add({
       ...operation,
       attempts: 0,
@@ -117,7 +130,7 @@ class SyncQueue {
       status: 'pending',
       error: null,
       timestamp: new Date().toISOString()
-    })
+    });
   }
 
   /**
@@ -146,6 +159,12 @@ class SyncQueue {
     this.isSyncing.value = true
 
     try {
+      // Setup listeners for main collections
+      ['items', 'categories', 'sales'].forEach(collection => {
+        this.setupCollectionListener(collection);
+      });
+
+      // Process pending operations
       const operations = await db.syncQueue
         .where('status')
         .equals('pending')
@@ -209,128 +228,78 @@ class SyncQueue {
    * @private
    */
   async processOperation(operation) {
-    const { type, collection: collectionName, data, docId } = operation
+    const { type, collection: collectionName, data, docId } = operation;
 
     try {
       switch (type) {
         case 'add': {
-          try {
-            const docRef = await addDoc(collection(fireDb, collectionName), {
-              ...data,
-              localId: data.id.toString(),
-              date: formatDate(data.date),
-              updatedAt: new Date().toISOString()
-            })
-            await db[collectionName].update(data.id, {
+          const docRef = await addDoc(collection(fireDb, collectionName), {
+            ...data,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+
+          // Update local record with Firebase ID
+          if (docId) {
+            await db[collectionName].update(docId, {
               firebaseId: docRef.id,
               syncStatus: 'synced'
-            })
-          } catch (error) {
-            // If add operation fails, update local record with error and set syncStatus to 'failed'
-            await db[collectionName].update(data.id, {
-              firebaseId: null, // Clear firebaseId if add operation failed
-              syncStatus: 'failed',
-              error: error.message
-            })
-            console.error(`Sync Error for ${operation.type} operation:`, {
-              operation,
-              error: error.message,
-              timestamp: new Date().toISOString()
-            })
-            throw error
+            });
           }
-          break
+          break;
         }
 
         case 'update': {
-          try {
-            const localRecord = await db[collectionName].get(data.id)
-            if (!localRecord?.firebaseId) {
-              throw new Error('No Firebase ID found for update operation')
-            }
-
-            const docRef = doc(fireDb, collectionName, localRecord.firebaseId)
-            const docSnap = await getDoc(docRef)
-
-            if (!docSnap.exists()) {
-              throw new Error('Firebase document not found')
-            }
-
-            const firebaseData = docSnap.data()
-
-            if (firebaseData.version > data.version) {
-              const mergedData = await this.resolveConflict(
-                firebaseData,
-                data
-              )
-              await updateDoc(docRef, {
-                ...mergedData,
-                localId: data.id.toString(),
-                updatedAt: new Date().toISOString()
-              })
-              .then(() => {
-                // Update local record with merged data and set syncStatus to 'synced'
-                db[collectionName].update(data.id, {
-                  ...mergedData,
-                  syncStatus: 'synced'
-                })
-              })
-            } else {
-              await updateDoc(docRef, {
-                ...data,
-                localId: data.id.toString(),
-                updatedAt: new Date().toISOString()
-              })
-              .then(() => {
-                // Update local record and set syncStatus to 'synced'
-                db[collectionName].update(data.id, {
-                  syncStatus: 'synced'
-                })
-              })
-            }
-          } catch (error) {
-            const shouldRetry = this.handleSyncError(error)
-            if (shouldRetry) {
-              const retryCount = (operation.retryCount || 0) + 1
-              if (retryCount <= MAX_RETRIES) {
-                await this.requeueWithDelay(operation, retryCount)
-                return
-              }
-            }
-
-            // Update local record with error and set syncStatus to 'failed'
-            await db[collectionName].update(data.id, {
-              syncStatus: 'failed',
-              error: error.message
-            })
-            throw error
+          const localItem = await db[collectionName].get(docId);
+          if (!localItem) {
+            throw new Error('Item not found for update');
           }
-          break
+
+          if (localItem.firebaseId) {
+            await updateDoc(doc(fireDb, collectionName, localItem.firebaseId), {
+              ...data,
+              updatedAt: serverTimestamp()
+            });
+            
+            await db[collectionName].update(docId, {
+              syncStatus: 'synced'
+            });
+          } else {
+            // If no firebaseId, treat as new item
+            const docRef = await addDoc(collection(fireDb, collectionName), {
+              ...data,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await db[collectionName].update(docId, {
+              firebaseId: docRef.id,
+              syncStatus: 'synced'
+            });
+          }
+          break;
         }
 
         case 'delete': {
-          try {
-            if (docId){
-              await deleteDoc(doc(fireDb, collectionName, docId))
-              await db[collectionName].delete(docId)
-            } else {
-              console.warn('No firebaseId found for delete operation')
-              // You might want to handle this case differently,
-              // e.g., by marking the local record as deleted or retrying later.
-            }
-          } catch (error) {
-            console.error('Error deleting document:', error)
-            throw error
+          const localItem = await db[collectionName].get(docId);
+          if (!localItem) {
+            console.warn('Item not found for deletion');
+            return;
           }
-          break
+
+          if (localItem.firebaseId) {
+            await deleteDoc(doc(fireDb, collectionName, localItem.firebaseId));
+          }
+
+          await db[collectionName].delete(docId);
+          break;
         }
 
         default:
-          throw new Error(`Unknown operation type: ${type}`)
+          throw new Error(`Unknown operation type: ${type}`);
       }
     } catch (error) {
-      console.error(`Error processing ${type} operation:`, error)
-      throw error
+      console.error(`Error processing ${type} operation:`, error);
+      throw error;
     }
   }
 
@@ -468,6 +437,145 @@ class SyncQueue {
       this.pendingOperations.value = count
     }, 5000)
   }
+
+  /**
+   * @method setupCollectionListener
+   * @param {string} collectionName - Name of collection to listen to
+   * @description Sets up a real-time listener for a Firestore collection
+   */
+  setupCollectionListener(collectionName) {
+    if (this.unsubscribers.has(collectionName)) {
+      return;
+    }
+
+    try {
+      const firestoreQuery = query(
+        collection(fireDb, collectionName),
+        orderBy('updatedAt', 'desc'),
+        limit(this.listenerConfig.batchSize)
+      );
+
+      const unsubscribe = onSnapshot(
+        firestoreQuery,
+        { includeMetadataChanges: true },
+        debounce(async (snapshot) => {
+          if (snapshot.metadata.hasPendingWrites) return;
+
+          const changes = [];
+          snapshot.docChanges().forEach(change => {
+            if (change.doc.metadata.hasPendingWrites) return;
+
+            changes.push({
+              type: change.type,
+              id: change.doc.id,
+              data: { ...change.doc.data(), firebaseId: change.doc.id }
+            });
+          });
+
+          if (changes.length > 0) {
+            await this.processCollectionChanges(collectionName, changes);
+          }
+        }, this.listenerConfig.debounceTime),
+        (error) => {
+          console.error(`Listener error for ${collectionName}:`, error);
+          this.handleListenerError(collectionName, error);
+        }
+      );
+
+      this.unsubscribers.set(collectionName, unsubscribe);
+      console.log(`Listener setup for ${collectionName}`);
+    } catch (error) {
+      console.error(`Error setting up listener for ${collectionName}:`, error);
+    }
+  }
+
+  /**
+   * @method processCollectionChanges
+   * @private
+   */
+  async processCollectionChanges(collectionName, changes) {
+    try {
+      await db.transaction('rw', db[collectionName], async () => {
+        for (const change of changes) {
+          const { type, id, data } = change;
+          const localItem = await db[collectionName]
+            .where('firebaseId')
+            .equals(id)
+            .first();
+
+          switch (type) {
+            case 'added':
+            case 'modified':
+              if (localItem) {
+                if (localItem.syncStatus !== 'pending') {
+                  await db[collectionName].update(localItem.id, {
+                    ...data,
+                    syncStatus: 'synced',
+                    updatedAt: new Date().toISOString()
+                  });
+                }
+              } else {
+                await db[collectionName].add({
+                  ...data,
+                  syncStatus: 'synced',
+                  updatedAt: new Date().toISOString()
+                });
+              }
+              break;
+
+            case 'removed':
+              if (localItem && localItem.syncStatus !== 'pending') {
+                await db[collectionName].delete(localItem.id);
+              }
+              break;
+          }
+        }
+      });
+    } catch (error) {
+      console.error(`Error processing changes for ${collectionName}:`, error);
+    }
+  }
+
+  /**
+   * @method handleListenerError
+   * @private
+   */
+  handleListenerError(collectionName, error) {
+    const retryDelay = 5000;
+    this.removeListener(collectionName);
+    
+    setTimeout(() => {
+      if (this.isProcessing) {
+        this.setupCollectionListener(collectionName);
+      }
+    }, retryDelay);
+  }
+
+  /**
+   * @method removeListener
+   * @param {string} collectionName
+   */
+  removeListener(collectionName) {
+    const unsubscribe = this.unsubscribers.get(collectionName);
+    if (unsubscribe) {
+      unsubscribe();
+      this.unsubscribers.delete(collectionName);
+    }
+  }
+
+  /**
+   * @method removeAllListeners
+   */
+  removeAllListeners() {
+    for (const [collectionName] of this.unsubscribers) {
+      this.removeListener(collectionName);
+    }
+  }
+
+  // Update cleanup on instance destruction
+  cleanup() {
+    this.removeAllListeners();
+  }
 }
 
 /** @const {SyncQueue} syncQueue - Singleton instance of SyncQueue */
@@ -483,3 +591,8 @@ export function useSyncQueue() {
     processQueue: () => syncQueue.processQueue()
   }
 }
+
+// Cleanup on window unload
+window.addEventListener('unload', () => {
+  syncQueue.cleanup();
+});
