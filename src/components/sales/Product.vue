@@ -13,6 +13,7 @@ const salesStore = useSalesStore()
 const inventoryStore = useInventoryStore()
 const financialStore = useFinancialStore()
 const filteredProducts = computed(() => salesStore.filteredProducts)
+const hasProducts = computed(() => filteredProducts.value && filteredProducts.value.length > 0)
 
 const handleAddToCart = (product) => {
   const result = salesStore.addToCart(product)
@@ -27,12 +28,30 @@ const handleAddToCart = (product) => {
 onMounted(async () => {
   if(filteredProducts.value === 0)
     await inventoryStore.loadInventory()
+
+  console.log(filteredProducts.value)
 })
 </script>
 
 <template>
   <div class="row q-col-gutter-md">
+    <div v-if="!hasProducts" class="col-12">
+      <q-card class="text-center q-pa-lg">
+        <q-icon name="inventory_2" size="4rem" color="grey-5" />
+        <div class="text-h6 q-mt-md text-grey-7">No Products Available</div>
+        <div class="text-body2 text-grey-6 q-mt-sm">
+          {{ salesStore.selectedCategory 
+            ? `No products found in category "${salesStore.selectedCategory}"`
+            : salesStore.searchQuery
+              ? `No products match "${salesStore.searchQuery}"`
+              : 'No products have been added to inventory yet'
+          }}
+        </div>
+      </q-card>
+    </div>
+
     <div
+      v-else
       v-for="product in filteredProducts"
       :key="product.id"
       class="col-6 col-sm-4 col-md-3"
@@ -114,5 +133,10 @@ onMounted(async () => {
 }
 .offlineBg{
   height: 60px;
+}
+.q-card {
+  .q-icon {
+    opacity: 0.5;
+  }
 }
 </style>

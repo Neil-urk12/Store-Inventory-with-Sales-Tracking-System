@@ -1,24 +1,18 @@
 <script setup>
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useInventoryStore } from '../stores/inventoryStore'
-import { useSalesStore } from 'src/stores/salesStore';
+import { useSalesStore } from 'src/stores/salesStore'
 import { useFinancialStore } from 'src/stores/financialStore'
 import { useQuasar } from 'quasar'
-const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'));
+const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'))
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const salesStore = useSalesStore()
 const financialStore = useFinancialStore()
 
-const paymentMethods = [ 'Cash', 'GCash', 'Growsari']
+const paymentMethods = ['Cash', 'GCash', 'Growsari']
 
-// const categories = computed(() => {
-//   // const uniqueCategories = [...new Set(salesStore.products.map(p => p.category))]
-//   return [...new Set(salesStore.products.map(p => p.category))].map(cat => ({ label: cat, value: cat}))
-//   // const uniqueCategories = [...new Set(products.value.map(p => p.category))]
-//   // return uniqueCategories.map(cat => ({ label: cat, value: cat }))
-// })
 const categories = computed(() => inventoryStore.formattedCategories)
 const subtotal = computed(() =>
   salesStore.getCart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
@@ -38,11 +32,6 @@ const handleUpdateCartQuantity = (item, change) => {
 
 const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
 
-// const removeFromCart = (item) => (salesStore.cart.value.indexOf(item) > -1) ? salesStore.cart.value.splice(index, 1) : null //Final immutable optimization
-  // const index = cart.value.indexOf(item)   //initial
-  // if (index > -1) cart.value.splice(index, 1)
-  // if(cart.value.indexOf(item) > -1) cart.value.splice(index, 1)  //optimized 1
-
 const processCheckout = async () => {
   salesStore.isCheckoutProcessing = true
   const result = await salesStore.processCheckout()
@@ -55,20 +44,26 @@ const processCheckout = async () => {
     })
     salesStore.clearCart()
     inventoryStore.loadInventory()
-  } else
+  } else {
     $q.notify({
       type: 'negative',
       message: result.error
     })
+  }
 }
 
-onMounted(() => {
-  if (salesStore.sales.length === 0)
-    salesStore.initializeDb()
-  if (inventoryStore.items.length === 0)
-    inventoryStore.loadInventory()
-  if (inventoryStore.categories.length === 0)
-    inventoryStore.loadCategories()
+onMounted(async () => {
+  try {
+    const loadTasks = [
+      salesStore.sales.length === 0 ? salesStore.initializeDb() : Promise.resolve(),
+      inventoryStore.items.length === 0 ? inventoryStore.loadInventory() : Promise.resolve(),
+      inventoryStore.categories.length === 0 ? inventoryStore.loadCategories() : Promise.resolve()
+    ]
+
+    await Promise.all(loadTasks)
+  } catch (error) {
+    console.error(error)
+  } 
 })
 </script>
 

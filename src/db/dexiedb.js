@@ -51,35 +51,35 @@ class AppDatabase extends Dexie {
       // Sync queue table
       syncQueue: '++id, type, collection, data, docId, timestamp, attempts, lastAttempt, status, error',
       syncLocks: 'lockId, timestamp, owner'
-    });
+    })
 
     this.items.hook('creating', (primKey, obj) => {
-      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD');
-      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
+      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
+      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
       // Ensure category information is preserved
       if (obj.categoryId && !obj.category) {
-        const store = useInventoryStore();
-        obj.category = store.getCategoryName(obj.categoryId);
+        const store = useInventoryStore()
+        obj.category = store.getCategoryName(obj.categoryId)
       }
-    });
+    })
 
     this.items.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
+      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
       // Ensure category information is preserved during updates
       if (modifications.categoryId && !modifications.category) {
-        const store = useInventoryStore();
-        modifications.category = store.getCategoryName(modifications.categoryId);
+        const store = useInventoryStore()
+        modifications.category = store.getCategoryName(modifications.categoryId)
       }
-    });
+    })
 
     this.categories.hook('creating', (primKey, obj) => {
-      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD');
-      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
-    });
+      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
+      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+    })
 
     this.categories.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD');
-    });
+      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+    })
   }
 
   // Inventory Methods--------------------------------------------------
@@ -90,7 +90,7 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all items in the database.
   */
   async getAllItems() {
-    return await this.items.toArray();
+    return await this.items.toArray()
   }
   /**
    * @async
@@ -103,11 +103,11 @@ class AppDatabase extends Dexie {
   async createItem(item) {
     // Validate required fields
     if (!item.name?.trim())
-      throw new ValidationError('Item name is required');
+      throw new ValidationError('Item name is required')
     if (!item.categoryId)
-      throw new ValidationError('Category is required');
+      throw new ValidationError('Category is required')
     if (typeof item.price !== 'number' || item.price < 0)
-      throw new ValidationError('Valid price is required');
+      throw new ValidationError('Valid price is required')
 
     // Sanitize and prepare item data
     const newItem = {
@@ -129,7 +129,6 @@ class AppDatabase extends Dexie {
         if (existingItem)
           throw new ValidationError(`Item with SKU ${newItem.sku} already exists`);
       }
-
       return await this.items.add(newItem)
     } catch (error) {
       console.error('Database error creating item:', error)
@@ -148,29 +147,24 @@ class AppDatabase extends Dexie {
   */
   async updateExistingItem(id, changes) {
     // Check if item exists
-    const existingItem = await this.items.get(id);
-    if (!existingItem) {
-      throw new Error('Item not found');
-    }
+    const existingItem = await this.items.get(id)
+    if (!existingItem)
+      throw new Error('Item not found')
 
     // Validate changes
-    if (changes.name !== undefined && !changes.name?.trim()) {
-      throw new Error('Item name cannot be empty');
-    }
-    if (changes.price !== undefined && (typeof changes.price !== 'number' || changes.price < 0)) {
-      throw new Error('Price must be a non-negative number');
-    }
-    if (changes.quantity !== undefined && (typeof changes.quantity !== 'number' || changes.quantity < 0)) {
-      throw new Error('Quantity must be a non-negative number');
-    }
+    if (changes.name !== undefined && !changes.name?.trim())
+      throw new Error('Item name cannot be empty')
+    if (changes.price !== undefined && (typeof changes.price !== 'number' || changes.price < 0))
+      throw new Error('Price must be a non-negative number')
+    if (changes.quantity !== undefined && (typeof changes.quantity !== 'number' || changes.quantity < 0))
+      throw new Error('Quantity must be a non-negative number')
 
     try {
       // Check for duplicate SKU if SKU is being changed
       if (changes.sku && changes.sku !== existingItem.sku) {
-        const duplicateSku = await this.items.where('sku').equals(changes.sku.trim()).first();
-        if (duplicateSku) {
-          throw new Error(`Item with SKU ${changes.sku} already exists`);
-        }
+        const duplicateSku = await this.items.where('sku').equals(changes.sku.trim()).first()
+        if (duplicateSku)
+          throw new Error(`Item with SKU ${changes.sku} already exists`)
       }
 
       // Sanitize and prepare update data
@@ -183,12 +177,12 @@ class AppDatabase extends Dexie {
         image: changes.image?.trim() || existingItem.image,
         updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
         syncStatus: 'pending'
-      };
+      }
 
-      return await this.items.update(id, updatedChanges);
+      return await this.items.update(id, updatedChanges)
     } catch (error) {
-      console.error('Database error updating item:', error);
-      throw error;
+      console.error('Database error updating item:', error)
+      throw error
     }
   }
   /**
@@ -199,7 +193,7 @@ class AppDatabase extends Dexie {
    * @description Adds an item to the database.
   */
   async addItem(item) {
-    return await this.items.add(item);
+    return await this.items.add(item)
   }
   /**
    * @async
@@ -210,7 +204,7 @@ class AppDatabase extends Dexie {
    * @description Updates an item in the database.
   */
   async updateItem(id, changes) {
-    return await this.items.update(id, changes);
+    return await this.items.update(id, changes)
   }
   /**
    * @async
@@ -220,7 +214,7 @@ class AppDatabase extends Dexie {
    * @description Deletes an item from the database.
   */
   async deleteItem(id) {
-    return await this.items.delete(id);
+    return await this.items.delete(id)
   }
   /**
    * @async
@@ -233,7 +227,7 @@ class AppDatabase extends Dexie {
     return await this.sales.add({
       ...sale,
       date: formatDate(new Date(), 'YYYY-MM-DD')
-    });
+    })
   }
   /**
    * @async
@@ -242,7 +236,7 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all sales in the database.
   */
   async getAllSales() {
-    return await this.sales.toArray();
+    return await this.sales.toArray()
   }
   /**
    * @async
@@ -254,9 +248,9 @@ class AppDatabase extends Dexie {
    */
   async deleteSale(saleId) {
     try {
-      await this.sales.delete(saleId);
+      await this.sales.delete(saleId)
     } catch (error) {
-      console.error('Database error deleting sale:', error);
+      console.error('Database error deleting sale:', error)
       throw error; // Re-throw the error for handling by the caller
     }
   }
@@ -273,7 +267,7 @@ class AppDatabase extends Dexie {
     try {
       await this.sales.bulkDelete(saleIds);
     } catch (error) {
-      console.error('Database error deleting sales:', error);
+      console.error('Database error deleting sales:', error)
       throw error; // Re-throw the error for handling by the caller
     }
   }
@@ -316,7 +310,7 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all contact categories in the database.
   */
   async getAllContactCategories() {
-    return await this.contactCategories.toArray();
+    return await this.contactCategories.toArray()
   }
   /**
    * @async
@@ -326,7 +320,7 @@ class AppDatabase extends Dexie {
    * @description Adds a contact category to the database.
   */
   async addContactCategory(contactCategory) {
-    return await this.contactCategories.add(contactCategory);
+    return await this.contactCategories.add(contactCategory)
   }
   /**
    * @async
