@@ -13,6 +13,7 @@ const editMode = computed(() => inventoryStore.editMode)
 const formRef = ref(null)
 const imageLoading = ref(false)
 const imageError = ref(false)
+const submitting = ref(false)
 
 // Image preview handling
 const imagePreviewUrl = ref('')
@@ -54,9 +55,10 @@ watch(() => editedItem.value.image, (newUrl) => {
 })
 
 const validateAndSave = async () => {
-  if (!formRef.value) return
+  if (!formRef.value || submitting.value) return
 
   try {
+    submitting.value = true
     const isValid = await formRef.value.validate()
     if (!isValid) return
 
@@ -97,8 +99,7 @@ const validateAndSave = async () => {
       })
 
     inventoryStore.itemDialog = false
-    // formRef.value.resetValidation()
-    await inventoryStore.loadInventory() // Refresh the inventory list
+    await inventoryStore.loadInventory()
   } catch (err) {
     console.error('Save error:', err)
     $q.notify({
@@ -108,6 +109,8 @@ const validateAndSave = async () => {
       icon: 'error',
       position: 'top'
     })
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -205,7 +208,7 @@ const validateAndSave = async () => {
           label="Cancel"
           color="primary"
           v-close-popup
-          :disable="loading"
+          :disable="loading || submitting"
         />
         <q-btn
           flat
@@ -213,7 +216,8 @@ const validateAndSave = async () => {
           :color="isOnline ? 'primary' : 'warning'"
           type="submit"
           @click="validateAndSave"
-          :loading="loading"
+          :loading="loading || submitting"
+          :disable="loading || submitting"
         >
           <template v-slot:loading>
             <q-spinner-dots />

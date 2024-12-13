@@ -94,8 +94,19 @@
       </q-card-section>
 
       <q-card-actions align="right">
-        <q-btn flat label="Cancel" color="primary" v-close-popup />
-        <q-btn flat label="Add" color="primary" @click="handleAddCategory" />
+        <q-btn flat label="Cancel" color="primary" v-close-popup :disable="loading" />
+        <q-btn 
+          flat 
+          label="Add" 
+          color="primary" 
+          @click="handleAddCategory" 
+          :loading="loading"
+          :disable="loading || !newCategoryName"
+        >
+          <template v-slot:loading>
+            <q-spinner-dots />
+          </template>
+        </q-btn>
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -109,6 +120,7 @@ import { useQuasar, debounce } from 'quasar'
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const newCategoryName = ref('')
+const loading = ref(false)
 
 watch(() => inventoryStore.categoryDialog, (newVal) => {
   if (!newVal)
@@ -128,22 +140,27 @@ const handleAddCategory = async () => {
     return
   }
 
-  const result = await inventoryStore.addCategory(newCategoryName.value)
+  loading.value = true
+  try {
+    const result = await inventoryStore.addCategory(newCategoryName.value)
 
-  if (result) {
-    $q.notify({
-      color: 'positive',
-      message: 'Category added successfully',
-      position: 'top'
-    })
-    newCategoryName.value = ''
-    inventoryStore.closeCategoryDialog()
-  } else {
-    $q.notify({
-      color: 'negative',
-      message: inventoryStore.error || 'Failed to add category',
-      position: 'top'
-    })
+    if (result) {
+      $q.notify({
+        color: 'positive',
+        message: 'Category added successfully',
+        position: 'top'
+      })
+      newCategoryName.value = ''
+      inventoryStore.closeCategoryDialog()
+    } else {
+      $q.notify({
+        color: 'negative',
+        message: inventoryStore.error || 'Failed to add category',
+        position: 'top'
+      })
+    }
+  } finally {
+    loading.value = false
   }
 }
 

@@ -17,7 +17,8 @@ import {
   serverTimestamp,
   where,
   onSnapshot,
-  limit
+  limit,
+  getDocs
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -336,27 +337,16 @@ export const useInventoryStore = defineStore('inventory', {
         const result = await db.createItem(processedItem)
 
         if (isOnline.value) {
-          try {
-            const docRef = await addDoc(collection(fireDb, 'items'), {
-              ...processedItem,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            })
+          // If online, create directly in Firestore
+          const docRef = await addDoc(collection(fireDb, 'items'), {
+            ...processedItem,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          })
 
-            await db.updateItem(result, { firebaseId: docRef.id })
-
-            await this.loadInventory()
-            return { id: result, firebaseId: docRef.id, offline: false }
-          } catch (firebaseError) {
-            console.error('Firebase error:', firebaseError)
-            await syncQueue.addToQueue({
-              type: 'add',
-              collection: 'items',
-              data: processedItem,
-              docId: result
-            })
-            return { id: result, offline: true }
-          }
+          await db.updateItem(result, { firebaseId: docRef.id })
+          await this.loadInventory()
+          return { id: result, firebaseId: docRef.id, offline: false }
         } else {
           await syncQueue.addToQueue({
             type: 'add',
@@ -400,22 +390,12 @@ export const useInventoryStore = defineStore('inventory', {
         if (isOnline.value) {
           const item = await db.items.get(id)
           if (item?.firebaseId) {
-            try {
-              await updateDoc(doc(fireDb, 'items', item.firebaseId), {
-                ...processedChanges,
-                updatedAt: serverTimestamp()
-              })
-              return { id, offline: false }
-            } catch (firebaseError) {
-              console.error('Firebase error:', firebaseError)
-              await syncQueue.addToQueue({
-                type: 'update',
-                collection: 'items',
-                data: processedChanges,
-                docId: id
-              })
-              return { id, offline: true }
-            }
+            await updateDoc(doc(fireDb, 'items', item.firebaseId), {
+              ...processedChanges,
+              updatedAt: serverTimestamp()
+            })
+            await this.loadInventory()
+            return { id, offline: false }
           }
         }
 
@@ -439,26 +419,6 @@ export const useInventoryStore = defineStore('inventory', {
         this.loading = false
       }
     },
-
-    /**
-     * @async
-     * @method queueForSync
-     * @param {string} type - Operation type ('create' or 'update')
-     * @param {Object} data - Data to sync
-     * @param {string} docId - Document ID
-     * @private
-     */
-    // async queueForSync(type, data, docId) {
-    //   await syncQueue.addToQueue({
-    //     type,
-    //     collection: 'items',
-    //     data,
-    //     docId,
-    //     timestamp: new Date().toISOString(),
-    //     attempts: 0,
-    //     status: 'pending'
-    //   })
-    // },
 
     /**
      * @async
@@ -677,11 +637,6 @@ export const useInventoryStore = defineStore('inventory', {
 
         if (isOnline.value) {
           try {
-            if (this.unsubscribeCategories) {
-              this.unsubscribeCategories()
-              this.unsubscribeCategories = null
-            }
-
             const lastSync = this.syncStatus.lastSync
             let firestoreQuery = query(collection(fireDb, 'categories'), orderBy('updatedAt', 'desc'))
 
@@ -693,18 +648,15 @@ export const useInventoryStore = defineStore('inventory', {
               )
             }
 
-            this.unsubscribeCategories = onSnapshot(firestoreQuery, async (snapshot) => {
-              const firestoreCategories = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate() || new Date(),
-                updatedAt: doc.data().updatedAt?.toDate() || new Date()
-              }))
+            const snapshot = await getDocs(firestoreQuery)
+            const firestoreCategories = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              createdAt: doc.data().createdAt?.toDate() || new Date(),
+              updatedAt: doc.data().updatedAt?.toDate() || new Date()
+            }))
 
-              await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
-            }, (error) => {
-              console.error('Error syncing categories with Firestore:', error)
-            })
+            await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
           } catch (error) {
             console.error('Error syncing categories with Firestore:', error)
           }
