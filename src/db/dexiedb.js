@@ -1,7 +1,25 @@
 /**
- * @fileoverview The local database instance.
- * All functions and methods are managed and implemented in this file.
- * **/
+ * @fileoverview Local database implementation using Dexie.js.
+ * Provides offline-first storage with:
+ * - Schema versioning
+ * - CRUD operations
+ * - Data validation
+ * - Sync status tracking
+ */
+
+/**
+ * @typedef {Object} ValidationError
+ * @property {string} code - Error code
+ * @property {string} message - Error message
+ * @property {string} field - Field that failed validation
+ */
+
+/**
+ * @typedef {Object} DatabaseError
+ * @property {string} code - Error code
+ * @property {string} message - Error message
+ * @property {Error} [originalError] - Original error object
+ */
 
 import Dexie from 'dexie';
 import { useInventoryStore } from 'src/stores/inventoryStore';

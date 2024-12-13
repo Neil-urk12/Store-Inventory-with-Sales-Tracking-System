@@ -1,6 +1,7 @@
 /**
  * @fileoverview Manages inventory data and operations, including local and cloud synchronization.
- * Implements Pinia store pattern for state management.
+ * Implements Pinia store pattern for state management with offline-first capabilities.
+ * Handles CRUD operations for inventory items and categories with Firestore integration.
  */
 
 import { defineStore } from 'pinia'
@@ -27,6 +28,42 @@ import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 import filterItems from 'src/utils/filterUtils'
+
+/**
+ * @typedef {Object} SyncStatus
+ * @property {string|null} lastSync - ISO timestamp of the last successful sync
+ * @property {boolean} inProgress - Indicates if a sync operation is currently running
+ * @property {string|null} error - Error message from the last failed sync attempt
+ * @property {number} pendingChanges - Count of local changes waiting to be synced
+ * @property {number} totalItems - Total number of items to be processed in current sync
+ * @property {number} processedItems - Number of items successfully processed in current sync
+ * @property {Array<Object>} failedItems - Items that failed to sync with their error details
+ * @property {number} retryCount - Number of sync retry attempts made
+ * @property {number} maxRetries - Maximum number of retry attempts allowed
+ * @property {number} retryDelay - Milliseconds to wait between retry attempts
+ */
+
+/**
+ * @typedef {Object} InventoryItem
+ * @property {string} id - Unique identifier for the item
+ * @property {string} name - Name of the item
+ * @property {string} sku - Stock Keeping Unit (unique)
+ * @property {string} categoryId - Reference to the item's category
+ * @property {number} quantity - Current stock quantity
+ * @property {number} price - Item price
+ * @property {Date} createdAt - Timestamp of item creation
+ * @property {Date} updatedAt - Timestamp of last update
+ * @property {string} [firebaseId] - Firestore document ID if synced
+ */
+
+/**
+ * @typedef {Object} Category
+ * @property {string} id - Unique identifier for the category
+ * @property {string} name - Category name
+ * @property {Date} createdAt - Timestamp of category creation
+ * @property {Date} updatedAt - Timestamp of last update
+ * @property {string} [firebaseId] - Firestore document ID if synced
+ */
 
 /**
  * @const {Ref<boolean>} isOnline
@@ -1197,10 +1234,12 @@ export const useInventoryStore = defineStore('inventory', {
     /**
      * @method processBatches
      * @private
-     * @param {Array} items - Array of items to process
-     * @param {number} batchSize - Size of each batch
-     * @param {Function} processFn - Function to process each batch
+     * @param {Array<InventoryItem|Category>} items - Array of items to process
+     * @param {number} batchSize - Maximum number of operations per batch
+     * @param {Function} processFn - Function to process each item in the batch
      * @returns {Promise<void>}
+     * @throws {Error} If batch commit fails
+     * @description Processes items in batches to avoid Firestore write limits
      */
     async processBatches(items, batchSize, processFn) {
       let batch = writeBatch(fireDb)

@@ -1,3 +1,12 @@
+/**
+ * @fileoverview Dialog component for cash flow reporting.
+ * Features:
+ * - Date range selection
+ * - Revenue/expense breakdown
+ * - Export capabilities
+ * - Chart visualizations
+ */
+
 <template>
   <q-dialog
     v-model="dialogModel"

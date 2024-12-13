@@ -1,5 +1,19 @@
 /**
- * @fileoverview Manages sales
+ * @fileoverview Manages sales operations and checkout process.
+ * Implements:
+ * - Cart management
+ * - Transaction processing
+ * - Sales history
+ * - Offline support
+ */
+
+/**
+ * @typedef {Object} Sale
+ * @property {string} id - Unique sale ID
+ * @property {Array<CartItem>} items - Items in the sale
+ * @property {number} total - Total sale amount
+ * @property {string} paymentMethod - Payment method used
+ * @property {Date} createdAt - Sale timestamp
  */
 
 import { defineStore } from 'pinia'

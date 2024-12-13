@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Header component for inventory management interface.
+ * Provides search, filtering, and action buttons for inventory operations.
+ * Handles category management through a dialog interface.
+ */
+
 <template>
   <div class="row q-col-gutter-md q-mb-md items-center">
     <div class="col-12 col-sm-6">

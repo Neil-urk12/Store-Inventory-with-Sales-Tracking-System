@@ -1,7 +1,25 @@
 /**
- * @fileoverview Utility functions for inventory management
- * @module inventoryUtils
- * @description Contains utility functions for processing, validating, and error handling of inventory items
+ * @fileoverview Utility functions for inventory management.
+ * Provides helpers for:
+ * - Data processing
+ * - Validation
+ * - Error handling
+ * - Type conversion
+ */
+
+/**
+ * @typedef {Object} ValidationResult
+ * @property {boolean} isValid - Whether validation passed
+ * @property {Array<string>} errors - Array of validation error messages
+ */
+
+/**
+ * @typedef {Object} ProcessedItem
+ * @property {string} categoryId - Category ID or null
+ * @property {string} category - Category name
+ * @property {number} quantity - Normalized quantity
+ * @property {number} price - Normalized price
+ * @property {string} createdAt - ISO timestamp
  */
 
 import { useInventoryStore } from 'src/stores/inventoryStore'

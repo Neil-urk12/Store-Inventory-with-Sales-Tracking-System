@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Dialog component for creating and editing inventory items.
+ * Provides form validation, offline support, and real-time network status.
+ * Handles SKU generation and category selection.
+ */
+
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { useQuasar } from 'quasar'
