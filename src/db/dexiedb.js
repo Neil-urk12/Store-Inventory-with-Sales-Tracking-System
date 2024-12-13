@@ -130,7 +130,9 @@ class AppDatabase extends Dexie {
       if (existingItem)
         throw new ValidationError(`Item with SKU ${newItem.sku} already exists`)
       
-      return await this.items.add(newItem)
+      return await this.transaction('rw', this.items, async () => {
+        return await this.items.add(newItem)
+      })
     } catch (error) {
       console.error('Database error creating item:', error)
       throw error instanceof ValidationError ? error : new DatabaseError('Failed to create item')
@@ -564,6 +566,40 @@ class AppDatabase extends Dexie {
           this.syncLocks.clear()
         ])
     });
+  }
+
+  /**
+   * @async
+   * @method deleteCategory
+   * @param {string} categoryId - ID of the category to delete
+   * @returns {Promise<void>}
+   * @description Deletes a category if it has no associated items
+   * @throws {Error} If category has associated items or deletion fails
+   */
+  async deleteCategory(categoryId) {
+    try {
+      // Check if category exists
+      const category = await this.categories.get(categoryId)
+      if (!category) {
+        throw new Error('Category not found')
+      }
+
+      // Check if any items use this category
+      const itemsCount = await this.items
+        .where('categoryId')
+        .equals(categoryId)
+        .count()
+
+      if (itemsCount > 0) {
+        throw new Error('Cannot delete category with existing items')
+      }
+
+      // Delete the category
+      await this.categories.delete(categoryId)
+    } catch (error) {
+      console.error('Database error deleting category:', error)
+      throw error
+    }
   }
 
 }
