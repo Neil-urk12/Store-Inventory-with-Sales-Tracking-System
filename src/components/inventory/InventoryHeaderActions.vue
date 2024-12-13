@@ -32,7 +32,28 @@
             map-options
             clearable
             @clear="() => inventoryStore.categoryFilter = null"
-          />
+          >
+            <template v-slot:option="{ opt, selected, toggleOption }">
+              <q-item clickable @click="toggleOption(opt)">
+                <q-item-section>
+                  <q-item-label>{{ opt.label }}</q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="delete"
+                    color="negative"
+                    @click.stop="handleDeleteCategory(opt.value)"
+                    v-if="opt.value"
+                  >
+                    <q-tooltip>Delete Category</q-tooltip>
+                  </q-btn>
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
         </div>
         <div class="col-6">
           <q-btn-group spread>
@@ -121,6 +142,25 @@ const handleAddCategory = async () => {
     $q.notify({
       color: 'negative',
       message: inventoryStore.error || 'Failed to add category',
+      position: 'top'
+    })
+  }
+}
+
+const handleDeleteCategory = async (categoryId) => {
+  try {
+    const result = await inventoryStore.deleteCategory(categoryId)
+    if (result) {
+      $q.notify({
+        color: 'positive',
+        message: 'Category deleted successfully',
+        position: 'top'
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      color: 'negative',
+      message: error.message || 'Failed to delete category',
       position: 'top'
     })
   }
