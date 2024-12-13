@@ -126,6 +126,9 @@ export const useSalesStore = defineStore('sales', {
       if (changedSales.length === 0)
         return console.log('No sales changes to upload.')
 
+      this.syncStatus.inProgress = true
+      this.syncStatus.error = null
+
       console.log('Uploading changed sales data:', changedSales);
 
       for (const sale of changedSales) {
@@ -142,8 +145,14 @@ export const useSalesStore = defineStore('sales', {
             }
           });
           console.log(`Sale ${sale.id} uploaded/updated successfully!`);
+          this.syncStatus.processedItems++
         } catch (error) {
           console.error(`Error uploading/updating sale ${sale.id}:`, error);
+          this.syncStatus.failedItems.push({
+            ...sale,
+            error: error.message,
+            syncOperation: 'create'
+          })
           if (error.code !== 'already-exists') {
             // Add to sync queue with retry logic
             syncQueue.addToQueue({
@@ -161,6 +170,7 @@ export const useSalesStore = defineStore('sales', {
           return
         }
       }
+      this.syncStatus.inProgress = false
     },
     /**
      *  Unya na
@@ -190,6 +200,11 @@ export const useSalesStore = defineStore('sales', {
     async syncWithFirestore() {
       if (!isOnline.value)
         return console.error('Cannot sync while offline')
+
+      this.syncStatus.inProgress = true
+      this.syncStatus.error = null
+      this.syncStatus.processedItems = 0
+      this.syncStatus.failedItems = []
 
       const beforeSyncSales = await db.getAllSales()
 
@@ -221,6 +236,7 @@ export const useSalesStore = defineStore('sales', {
                   syncStatus: 'synced',
                   dateTimeframe: new Date().toISOString()
                 })
+                this.syncStatus.processedItems++
                 continue
               }
 
@@ -236,6 +252,7 @@ export const useSalesStore = defineStore('sales', {
                     syncStatus: 'synced',
                     dateTimeframe: new Date().toISOString()
                   })
+                  this.syncStatus.processedItems++
                 }
                 continue
               }
@@ -244,6 +261,7 @@ export const useSalesStore = defineStore('sales', {
               const duplicateIdsToDelete = []
 
               if (saleToKeep.syncStatus === 'pending') {
+                this.syncStatus.pendingChanges++
                 await syncQueue.addToQueue({
                   operation: 'update',
                   collection: 'sales',
@@ -262,6 +280,7 @@ export const useSalesStore = defineStore('sales', {
                   updatedAt: serverTimestamp(),
                   dateTimeframe: new Date().toISOString()
                 })
+                this.syncStatus.processedItems++
               } else if (
                 new Date(firestoreSale.updatedAt) >
                 new Date(saleToKeep.updatedAt)
@@ -271,7 +290,9 @@ export const useSalesStore = defineStore('sales', {
                   syncStatus: 'synced',
                   dateTimeframe: new Date().toISOString()
                 })
+                this.syncStatus.processedItems++
               } else {
+                this.syncStatus.pendingChanges++
                 await syncQueue.addToQueue({
                   type: 'update',
                   collection: 'sales',
@@ -285,6 +306,7 @@ export const useSalesStore = defineStore('sales', {
                 })
 
                 await db.sales.update(saleToKeep.id, { syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
+                this.syncStatus.processedItems++
               }
 
               for (const duplicate of duplicates)
@@ -334,6 +356,7 @@ export const useSalesStore = defineStore('sales', {
                 transaction.set(newSaleRef, newSaleWithTimestamp)
 
                 await db.sales.update(localSale.id, { firebaseId: newSaleRef.id, syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
+                this.syncStatus.processedItems++
               })
             } catch (error) {
               console.error('Error creating sale in Firestore:', error)
@@ -354,6 +377,7 @@ export const useSalesStore = defineStore('sales', {
             if (currentSaleItem && currentSaleItem.syncStatus === 'pending')
               continue
 
+            this.syncStatus.pendingChanges++
             await syncQueue.addToQueue({
               type: 'delete',
               collection: 'sales',
@@ -365,6 +389,7 @@ export const useSalesStore = defineStore('sales', {
             })
 
             await db.deleteSale(localSale.id);
+            this.syncStatus.processedItems++
           }
         }
 
@@ -390,7 +415,10 @@ export const useSalesStore = defineStore('sales', {
         }
       } catch (error) {
         console.error('Error syncing with Firestore : ', error)
+        this.syncStatus.error = error.message
         throw error
+      } finally {
+        this.syncStatus.inProgress = false
       }
     },
     /**
@@ -414,6 +442,7 @@ export const useSalesStore = defineStore('sales', {
 
       if (newQuantity <= product.quantity) {
         existingItem.quantity = newQuantity
+        this.syncStatus.pendingChanges++
         syncQueue.addToQueue({
           type: 'update',
           collection: 'items',
@@ -434,6 +463,8 @@ export const useSalesStore = defineStore('sales', {
      */
     removeFromCart(item) {
       const index = this.cart.findIndex(i => i.id === item.id)
+      if (index > -1) this.cart.splice(index, 1)
+      this.syncStatus.pendingChanges++
       syncQueue.addToQueue({
         type: 'update',
         collection: 'items',
@@ -442,7 +473,6 @@ export const useSalesStore = defineStore('sales', {
         },
         docId: item.id
       })
-      if (index > -1) this.cart.splice(index, 1)
       return { success: true }
     },
 

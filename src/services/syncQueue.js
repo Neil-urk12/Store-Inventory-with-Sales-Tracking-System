@@ -84,6 +84,7 @@ class SyncQueue {
       if (pendingOperations.length > 0)
         await this.processQueue()
     }
+    this.startPeriodicSync()
   }
   /**
    * @async
@@ -443,3 +444,5 @@ class SyncQueue {
 
 /** @const {SyncQueue} syncQueue - Singleton instance of SyncQueue */
 export const syncQueue = new SyncQueue()
+
+syncQueue.checkAndProcessQueue()

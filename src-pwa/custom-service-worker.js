@@ -9,6 +9,9 @@
 import { clientsClaim } from 'workbox-core'
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
+import { NetworkOnly, NetworkFirst, CacheFirst } from 'workbox-strategies';
+import { BackgroundSyncPlugin } from 'workbox-background-sync';
+import { syncQueue } from '../services/syncQueue';
 
 self.skipWaiting()
 clientsClaim()
@@ -29,6 +32,19 @@ if (process.env.MODE !== 'ssr' || process.env.PROD) {
   )
 }
 
+const bgSyncPlugin = new BackgroundSyncPlugin('syncQueue', {
+  maxRetentionTime: 24 * 60, // Retry for up to 24 hours
+});
+
+// Cache API requests for offline access
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api'),
+  new NetworkFirst({
+    cacheName: 'api-cache',
+    plugins: [bgSyncPlugin],
+  })
+);
+
 // Add background sync handler
 self.addEventListener('sync', (event) => {
   if (event.tag === 'syncData') {
@@ -42,5 +58,12 @@ self.addEventListener('sync', (event) => {
         })
       })
     )
+    syncQueue.checkAndProcessQueue()
   }
 })
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
