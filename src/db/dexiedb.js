@@ -376,25 +376,46 @@ class AppDatabase extends Dexie {
     if(!contactPerson.categoryId) throw new ValidationError('Contact category is required')
 
     try {
-      let query = this.contactsList
-        .where('[categoryId+name]')
-        .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
+      // const sanitizedContact = {
+      //   ...contactPerson,
+      //   name: contactPerson.name.trim(),
+      //   email: contactPerson.email?.trim()?.toLowerCase() || null,
+      //   phone: contactPerson.phone?.trim() || null,
+      //   categoryId: contactPerson.categoryId?.trim(),
+      //   createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
+      //   updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
+      //   syncStatus: 'pending'
+      // }
 
-      if (contactPerson.email?.trim() && contactPerson.email?.trim() !== '')
-        query = query.or('email').equals(contactPerson.email.trim().toLowerCase())
-
-      if (contactPerson.phone?.trim() && contactPerson.phone?.trim() !== '')
-        query = query.or('phone').equals(contactPerson.phone.trim())
-      const existingContact = await query.first()
-      if (existingContact) {
-        const errorMessage = existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
-          ? 'A contact with this name already exists in the category'
-          : existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase()
-            ? 'A contact with this email already exists'
-            : 'A contact with this phone number already exists';
-        console.error(`addContact: Duplicate contact detected: ${errorMessage}`);
-        throw new ValidationError(errorMessage);
+      const checkDuplicateContact = await this.checkDuplicateContact(contact)
+      if (checkDuplicateContact.exists) {
+        const errorMessage = {
+          '[categoryId+name]': 'A contact with this name already exists in the category',
+          'email': 'A contact with this email already exists',
+          'phone': 'A contact with this phone number already exists'
+        }
+        throw new ValidationError(errorMessage[checkDuplicateContact.field])
       }
+
+      // let query = this.contactsList
+      //   .where('[categoryId+name]')
+      //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
+
+      // if (contactPerson.email?.trim() && contactPerson.email?.trim() !== '')
+      //   query = query.or('email').equals(contactPerson.email.trim().toLowerCase())
+
+      // if (contactPerson.phone?.trim() && contactPerson.phone?.trim() !== '')
+      //   query = query.or('phone').equals(contactPerson.phone.trim())
+      // const existingContact = await query.first()
+      // if (existingContact) {
+      //   const errorMessage = existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
+      //     ? 'A contact with this name already exists in the category'
+      //     : existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase()
+      //       ? 'A contact with this email already exists'
+      //       : 'A contact with this phone number already exists';
+      //   console.error(`addContact: Duplicate contact detected: ${errorMessage}`);
+      //   throw new ValidationError(errorMessage);
+      // }
     // if (existingContact) {
     //   if (existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase())
     //     throw new ValidationError('A contact with this name already exists in the category')
@@ -428,22 +449,37 @@ class AppDatabase extends Dexie {
     //   )
     // }
 
-      const newContact = {
-        ...contactPerson,
-        name: contactPerson.name.trim(),
-        email: contactPerson.email?.trim().toLowerCase() || null,
-        phone: contactPerson.phone?.trim() || null,
-        createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
-        updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
-        syncStatus: 'pending'
-      }
-
-      console.log(`addContact: Adding new contact:`, newContact);
-      return await this.contactsList.add(newContact)
+      console.log(`addContact: Adding new contact:`, contactPerson)
+      return await this.contactsList.add(contactPerson)
     } catch (error) {
+      if(error instanceof ValidationError) throw error
       console.error('Database error adding contact:', error)
       throw new DatabaseError('Failed to add contact')
     }
+  }
+  /**
+   * Inprogress use this to simplify query in addContact unya
+   * 
+  */
+  async checkDuplicateContact(contact) {
+    return await this.transaction('rw', this.contactsList, async () => {
+    const duplicateContactsCheck = [
+      { field: '[categoryId+name]', value: [contact.categoryId, contact.name.trim().toLowerCase()], enabled: true },
+      { field: 'email', value: contact.email?.trim().toLowerCase(), enabled: contact.email?.trim() !== '' },
+      { field: 'phone', value: contact.phone?.trim(), enabled: contact.phone?.trim() !== '' }
+      ].filter(check => check.enabled)
+
+      for (const check of duplicateContactsCheck) {
+        const existingContact = await this.contactsList
+          .where(check.field)
+          .equals(check.value)
+          .first()
+        if (existingContact) {
+          return { exists: true, field: check.field, existingContact: existingContact }
+        }
+      }
+      return { exists: false }
+    })
   }
   /**
    * @async

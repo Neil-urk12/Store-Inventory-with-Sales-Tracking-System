@@ -161,17 +161,31 @@ export const useContactsStore = defineStore('contacts', {
      */
     async addContact(contact) {
       try {
+        const sanitizedContact = {
+          ...contact,
+          name: contact.name?.trim(),
+          email: contact.email?.trim()?.toLowerCase() || null,
+          phone: contact.phone?.trim() || null,
+          categoryId: contact.categoryId?.trim(),
+          syncStatus: 'pending',
+          createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
+          updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
+        }
+
         if(this.contactsList.length === 0) this.contactsList = await db.getAllContacts()
-        const validation = await validateContact(contact, this.contactsList, contact.id)
+
+        const validation = await validateContact(sanitizedContact, this.contactsList, contact.id)
+
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
-        const id = await db.addContact(contact)
+
+        const id = await db.addContact(sanitizedContact)
 
         if (isOnline.value) {
           await syncQueue.addToQueue({
             type: 'add',
             collection: 'contactsList',
-            data: { ...contact, id: id.toString() },
+            data: { ...sanitizedContact, id: id.toString() },
             timestamp: new Date()
           })
           await processQueueDebounced()
@@ -181,6 +195,7 @@ export const useContactsStore = defineStore('contacts', {
         return id
       } catch (error) {
         this._handleActionError(error, 'addContact')
+        throw error
       }
     },
 
@@ -441,17 +456,6 @@ export const useContactsStore = defineStore('contacts', {
             }
           }))
 
-          // currentBatch.forEach(item => {
-          //   const { id, ...itemData } = item
-          //   const docRef = id && typeof id === 'string' ? doc(collectionRef, id) : doc(collectionRef);
-          //   const isUpdate = id && typeof id === 'string';
-          //   const timestampData = isUpdate
-          //       ? { updatedAt: serverTimestamp() }
-          //       : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-
-          //   batch[isUpdate ? 'update' : 'set'](docRef, { ...itemData, ...timestampData }, { merge: isUpdate });
-          // });
-
           try {
             await batch.commit()
           } catch (error) {
@@ -459,49 +463,6 @@ export const useContactsStore = defineStore('contacts', {
           }
         }
       }
-
-      // async function processBatchUpdates(collectionName, items){
-      //   if(!items || items.length === 0) return
-
-      //   const collectionRef = collection(fireDb, collectionName)
-      //   for (let i = 0; i < items.length; i += batchSize) {
-      //     const batch = writeBatch(fireDb)
-      //     const currentBatch = items.slice(i, Math.min(i + batchSize, items.length))
-
-      //     for (const item of currentBatch) {
-      //       const { id, ...itemData } = item
-      //       if (id && typeof id === 'string') {
-      //         const docRef = doc(collectionRef, id)
-      //         const docSnapshot = await getDoc(docRef)
-      //         if (docSnapshot.exists()) {
-      //           batch.update(docRef, {
-      //             ...itemData,
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         } else {
-      //           batch.set(docRef, {
-      //             ...itemData,
-      //             createdAt: serverTimestamp(),
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         }
-      //       } else {
-      //         const newDocRef = doc(collectionRef)
-      //         batch.set(newDocRef, {
-      //           ...itemData,
-      //           createdAt: serverTimestamp(),
-      //           updatedAt: serverTimestamp()
-      //         })
-      //       }
-      //     }
-
-      //     try {
-      //       await batch.commit()
-      //     } catch (error) {
-      //       console.error(`${collectionName} batch update failed:`, error)
-      //     }
-      //   }
-      // }
 
       async function deleteDuplicates(collectionName, uniqueField) {
         const collectionRef = collection(fireDb, collectionName)
@@ -534,95 +495,11 @@ export const useContactsStore = defineStore('contacts', {
       await Promise.all([
         deleteDuplicates('contactCategories', 'name'),
         deleteDuplicates('contactsList', 'name')
-      ]);
+      ])
       await Promise.all([
         processBatchUpdates('contactCategories', mergedContactCategories),
         processBatchUpdates('contactsList', mergedContacts)
       ])
-
-
-      // if (mergedContactCategories.length > 0) {
-      //   const contactCategoriesRef = collection(fireDb, 'contactCategories')
-      //   for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
-      //     const batch = writeBatch(fireDb)
-      //     const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
-
-      //     for (const category of currentBatch) {
-      //       const { id, ...categoryData } = category
-      //       if (id && typeof id === 'string') {
-      //         const docRef = doc(contactCategoriesRef, id)
-      //         const docSnapshot = await getDoc(docRef)
-      //         if (docSnapshot.exists()) {
-      //           batch.update(docRef, {
-      //             ...categoryData,
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         } else {
-      //           batch.set(docRef, {
-      //             ...categoryData,
-      //             createdAt: serverTimestamp(),
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         }
-      //       } else {
-      //         const newDocRef = doc(contactCategoriesRef)
-      //         batch.set(newDocRef, {
-      //           ...categoryData,
-      //           createdAt: serverTimestamp(),
-      //           updatedAt: serverTimestamp()
-      //         })
-      //       }
-      //     }
-
-      //     try {
-      //       await batch.commit()
-      //     } catch (error) {
-      //       console.error('Contact category batch update failed:', error)
-      //     }
-      //   }
-      // }
-
-      // Update contacts in Firebase
-      // if (mergedContacts.length > 0) {
-      //   const contactsRef = collection(fireDb, 'contactsList')
-      //   for (let i = 0; i < mergedContacts.length; i += batchSize) {
-      //     const batch = writeBatch(fireDb)
-      //     const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
-
-      //     for (const contact of currentBatch) {
-      //       const { id, ...contactData } = contact
-      //       if (id && typeof id === 'string') {
-      //         const docRef = doc(contactsRef, id)
-      //         const docSnapshot = await getDoc(docRef)
-      //         if (docSnapshot.exists()) {
-      //           batch.update(docRef, {
-      //             ...contactData,
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         } else {
-      //           batch.set(docRef, {
-      //             ...contactData,
-      //             createdAt: serverTimestamp(),
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         }
-      //       } else {
-      //         const newDocRef = doc(contactsRef)
-      //         batch.set(newDocRef, {
-      //           ...contactData,
-      //           createdAt: serverTimestamp(),
-      //           updatedAt: serverTimestamp()
-      //         })
-      //       }
-      //     }
-
-      //     try {
-      //       await batch.commit()
-      //     } catch (error) {
-      //       console.error('Contact batch update failed:', error)
-      //     }
-      //   }
-      // }
     },
 
     /**
@@ -782,9 +659,9 @@ export const useContactsStore = defineStore('contacts', {
      * @returns {Promise<Array>} An array of merged items without duplicates.  The merge prioritizes items with more recent `updatedAt` timestamps.  If items have the same name, the local item is prioritized if it's newer.  If both items have the same name and timestamp, the Firestore item is kept.  Duplicate items are logged to the console.
      */
     async mergeChanges(localItems, firestoreItems, uniqueField) {
-      const mergedItems = new Map();
-      const usedIds = new Set();
-      const duplicateItems = [];
+      const mergedItems = new Map()
+      const usedIds = new Set()
+      const duplicateItems = []
 
       // Helper function to determine which item is newer based on updatedAt timestamp
       function isLocalItemNewer(localItem, existingItem) {
@@ -863,57 +740,11 @@ export const useContactsStore = defineStore('contacts', {
           }
 
           mergedItems.set(key, itemToMerge)
-
-          // if(localItem.id && usedIds.has(localItem.id)){
-          //   itemToMerge.id = generateNewId(localItem)
-          //   itemToMerge.localId = localItem.id
-          //   console.log('itemToMerge:', itemToMerge)
-          // }
-          // if(existingItem.name === localItem.name){
-          //   console.warn('Duplicate item detected:', localItem)
-          //   mergedItems.delete(key)
-          // }
-          // console.log('mergedItems:', mergedItems)
-          // console.log('usedIds:', usedIds)
-          // console.log('itemToMerge:', itemToMerge)
-          // usedIds.add(itemToMerge.id)
-        } else if (existingItem.name === localItem.name){
+        } else if (existingItem.name === localItem.name)
           duplicateItems.push(localItem)
-        }
       }
 
       return Array.from(mergedItems.values())
-
-      // localItems.forEach(localItem => {
-      //   const key = useCompoundKey ? `${localItem.categoryId}-${localItem.name}` : localItem[uniqueField];
-      //   if (!key) return console.warn('Local item missing unique field:', localItem);
-
-      //   const existingItem = merged.get(key);
-      //   if (!existingItem) {
-      //     if (!localItem.id || !seenIds.has(localItem.id)) merged.set(key, localItem);
-      //     return;
-      //   }
-
-      //   const localDate = new Date(localItem.updatedAt || 0);
-      //   const existingDate = new Date(existingItem.updatedAt || 0);
-
-      //   if (localDate > existingDate) {
-      //     merged.set(key, { ...localItem, id: existingItem.id });
-      //   }
-      // })
-
-      // const result = Array.from(merged.values())
-      // const uniqueCheck = new Set()
-      // return result.filter(item => {
-      //   const key = useCompoundKey ? `${item.categoryId}-${item.name}` : item[uniqueField];
-      //   if (!key || uniqueCheck.has(key)) {
-      //     console.warn('Duplicate or invalid item filtered out:', item)
-      //     return false
-      //   }
-      //   uniqueCheck.add(key)
-      //   return true
-      // })
     }
-
   }
 })

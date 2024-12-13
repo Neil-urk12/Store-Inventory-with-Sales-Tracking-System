@@ -156,22 +156,22 @@ const saveContactCategory = async () => {
 };
 
 const callContact = (phone) => {
-  window.location.href = `tel:${phone}`;
+  window.location.href = `tel:${phone}`
 };
 
 const emailContact = (email) => {
-  window.location.href = `mailto:${email}`;
+  window.location.href = `mailto:${email}`
 };
 
 const addContact = (contactCategory) => {
-  contactEntryModalTitle.value = "Add Contact";
-  newContact.id = null;
-  newContact.categoryId = contactCategory.id;
-  newContact.name = "";
-  newContact.email = "";
-  newContact.phone = "";
-  contactEntryModalOpen.value = true;
-};
+  contactEntryModalTitle.value = "Add Contact"
+  newContact.id = null
+  newContact.categoryId = contactCategory.id
+  newContact.name = ""
+  newContact.email = ""
+  newContact.phone = ""
+  contactEntryModalOpen.value = true
+}
 
 const editContact = (contactCategory, contactPerson) => {
   contactEntryModalTitle.value = "Edit Contact";
