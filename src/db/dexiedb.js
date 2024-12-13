@@ -36,17 +36,17 @@ class AppDatabase extends Dexie {
 
     this.version(3).stores({
       // Inventory tables
-      categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
-      items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
+      categories: '++categoryId, categoryName, description, createdAt, updatedAt, syncStatus, firebaseId',
+      items: '++itemId, itemName, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
 
       // Sales tables
-      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
+      sales: '++saleId, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
 
-      cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
+      cashFlow: '++cashFlowId, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
       // Contacts tables
-      contactCategories: '++id, name, value, createdAt, syncStatus, firebaseId',
-      contactsList: '++id, categoryId, name, email, phone, avatar, [categoryId+name], syncStatus, firebaseId',
+      contactCategories: '++contactCategoryId, contactCategoryName, value, createdAt, syncStatus, firebaseId',
+      contactsList: '++contactId, contactCategoryId, contactName, contactEmail, contactPhone, avatar, [contactCategoryId+contactName], syncStatus, firebaseId',
 
       // Sync queue table
       syncQueue: '++id, type, collection, data, docId, timestamp, attempts, lastAttempt, status, error',
