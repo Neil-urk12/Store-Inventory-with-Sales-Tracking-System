@@ -16,7 +16,8 @@ import {
   writeBatch,
   serverTimestamp,
   where,
-  onSnapshot
+  onSnapshot,
+  limit
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -515,270 +516,141 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Syncs local database with Firestore
      */
     async syncWithFirestore() {
-      if (!isOnline.value) return
+      if (!isOnline.value || this.syncStatus.inProgress) return
 
       try {
-        if (this.unsubscribeItems) {
-          this.unsubscribeItems()
-          this.unsubscribeItems = null
-        }
+        this.syncStatus.inProgress = true
+
+        // Ensure we clean up any existing listeners
+        this.cleanupListeners()
 
         const localItems = await db.items.toArray()
-        let firestoreQuery = query(collection(fireDb, 'items'), orderBy('updatedAt', 'desc'))
-        const lastSync = this.syncStatus.lastSync;
+        let firestoreQuery = query(
+          collection(fireDb, 'items'),
+          orderBy('updatedAt', 'desc'),
+          // Limit the query to prevent excessive data transfer
+          limit(100)
+        )
 
-        if (lastSync) {
-          firestoreQuery = query(
-            collection(fireDb, 'items'),
-            where('updatedAt', '>', new Date(lastSync)),
-            orderBy('updatedAt', 'desc')
-          )
-        }
+        this.unsubscribeItems = onSnapshot(
+          firestoreQuery,
+          { includeMetadataChanges: true },
+          debounce(async (snapshot) => {
+            if (snapshot.metadata.hasPendingWrites) return
 
-        this.unsubscribeItems = onSnapshot(firestoreQuery, async (snapshot) => {
-          const localUpdates = []
-          
-          snapshot.docChanges().forEach(async change => {
-            const firestoreItem = { ...change.doc.data(), firebaseId: change.doc.id }
+            const localUpdates = []
+            const batch = writeBatch(fireDb)
+            let batchCount = 0
 
-            if (change.type === 'added' || change.type === 'modified') {
-              const existingItem = localItems.find(
-                (localItem) => localItem.firebaseId === firestoreItem.firebaseId
-              )
+            for (const change of snapshot.docChanges()) {
+              // Skip if this is a local change
+              if (change.doc.metadata.hasPendingWrites) continue
 
-              if (existingItem) {
-                const firestoreDate = new Date(firestoreItem.updatedAt)
-                const localDate = new Date(existingItem.updatedAt)
+              const firestoreItem = { ...change.doc.data(), firebaseId: change.doc.id }
+              
+              if (change.type === 'added' || change.type === 'modified') {
+                const existingItem = localItems.find(
+                  item => item.firebaseId === firestoreItem.firebaseId
+                )
 
-                if (firestoreDate <= localDate || existingItem.syncStatus === 'pending')
-                  return
-
-                localUpdates.push({ id: existingItem.id, data: firestoreItem })
-                return
+                if (existingItem) {
+                  // Only update if Firestore version is newer
+                  const firestoreDate = firestoreItem.updatedAt?.toDate() || new Date()
+                  const localDate = new Date(existingItem.updatedAt)
+                  
+                  if (firestoreDate > localDate && existingItem.syncStatus !== 'pending') {
+                    localUpdates.push({ id: existingItem.id, data: firestoreItem })
+                  }
+                } else {
+                  // Check for duplicates before adding
+                  const duplicateCheck = await db.items
+                    .where('firebaseId')
+                    .equals(firestoreItem.firebaseId)
+                    .count()
+                  
+                  if (duplicateCheck === 0) {
+                    localUpdates.push({ data: firestoreItem })
+                  }
+                }
+              } else if (change.type === 'removed') {
+                const existingItem = localItems.find(
+                  item => item.firebaseId === firestoreItem.firebaseId
+                )
+                if (existingItem) {
+                  await db.items.delete(existingItem.id)
+                }
               }
 
-              if (firestoreItem.localId) {
-                const existingLocal = localItems.find(item => item.id === parseInt(firestoreItem.localId))
-
-                if (!existingLocal) {
-                  batch.delete(doc(fireDb, 'items', firestoreItem.firebaseId))
-                  return
-                }
-
-                if (!existingLocal.firebaseId) {
-                  localUpdates.push({ id: existingLocal.id, data: { ...firestoreItem, firebaseId: firestoreItem.firebaseId } })
-                  return
-                }
-
-                if (existingLocal.firebaseId !== firestoreItem.firebaseId) {
-                  const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
-                  const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
-
-                  const mostRecentData = (firestoreUpdatedAt && localUpdatedAt && firestoreUpdatedAt > localUpdatedAt) || !localUpdatedAt
-                    ? firestoreItem : existingLocal
-
-                  if (mostRecentData === firestoreItem)
-                    localUpdates.push({ id: existingLocal.id, data: mostRecentData })
-
-                  return
-                }
-
-                const firestoreUpdatedAt = firestoreItem.updatedAt && new Date(firestoreItem.updatedAt)
-                const localUpdatedAt = existingLocal.updatedAt && new Date(existingLocal.updatedAt)
-
-                if (firestoreUpdatedAt <= localUpdatedAt || existingLocal.syncStatus === 'pending')
-                  return
-
-                localUpdates.push({ id: existingLocal.id, data: firestoreItem })
-                return
-              }
-
-              localUpdates.push({ data: firestoreItem })
-            } else if (change.type === 'removed') {
-              const existingItem = localItems.find(
-                (localItem) => localItem.firebaseId === firestoreItem.firebaseId
-              )
-              if (existingItem) {
-                await db.items.delete(existingItem.id)
+              batchCount++
+              if (batchCount >= 500) {
+                await batch.commit()
+                batchCount = 0
               }
             }
-          })
 
-          const batchSize = 500
-          const processUpdate = async (update, batch) => {
-            if (update.id) {
-              batch.update(doc(fireDb, 'items', update.data.firebaseId), {
-                ...update.data,
-                syncStatus: 'synced',
-                updatedAt: new Date().toISOString()
-              })
-              await db.items.update(update.id, {
-                ...update.data,
-                syncStatus: 'synced'
-              })
-            } else {
-              const docRef = await addDoc(collection(fireDb, 'items'), {
-                ...update.data,
-                syncStatus: 'synced',
-                updatedAt: new Date().toISOString()
-              })
-              await db.items.add({
-                ...update.data,
-                syncStatus: 'synced',
-                firebaseId: docRef.id,
-                updatedAt: new Date().toISOString()
-              })
+            if (batchCount > 0) {
+              await batch.commit()
             }
+
+            // Process updates in smaller batches
+            if (localUpdates.length > 0) {
+              await this.processBatchUpdates(localUpdates)
+              await this.loadInventory()
+            }
+          }, 1000),
+          (error) => {
+            console.error('Firestore sync error:', error)
+            this.error = handleError(error, 'Failed to sync with Firestore')
+            this.syncStatus.inProgress = false
+            this.cleanupListeners()
           }
-
-          await processBatches(localUpdates, batchSize, processUpdate)
-          
-          await this.uploadPendingLocalChanges(localItems)
-          this.syncStatus.lastSync = new Date().toISOString()
-          await this.loadInventory()
-        }, (error) => {
-          console.error('Error syncing with Firestore:', error)
-          this.error = handleError(error, 'Failed to sync with Firestore')
-        })
+        )
 
         await this.loadCategories()
       } catch (error) {
-        console.error('Error syncing with Firestore:', error)
+        console.error('Error in syncWithFirestore:', error)
         this.error = handleError(error, 'Failed to sync with Firestore')
-        throw error
+      } finally {
+        this.syncStatus.inProgress = false
       }
     },
 
-    async uploadPendingLocalChanges(localItems) {
-      const pendingItems = localItems.filter(item => item.syncStatus === 'pending')
-      const batchSize = 500
 
-      const processItem = async (localItem, batch) => {
-        if (localItem.firebaseId) {
-          batch.update(doc(fireDb, 'items', localItem.firebaseId), {
-            ...localItem,
-            syncStatus: "synced",
-            updatedAt: new Date().toISOString()
+    async processBatchUpdates(updates) {
+      const BATCH_SIZE = 50
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const batch = updates.slice(i, i + BATCH_SIZE)
+        await Promise.all(
+          batch.map(async update => {
+            if (update.id) {
+              await db.items.update(update.id, {
+                ...update.data,
+                syncStatus: 'synced',
+                updatedAt: new Date().toISOString()
+              })
+            } else {
+              await db.items.add({
+                ...update.data,
+                syncStatus: 'synced',
+                updatedAt: new Date().toISOString()
+              })
+            }
           })
-          await db.items.update(localItem.id, {
-            syncStatus: 'synced',
-            updatedAt: new Date().toISOString()
-          })
-        } else {
-          const docRef = await addDoc(collection(fireDb, 'items'), {
-            ...localItem,
-            updatedAt: new Date().toISOString()
-          })
-          await db.items.update(localItem.id, {
-            firebaseId: docRef.id,
-            syncStatus: 'synced'
-          })
-        }
+        )
       }
-
-      await processBatches(pendingItems, batchSize, processItem)
     },
 
-    /**
-     * @async
-     * @param {Array} localItems - Local items to merge
-     * @param {Array} firestoreItems - Firestore items to merge
-     * @returns {Promise<void>}
-     * @description Merges local and Firestore items, resolving conflicts
-     */
-    // async mergeChanges(localItems, firestoreItems) {
-    //   return await db.transaction('rw', db.items, async () => {
-    //     // Only process items that are already synced (not pending local changes)
-    //     for (const firestoreItem of firestoreItems) {
-    //       // Check if item already exists by firebaseId
-    //       const existingItems = await db.items
-    //         .where('firebaseId')
-    //         .equals(firestoreItem.firebaseId)
-    //         .toArray()
-
-    //       if (existingItems.length > 0) {
-    //         // Update the first instance and delete any duplicates
-    //         const [itemToKeep, ...duplicates] = existingItems
-
-    //         if (itemToKeep.syncStatus !== 'pending') {
-    //           const firestoreDate = new Date(firestoreItem.updatedAt)
-    //           const localDate = new Date(itemToKeep.updatedAt)
-
-    //           if (firestoreDate > localDate) {
-    //             await db.items.update(itemToKeep.id, {
-    //               ...firestoreItem,
-    //               id: itemToKeep.id,
-    //               syncStatus: 'synced'
-    //             })
-    //           }
-    //         }
-
-    //         // Delete any duplicate entries
-    //         for (const duplicate of duplicates) {
-    //           await db.items.delete(duplicate.id)
-    //         }
-    //       } else if (firestoreItem.localId) {
-    //         // This is a new item from another client
-    //         const existingLocal = await db.items
-    //           .where('id')
-    //           .equals(parseInt(firestoreItem.localId))
-    //           .first()
-
-    //         if (!existingLocal) {
-    //           await db.items.add({
-    //             ...firestoreItem,
-    //             syncStatus: 'synced'
-    //           })
-    //         }
-    //       } else {
-    //         // Completely new item
-    //         await db.items.add({
-    //           ...firestoreItem,
-    //           syncStatus: 'synced'
-    //         })
-    //       }
-    //     }
-
-    //     // Don't delete local items that haven't been synced yet
-    //     for (const localItem of localItems) {
-    //       if (localItem.firebaseId &&
-    //           !firestoreItems.find(item => item.firebaseId === localItem.firebaseId)) {
-    //         const currentItem = await db.items.get(localItem.id)
-    //         if (currentItem.syncStatus !== 'pending') {
-    //           await db.items.delete(localItem.id)
-    //         }
-    //       }
-    //     }
-    //   })
-    // },
-
-    /**
-     * @async
-     * @param {Object} item - Item to add
-     * @returns {Promise<string>} Added item ID
-     * @description Adds an item to the local database and queues for sync
-     */
-    // async addItem(item) {
-    //   try {
-    //     const id = await db.addItem(item)
-    //     if (isOnline.value) {
-    //       await syncQueue.addToQueue({
-    //         type: 'add',
-    //         collection: 'inventory',
-    //         data: { ...item, localId: id },
-    //         timestamp: new Date()
-    //       })
-    //       await syncQueue.processQueue()
-    //     }
-
-    //     await this.loadInventory()
-    //     return id
-    //   } catch (error) {
-    //     console.error('Error adding item:', error)
-    //     this.error = error.message
-    //     throw error
-    //   }
-    // },
+    // Add a new method to cleanup listeners
+    cleanupListeners() {
+      if (this.unsubscribeItems) {
+        this.unsubscribeItems()
+        this.unsubscribeItems = null
+      }
+      if (this.unsubscribeCategories) {
+        this.unsubscribeCategories()
+        this.unsubscribeCategories = null
+      }
+    },
 
     /**
      * @async
@@ -1235,35 +1107,33 @@ export const useInventoryStore = defineStore('inventory', {
     async cleanupDuplicates() {
       try {
         this.loading = true
-        await db.transaction('rw', db.items, async () => {
-          // Get all items
-          const allItems = await db.items.toArray()
+        const allItems = await db.items.toArray()
+        const seenFirebaseIds = new Set()
+        const duplicates = []
 
-          // Group items by firebaseId
-          const groupedItems = allItems.reduce((acc, item) => {
-            if (!item.firebaseId) return acc
-            if (!acc[item.firebaseId]) acc[item.firebaseId] = []
-            acc[item.firebaseId].push(item)
-            return acc
-          }, {})
-
-          // For each group of items with the same firebaseId
-          for (const [firebaseId, items] of Object.entries(groupedItems)) {
-            if (items.length > 1) {
-              // Keep the first item, delete the rest
-              const [itemToKeep, ...duplicates] = items
-
-              // Delete duplicates
-              for (const duplicate of duplicates) {
-                await db.items.delete(duplicate.id)
-              }
+        for (const item of allItems) {
+          if (item.firebaseId) {
+            if (seenFirebaseIds.has(item.firebaseId)) {
+              duplicates.push(item.id)
+            } else {
+              seenFirebaseIds.add(item.firebaseId)
             }
           }
-        })
+        }
 
-        // Reload inventory after cleanup
+        if (duplicates.length > 0) {
+          await db.transaction('rw', db.items, async () => {
+            for (const id of duplicates) {
+              await db.items.delete(id)
+            }
+          })
+          
+          console.log(`Cleaned up ${duplicates.length} duplicate items`)
+        }
+
         await this.loadInventory()
       } catch (error) {
+        console.error('Error cleaning up duplicates:', error)
         this.error = handleError(error, 'Failed to cleanup duplicates')
       } finally {
         this.loading = false
@@ -1276,6 +1146,8 @@ export const useInventoryStore = defineStore('inventory', {
      * Used for cleanup before navigation or component unmount.
      */
     cleanup(fullCleanup = false) {
+      this.cleanupListeners()
+      
       // Reset UI state
       this.loading = false
       this.error = null
@@ -1312,39 +1184,98 @@ export const useInventoryStore = defineStore('inventory', {
         retryDelay: 1000
       }
     },
+
+    /**
+     * @method generateSKU
+     * @param {string} name - Item name to base the SKU on
+     * @returns {string} Generated SKU
+     * @description Generates a unique SKU based on item name and random string (max 9 chars)
+     */
+    generateSKU(name) {
+      const prefix = name
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toUpperCase()
+        .padEnd(3, 'X')
+        .slice(0, 3)
+
+      const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+      let randomPart = ''
+      for (let i = 0; i < 5; i++) 
+        randomPart += chars.charAt(Math.floor(Math.random() * chars.length))
+
+      return `${prefix}-${randomPart}`
+    },
+
+    /**
+     * @method isSkuUnique
+     * @param {string} sku - SKU to check
+     * @returns {Promise<boolean>} Whether the SKU is unique
+     */
+    async isSkuUnique(sku) {
+      const existingItem = await db.items
+        .where('sku')
+        .equals(sku)
+        .first()
+      return !existingItem
+    },
+
+    /**
+     * @method getUniqueSku
+     * @param {string} name - Item name to base the SKU on
+     * @returns {Promise<string>} A unique SKU
+     */
+    async getUniqueSku(name) {
+      let sku
+      let isUnique = false
+      let attempts = 0
+      const maxAttempts = 10
+
+      while (!isUnique && attempts < maxAttempts) {
+        sku = this.generateSKU(name)
+        isUnique = await this.isSkuUnique(sku)
+        attempts++
+      }
+
+      if (!isUnique) 
+        throw new Error('Unable to generate unique SKU. Please try again.')
+
+      return sku
+    },
+
+    /**
+     * @method processBatches
+     * @private
+     * @param {Array} items - Array of items to process
+     * @param {number} batchSize - Size of each batch
+     * @param {Function} processFn - Function to process each batch
+     * @returns {Promise<void>}
+     */
+    async processBatches(items, batchSize, processFn) {
+      let batch = writeBatch(fireDb)
+      let operationsCount = 0
+
+      for (const item of items) {
+        try {
+          await processFn(item, batch)
+          operationsCount++
+
+          if (operationsCount >= batchSize) {
+            await batch.commit()
+            batch = writeBatch(fireDb)
+            operationsCount = 0
+          }
+        } catch (error) {
+          console.error('Error processing item:', error)
+        }
+      }
+
+      if (operationsCount > 0) {
+        try {
+          await batch.commit()
+        } catch (error) {
+          console.error('Error committing final batch:', error)
+        }
+      }
+    },
   }
 })
-
-/**
- * @param {Array} items - Array of items to process
- * @param {number} batchSize - Size of each batch
- * @param {Function} processFn - Function to process each batch
- * @returns {Promise<void>}
- */
-async function processBatches(items, batchSize, processFn) {
-  let batch = writeBatch(fireDb)
-  let operationsCount = 0
-
-  for (const item of items) {
-    try {
-      await processFn(item, batch)
-      operationsCount++
-
-      if (operationsCount >= batchSize) {
-        await batch.commit()
-        batch = writeBatch(fireDb)
-        operationsCount = 0
-      }
-    } catch (error) {
-      console.error('Error processing item:', error)
-    }
-  }
-
-  if (operationsCount > 0) {
-    try {
-      await batch.commit()
-    } catch (error) {
-      console.error('Error committing final batch:', error)
-    }
-  }
-}
