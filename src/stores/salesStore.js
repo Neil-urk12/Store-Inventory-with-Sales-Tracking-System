@@ -603,17 +603,27 @@ export const useSalesStore = defineStore('sales', {
           paymentMethod: this.selectedPaymentMethod,
           date: formatDate(currentDate, 'YYYY-MM-DD'),
           dateTimeframe: currentDate.toISOString(),
-          createdAt: currentDate.toISOString()
+          createdAt: currentDate.toISOString(),
+          syncStatus: 'pending'
         }
+
+        const saleId = await db.sales.add(sale)
+
+        await syncQueue.addToQueue({
+          type: 'add',
+          collection: 'sales',
+          data: sale,
+          docId: saleId
+        })
 
         this.cart.forEach(async item => {
           const product = this.getProducts.find(p => p.id === item.id)
-          product.quantity = product.quantity - item.quantity
-          if (product)
+          if (product) {
+            product.quantity = product.quantity - item.quantity
+            product.syncStatus = 'pending'
             await inventoryStore.updateExistingItem(item.id, product)
+          }
         })
-
-        await db.sales.add(sale)
 
         await financialStore.addTransaction({
           paymentMethod: this.selectedPaymentMethod,
