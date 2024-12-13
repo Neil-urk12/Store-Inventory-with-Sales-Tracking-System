@@ -60,6 +60,20 @@ const validateAndSave = async () => {
     const isValid = await formRef.value.validate()
     if (!isValid) return
 
+    if (!editMode.value) {
+      try {
+        editedItem.value.sku = await inventoryStore.getUniqueSku(editedItem.value.name)
+      } catch (error) {
+        $q.notify({
+          color: 'negative',
+          message: error.message,
+          icon: 'error',
+          position: 'top'
+        })
+        return
+      }
+    }
+
     const result = editMode.value
       ? await inventoryStore.updateExistingItem(editedItem.value.id, editedItem.value)
       : await inventoryStore.createNewItem(editedItem.value)
@@ -134,14 +148,13 @@ const validateAndSave = async () => {
           />
 
           <q-input
+            v-if="editMode"
             v-model="editedItem.sku"
             label="SKU"
-            :rules="[
-              val => !!val || 'SKU is required',
-              val => /^[A-Za-z0-9-]+$/.test(val) || 'SKU must contain only letters, numbers, and hyphens'
-            ]"
             dense
             outlined
+            disable
+            hint="Auto-generated SKU"
           />
 
           <q-select
@@ -182,49 +195,7 @@ const validateAndSave = async () => {
             prefix="₱"
           />
 
-          <div class="column q-gutter-y-sm">
-            <q-input
-              v-model="editedItem.image"
-              label="Image URL (Optional)"
-              :rules="[
-                val => !val || /^https?:\/\/.+/.test(val) || 'Must be a valid URL starting with http:// or https://'
-              ]"
-              hint="Leave empty for no image"
-              dense
-              outlined
-              :loading="imageLoading"
-              :error="imageError"
-              :error-message="imageError ? 'Unable to load image from URL' : ''"
-            >
-              <template v-slot:append>
-                <q-icon
-                  v-if="editedItem.image"
-                  name="clear"
-                  class="cursor-pointer"
-                  @click="editedItem.image = ''"
-                />
-              </template>
-            </q-input>
-
-            <div v-if="imagePreviewUrl" class="image-preview q-mt-md flex justify-center items-center">
-              <q-img
-                :src="imagePreviewUrl"
-                style="max-width: 200px; max-height: 200px"
-                fit="contain"
-                loading="lazy"
-                @error="imageError = true"
-              >
-                <template v-slot:loading>
-                  <q-spinner-dots color="white" />
-                </template>
-                <template v-slot:error>
-                  <div class="absolute-full flex flex-center bg-negative text-white">
-                    Cannot load image
-                  </div>
-                </template>
-              </q-img>
-            </div>
-          </div>
+          
         </q-form>
       </q-card-section>
 
