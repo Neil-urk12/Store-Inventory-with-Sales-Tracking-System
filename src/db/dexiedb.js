@@ -32,7 +32,7 @@ class AppDatabase extends Dexie {
    * @description Creates a new instance of the AppDatabase class.
   */
   constructor() {
-    super('inventoryDb'); // Name of the database
+    super('inventoryDb')
 
     this.version(3).stores({
       // Inventory tables
@@ -41,7 +41,6 @@ class AppDatabase extends Dexie {
 
       // Sales tables
       sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
-
       cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
       // Contacts tables
@@ -56,6 +55,8 @@ class AppDatabase extends Dexie {
     this.items.hook('creating', (primKey, obj) => {
       obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
       obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+      obj.syncStatus = obj.syncStatus || 'pending'
+      
       // Ensure category information is preserved
       if (obj.categoryId && !obj.category) {
         const store = useInventoryStore()
@@ -63,23 +64,30 @@ class AppDatabase extends Dexie {
       }
     })
 
-    this.items.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
-      // Ensure category information is preserved during updates
-      if (modifications.categoryId && !modifications.category) {
-        const store = useInventoryStore()
-        modifications.category = store.getCategoryName(modifications.categoryId)
-      }
-    })
-
     this.categories.hook('creating', (primKey, obj) => {
       obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
       obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+      obj.syncStatus = obj.syncStatus || 'pending'
     })
 
     this.categories.hook('updating', (modifications, primKey, obj) => {
       modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+      modifications.syncStatus = modifications.syncStatus || 'pending'
     })
+  }
+
+  // Add helper method for handling temp IDs
+  async updateFirebaseId(collection, tempId, firebaseId) {
+    try {
+      await this[collection].where('tempId').equals(tempId).modify(item => {
+        item.firebaseId = firebaseId;
+        item.syncStatus = 'synced';
+        item.tempId = null;
+      });
+    } catch (error) {
+      console.error(`Error updating Firebase ID for ${collection}:`, error);
+      throw error;
+    }
   }
 
   // Inventory Methods--------------------------------------------------
@@ -119,6 +127,7 @@ class AppDatabase extends Dexie {
       quantity: Math.max(0, parseInt(item.quantity) || 0),
       price: parseFloat(item.price),
       image: item.image?.trim() || null,
+      tempId: `temp_${Date.now()}`,
       syncStatus: 'pending',
       createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
       updatedAt: formatDate(new Date(), 'YYYY-MM-DD')
@@ -600,6 +609,11 @@ class AppDatabase extends Dexie {
       console.error('Database error deleting category:', error)
       throw error
     }
+  }
+
+  // Add method to find by temp ID
+  async findByTempId(collection, tempId) {
+    return await this[collection].where('tempId').equals(tempId).first();
   }
 
 }
