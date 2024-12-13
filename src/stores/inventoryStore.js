@@ -536,10 +536,8 @@ export const useInventoryStore = defineStore('inventory', {
         }
 
         this.unsubscribeItems = onSnapshot(firestoreQuery, async (snapshot) => {
-          let batch = writeBatch(fireDb)
           const localUpdates = []
-          let operationsCount = 0
-
+          
           snapshot.docChanges().forEach(async change => {
             const firestoreItem = { ...change.doc.data(), firebaseId: change.doc.id }
 
@@ -606,37 +604,35 @@ export const useInventoryStore = defineStore('inventory', {
             }
           })
 
-          await db.transaction('rw', db.items, async () => {
-            const batchSize = Math.min(500, localUpdates.length);
-            for (const update of localUpdates) {
-              if (update.id) {
-                batch.update(doc(fireDb, 'items', update.data.firebaseId), { ...update.data, syncStatus: 'synced', updatedAt: new Date().toISOString() })
-                await db.items.update(update.id, { ...update.data, syncStatus: 'synced' })
-              } else {
-                const docRef = await addDoc(collection(fireDb, 'items'), {...update.data, syncStatus: 'synced', updatedAt: new Date().toISOString() })
-                await db.items.add({...update.data, syncStatus: 'synced', firebaseId: docRef.id, updatedAt: new Date().toISOString() })
-              }
-              operationsCount++
-              if (operationsCount >= batchSize) {
-                try {
-                  await batch.commit()
-                } catch (error) {
-                  console.error('Error committing batch update', error)
-                }
-                batch = writeBatch(fireDb)
-                operationsCount = 0
-              }
-            }
-          })
-
-          if (operationsCount > 0) {
-            try {
-              await batch.commit()
-            } catch (error) {
-              console.error('Error commiting batch update', error)
+          const batchSize = 500
+          const processUpdate = async (update, batch) => {
+            if (update.id) {
+              batch.update(doc(fireDb, 'items', update.data.firebaseId), {
+                ...update.data,
+                syncStatus: 'synced',
+                updatedAt: new Date().toISOString()
+              })
+              await db.items.update(update.id, {
+                ...update.data,
+                syncStatus: 'synced'
+              })
+            } else {
+              const docRef = await addDoc(collection(fireDb, 'items'), {
+                ...update.data,
+                syncStatus: 'synced',
+                updatedAt: new Date().toISOString()
+              })
+              await db.items.add({
+                ...update.data,
+                syncStatus: 'synced',
+                firebaseId: docRef.id,
+                updatedAt: new Date().toISOString()
+              })
             }
           }
 
+          await processBatches(localUpdates, batchSize, processUpdate)
+          
           await this.uploadPendingLocalChanges(localItems)
           this.syncStatus.lastSync = new Date().toISOString()
           await this.loadInventory()
@@ -653,47 +649,34 @@ export const useInventoryStore = defineStore('inventory', {
       }
     },
 
-    async uploadPendingLocalChanges(localItems){
-      let batch = writeBatch(fireDb)
-      let operationsCount = 0
-      const batchSize = Math.min(500, localItems.filter(item => item.syncStatus === 'pending').length);
+    async uploadPendingLocalChanges(localItems) {
+      const pendingItems = localItems.filter(item => item.syncStatus === 'pending')
+      const batchSize = 500
 
-      for(const localItem of localItems){
-        if(localItem.syncStatus === 'pending'){
-          if(localItem.firebaseId){
-            batch.update(doc(fireDb, 'items', localItem.firebaseId), {...localItem, syncStatus: "synced", updatedAt: new Date().toISOString()})
-            await db.items.update(localItem.id, {syncStatus: 'synced', updatedAt: new Date().toISOString() })
-            operationsCount++
-          } else {
-            try{
-              const docRef = await addDoc(collection(fireDb, 'items'), {
-                ...localItem,
-                updatedAt: new Date().toISOString()
-              })
-              await db.items.update(localItem.id, { firebaseId: docRef.id, syncStatus: 'synced' })
-            } catch (error) {
-              console.error('Error uploading item to Firestore', error)
-            }
-            operationsCount++
-          }
-          if (operationsCount >= batchSize) {
-            try {
-              await batch.commit()
-            } catch (error) {
-              console.error('Error committing batch update', error)
-            }
-            batch = writeBatch(fireDb)
-            operationsCount = 0
-          }
+      const processItem = async (localItem, batch) => {
+        if (localItem.firebaseId) {
+          batch.update(doc(fireDb, 'items', localItem.firebaseId), {
+            ...localItem,
+            syncStatus: "synced",
+            updatedAt: new Date().toISOString()
+          })
+          await db.items.update(localItem.id, {
+            syncStatus: 'synced',
+            updatedAt: new Date().toISOString()
+          })
+        } else {
+          const docRef = await addDoc(collection(fireDb, 'items'), {
+            ...localItem,
+            updatedAt: new Date().toISOString()
+          })
+          await db.items.update(localItem.id, {
+            firebaseId: docRef.id,
+            syncStatus: 'synced'
+          })
         }
       }
 
-      if(operationsCount > 0)
-        try {
-          await batch.commit()
-        } catch (error) {
-          console.error("Error committing batch update", error)
-        }
+      await processBatches(pendingItems, batchSize, processItem)
     },
 
     /**
@@ -1331,3 +1314,37 @@ export const useInventoryStore = defineStore('inventory', {
     },
   }
 })
+
+/**
+ * @param {Array} items - Array of items to process
+ * @param {number} batchSize - Size of each batch
+ * @param {Function} processFn - Function to process each batch
+ * @returns {Promise<void>}
+ */
+async function processBatches(items, batchSize, processFn) {
+  let batch = writeBatch(fireDb)
+  let operationsCount = 0
+
+  for (const item of items) {
+    try {
+      await processFn(item, batch)
+      operationsCount++
+
+      if (operationsCount >= batchSize) {
+        await batch.commit()
+        batch = writeBatch(fireDb)
+        operationsCount = 0
+      }
+    } catch (error) {
+      console.error('Error processing item:', error)
+    }
+  }
+
+  if (operationsCount > 0) {
+    try {
+      await batch.commit()
+    } catch (error) {
+      console.error('Error committing final batch:', error)
+    }
+  }
+}
