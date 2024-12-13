@@ -60,6 +60,16 @@ const outOfStockItems = computed(() =>
 )
 
 function exportToCSV() {
+  if (!filteredItems.value || filteredItems.value.length === 0) {
+    $q.notify({
+      type: 'warning',
+      message: 'No data available to export',
+      position: 'top',
+      timeout: 2000
+    })
+    return
+  }
+
   const headers = columns
     .filter(col => col.name !== 'actions')
     .map(col => col.label)
@@ -202,7 +212,7 @@ function checkLowStock() {
           @click="inventoryStore.cleanupDuplicates()"
         />
         <q-btn
-          color="secondary"
+          color="primary"
           icon="download"
           label="Export CSV"
           @click="exportToCSV"
