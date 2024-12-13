@@ -328,6 +328,17 @@ export const useInventoryStore = defineStore('inventory', {
       this.loading = true
 
       try {
+        
+        if (item.categoryId) {
+          const categoryExists = await db.categories
+            .where('id')
+            .equals(item.categoryId)
+            .count()
+
+          if (!categoryExists)
+            throw new Error('Selected category does not exist')
+        }
+
         const errors = validateItem(item)
         if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
@@ -799,11 +810,12 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async addCategory(categoryName) {
       try {
-        if (!categoryName || typeof categoryName !== 'string')
+        const sanitizedName = categoryName.trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, ' ')
+        if (!sanitizedName || typeof sanitizedName !== 'string')
           throw new Error('Invalid category name')
 
         const existingCategory = this.categories.find(
-          c => c.name.toLowerCase() === categoryName.toLowerCase()
+          c => c.name.toLowerCase().replace(/\s+/g, '') === sanitizedName.toLowerCase().replace(/\s+/g, '')
         )
         if (existingCategory)
           throw new Error('Category already exists')
@@ -811,9 +823,10 @@ export const useInventoryStore = defineStore('inventory', {
         const tempId = 'temp_' + Date.now()
         const newCategory = {
           id: tempId,
-          name: categoryName,
+          name: sanitizedName,
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
+          syncStatus: 'pending'
         }
 
         await db.categories.add(newCategory)
@@ -822,7 +835,7 @@ export const useInventoryStore = defineStore('inventory', {
         if (isOnline.value) {
           try {
             const docRef = await addDoc(collection(fireDb, 'categories'), {
-              name: categoryName,
+              name: sanitizedName,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
@@ -835,33 +848,33 @@ export const useInventoryStore = defineStore('inventory', {
               c.id === tempId ? { ...c, id: docRef.id } : c
             )
 
-            return { id: docRef.id, name: categoryName }
+            return { id: docRef.id, name: sanitizedName }
           } catch (error) {
             console.error('Error adding category to Firestore:', error)
             await syncQueue.addToQueue({
               type: 'add',
               collection: 'categories',
               data: {
-                name: categoryName,
+                name: sanitizedName,
                 createdAt: new Date(),
                 updatedAt: new Date()
               },
               tempId
             })
-            return { id: tempId, name: categoryName }
+            return { id: tempId, name: sanitizedName }
           }
         } else {
           await syncQueue.addToQueue({
             type: 'add',
             collection: 'categories',
             data: {
-              name: categoryName,
+              name: sanitizedName,
               createdAt: new Date(),
               updatedAt: new Date()
             },
             tempId
           })
-          return { id: tempId, name: categoryName }
+          return { id: tempId, name: sanitizedName }
         }
       } catch (error) {
         console.error('Error adding category:', error)
@@ -877,10 +890,20 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async deleteCategory(categoryId) {
       try {
+        const category = this.categories.find(c => c.id === categoryId)
+        if (!category) 
+          throw new Error('Category not found')
+
+        const itemsInCategory = this.items.filter(item => item.categoryId === categoryId)
+        if (itemsInCategory.length > 0) {
+          throw new Error('Cannot delete category with existing items')
+        }
+
         await db.categories.delete(categoryId)
 
+        // Update local state
         this.categories = this.categories.filter(c => c.id !== categoryId)
-
+        
         if (isOnline.value) {
           try {
             const docRef = doc(fireDb, 'categories', categoryId)
