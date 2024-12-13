@@ -9,6 +9,7 @@ import {
   getDocs,
   query,
   orderBy,
+  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -30,6 +31,15 @@ import filterItems from 'src/utils/filterUtils'
 const { isOnline } = useNetworkStatus()
 const inventoryStore = useInventoryStore()
 const financialStore = useFinancialStore()
+
+function isValidDate(dateString) {
+  if (!dateString) return false;
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(dateString)) return false;
+  
+  const date = new Date(dateString);
+  return date instanceof Date && !isNaN(date);
+}
 
 /**
  * @const {Store} useSalesStore
@@ -136,12 +146,22 @@ export const useSalesStore = defineStore('sales', {
           await runTransaction(fireDb, async (transaction) => {
             const saleRef = doc(fireDb, 'sales', sale.id)
 
-            if (!saleDoc) {
+            const saleDoc = await getDoc(saleRef)
+            if (!saleDoc.exists()) {
               console.log(`Creating new sale record for sale ID: ${sale.id}`);
-              transaction.set(saleRef, { ...sale, dateTimeframe: new Date().toISOString() });
+              transaction.set(saleRef, {
+                 ...sale,
+                dateTimeframe: new Date().toISOString(),
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              })
             } else {
               console.log(`Updating existing sale record for sale ID: ${sale.id}`);
-              transaction.update(saleRef, { ...sale, dateTimeframe: new Date().toISOString() });
+              transaction.update(saleRef, {
+                ...sale,
+                dateTimeframe: new Date().toISOString(),
+                updatedAt: serverTimestamp()
+              });
             }
           });
           console.log(`Sale ${sale.id} uploaded/updated successfully!`);
@@ -184,12 +204,24 @@ export const useSalesStore = defineStore('sales', {
           await this.syncWithFirestore()
 
         const localSales = await db.getAllSales()
-        const validation = await validateSales(localSales)
-        if(!validation.isValid) throw new Error (validation.errors)
+        
+        const salesWithValidDates = localSales.map(sale => {
+          if (!isValidDate(sale.date)) {
+            sale.date = formatDate(new Date(), 'YYYY-MM-DD')
+          }
+          return sale
+        })
 
-        this.sales = localSales
+        const validation = await validateSales(salesWithValidDates)
+        if (!validation.isValid) {
+          console.error('Sales validation failed:', validation.errors)
+          throw new Error(validation.errors)
+        }
+
+        this.sales = salesWithValidDates
       } catch (error) {
         console.error('Error loading sales:', error)
+        throw error
       } finally {
         this.loading = false
       }
@@ -554,6 +586,7 @@ export const useSalesStore = defineStore('sales', {
         return { success: false, error: 'Cart is empty' }
 
       try {
+        const currentDate = new Date()
         const sale = {
           id: crypto.randomUUID(),
           items: this.cart.map(item => ({
@@ -568,10 +601,11 @@ export const useSalesStore = defineStore('sales', {
             0
           ),
           paymentMethod: this.selectedPaymentMethod,
-          date: formatDate(new Date(), 'YYYY-MM-DD'),
-          dateTimeframe: new Date().toISOString(),
-          createdAt: new Date().toISOString()
+          date: formatDate(currentDate, 'YYYY-MM-DD'),
+          dateTimeframe: currentDate.toISOString(),
+          createdAt: currentDate.toISOString()
         }
+
         this.cart.forEach(async item => {
           const product = this.getProducts.find(p => p.id === item.id)
           product.quantity = product.quantity - item.quantity

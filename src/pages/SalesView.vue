@@ -44,6 +44,7 @@ const processCheckout = async () => {
     })
     salesStore.clearCart()
     inventoryStore.loadInventory()
+    await salesStore.loadSales()
   } else {
     $q.notify({
       type: 'negative',
@@ -55,15 +56,27 @@ const processCheckout = async () => {
 onMounted(async () => {
   try {
     const loadTasks = [
-      salesStore.sales.length === 0 ? salesStore.initializeDb() : Promise.resolve(),
+      salesStore.sales.length === 0 ? salesStore.loadSales().catch(error => {
+        console.error('Error loading sales:', error);
+        $q.notify({
+          type: 'negative',
+          message: 'Error loading sales data. Some features may be limited.',
+          timeout: 5000
+        });
+      }) : Promise.resolve(),
       inventoryStore.items.length === 0 ? inventoryStore.loadInventory() : Promise.resolve(),
       inventoryStore.categories.length === 0 ? inventoryStore.loadCategories() : Promise.resolve()
     ]
 
     await Promise.all(loadTasks)
   } catch (error) {
-    console.error(error)
-  } 
+    console.error('Error during initialization:', error);
+    $q.notify({
+      type: 'negative',
+      message: 'Error initializing the application. Please refresh the page.',
+      timeout: 5000
+    });
+  }
 })
 </script>
 
