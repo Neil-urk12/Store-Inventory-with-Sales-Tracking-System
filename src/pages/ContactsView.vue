@@ -10,7 +10,12 @@ const isLoading = ref(true);
 
 onMounted(async () => {
   try {
-    await contactsStore.initializeDb();
+    console.log("initializing contacts db")
+    if (contactsStore.contactCategories.length === 0) {
+      await contactsStore.initializeDb();
+    }
+    console.log("contacts db initialized")
+    console.log(contactsStore.contactCategories)
     isLoading.value = false;
   } catch (error) {
     $q.notify({
@@ -166,7 +171,7 @@ const emailContact = (email) => {
 const addContact = (contactCategory) => {
   contactEntryModalTitle.value = "Add Contact"
   newContact.id = null
-  newContact.categoryId = contactCategory.id
+  newContact.categoryId = contactCategory.id.toString()
   newContact.name = ""
   newContact.email = ""
   newContact.phone = ""
@@ -223,7 +228,7 @@ const saveContact = async () => {
       email: newContact.email.trim(),
       phone: newContact.phone.trim(),
       avatar: newContact.avatar,
-      categoryId: newContact.categoryId
+      categoryId: newContact.categoryId.toString()
     };
 
     if (newContact.id) {
@@ -251,6 +256,8 @@ const saveContact = async () => {
       errorMessage = error.message
     else if (error.code === 'OFFLINE_ERROR')
       errorMessage = 'Cannot save contact while offline'
+    else if (error.name === 'DatabaseError')
+      errorMessage = error.message
 
     $q.notify({
       type: 'negative',
@@ -263,7 +270,7 @@ const saveContact = async () => {
 
 // Computed property for contact categories from store
 const contactCategories = computed(() => contactsStore.contactCategories)
-const hasContacts = computed(() => contactCategories.value.some(category => category.contacts.length > 0));
+const hasCategories = computed(() => contactCategories.value.length > 0);
 </script>
 
 <template>
@@ -286,8 +293,10 @@ const hasContacts = computed(() => contactCategories.value.some(category => cate
     </q-inner-loading>
 
     <div v-if="!isLoading">
-      <div v-if="hasContacts" class="row q-col-gutter-md">
-        <div v-for="category in contactCategories" :key="category.id" class="col-12 col-sm-6 col-md-4">
+      <div v-if="hasCategories" class="row q-col-gutter-md">
+        <div v-for="category in contactCategories" 
+             :key="`category-${category.id}`" 
+             class="col-12 col-sm-6 col-md-4">
           <q-card flat bordered class="category-card">
             <q-card-section class="bg-primary text-white">
               <div class="row items-center justify-between">

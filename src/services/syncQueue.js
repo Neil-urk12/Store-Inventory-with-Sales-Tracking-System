@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
+import { formatDate } from '../utils/dateUtils'
 import { ref } from 'vue'
 
 /**
