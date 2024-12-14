@@ -1,11 +1,13 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { date } from 'quasar'
 import { useInventoryStore } from 'src//stores/inventoryStore'
+import { useSalesStore } from 'src/stores/salesStore'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
+const salesStore = useSalesStore()
 
 const props = defineProps({
   modelValue: {
@@ -18,23 +20,40 @@ const emit = defineEmits(['update:modelValue'])
 
 const salesReportColumns = [
   {
-    name: 'productName',
-    label: 'Product Name',
-    field: 'productName',
-    align: 'left',
-    sortable: true,
-    style: 'position: sticky; left: 0; z-index: 2;',
-    classes: $q.dark.isActive ? 'bg-dark sticky-column' : 'bg-grey-2 sticky-column'
-  },
-  { name: 'quantitySold', label: 'Quantity Sold', field: 'quantitySold', align: 'right', sortable: true },
-  { name: 'revenue', label: 'Revenue', field: 'revenue', align: 'right', sortable: true },
-  {
     name: 'date',
-    label: 'Sale Date',
+    label: 'Date',
     field: 'date',
     align: 'left',
     sortable: true,
-    format: val => date.formatDate(new Date(), 'MM/DD/YYYY')
+    format: val => date.formatDate(val, 'MM/DD/YYYY')
+  },
+  {
+    name: 'cashProfit',
+    label: 'Total Cash Profits',
+    field: 'Cash Profits',
+    align: 'right',
+    sortable: true
+  },
+  {
+    name: 'gcashProfit',
+    label: 'Total Gcash Profits',
+    field: 'Gcash Profits',
+    align: 'right',
+    sortable: true
+  },
+  {
+    name: 'growsariProfit',
+    label: 'Growsari Profits',
+    field: 'Growsari Profits',
+    align: 'right',
+    sortable: true
+  },
+  {
+    name: 'totalProfit',
+    label: 'Total Profits',
+    field: 'Total Profits',
+    align: 'right',
+    sortable: true
   }
 ]
 
@@ -78,7 +97,8 @@ const updateSalesReportTimeframe = (value) => salesReportTimeframeFilter.value =
 
 const generateSalesReport = async () => {
   try {
-    rawSalesData.value = await inventoryStore.generateSalesReport()
+    rawSalesData.value = await salesStore.generateSalesReport()
+    console.log(rawSalesData.value)
   } catch (error) {
     $q.notify({
       color: 'negative',
@@ -90,10 +110,10 @@ const generateSalesReport = async () => {
 
 const exportSalesReport = () => {
   const salesData = filteredSalesData.value.map(item => ({
-    'Product Name': item.productName,
-    'Quantity Sold': item.quantitySold,
-    'Revenue': item.revenue,
-    'Sale Date': item.date
+    'Date': date.formatDate(item.date, 'MM/DD/YYYY'),
+    'Cash Profits': item.cashProfit,
+    'Gcash Profits': item.gcashProfit,
+    'Growsari Profits': item.growsariProfit
   }))
   inventoryStore.exportToCSV(salesData, 'sales-report')
 }
@@ -102,6 +122,11 @@ const exportSalesReport = () => {
 const onDialogShow = () => {
   generateSalesReport()
 }
+
+onMounted (() => {
+  if(salesStore.sales.length === 0)
+    salesStore.initializeDb()
+})
 </script>
 
 <template>
@@ -146,7 +171,7 @@ const onDialogShow = () => {
         <q-table
           :rows="filteredSalesData"
           :columns="salesReportColumns"
-          no-data-label="I didn't find anything for you"
+          no-data-label="No sales data available for this period."
           row-key="productName"
           :pagination="{ rowsPerPage: 10 }"
           flat
@@ -170,16 +195,10 @@ const onDialogShow = () => {
           <template v-slot:body="props">
             <q-tr :props="props">
               <q-td
-                v-for="col in props.cols"
+                v-for="(col, index) in props.cols"
                 :key="col.name"
                 :props="props"
-              >
-                <template v-if="col.name === 'price' || col.name === 'total'">
-                  {{ inventoryStore.formatCurrency(props.row[col.name]) }}
-                </template>
-                <template v-else>
-                  {{ props.row[col.name] }}
-                </template>
+              >{{ col.name === 'date' ? date.formatDate(props.row.date, 'MM/DD/YYYY') : props.row[col.field] }}
               </q-td>
             </q-tr>
           </template>

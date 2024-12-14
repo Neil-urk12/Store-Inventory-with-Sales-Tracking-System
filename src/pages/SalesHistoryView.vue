@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useSalesStore } from '../stores/salesStore'
 import { useFinancialStore } from 'src/stores/financialStore'
 import { useQuasar } from 'quasar'
@@ -58,10 +58,9 @@ const filteredSales = computed(() => {
 
   if (dateRange.value.from && dateRange.value.to) {
     filtered = filtered.filter(sale => {
-      const saleDate = new Date(sale.date)
-      const from = new Date(dateRange.value.from)
-      const to = new Date(dateRange.value.to)
-      return saleDate >= from && saleDate <= to
+      const from = formatDate(new Date(dateRange.value.from), 'YYYY-MM-DD')
+      const to = formatDate(new Date(dateRange.value.to), 'YYYY-MM-DD')
+      return sale.date >= from && sale.date <= to
     })
   }
 
@@ -83,11 +82,22 @@ const showSaleDetails = (sale) => {
 
 const loadSales = async () => {
   try {
+    await salesStore.loadSales()
     const result = await salesStore.initializeDb()
-    if (result) 
+    if (result && salesStore.sales.length === 0)
+      $q.notify({
+        type: 'positive',
+        message: 'There are no sales yet'
+      })
+    else if (result)
       $q.notify({
         type: 'positive',
         message: 'Sales loaded successfully'
+      })
+    else
+      $q.notify({
+        type: 'negative',
+        message: 'Error loading sales'
       })
   } catch (error) {
     $q.notify({
@@ -95,7 +105,33 @@ const loadSales = async () => {
       message: 'Error loading sales'
     })
     console.error('Error loading sales:', error)
-  } 
+  }
+}
+
+watch(() => salesStore.sales, (newSales) => {
+  filteredSales.value = computeFilteredSales(newSales)
+}, { deep: true })
+
+const computeFilteredSales = (sales) => {
+  let filtered = [...sales]
+
+  if (dateRange.value.from && dateRange.value.to) {
+    filtered = filtered.filter(sale => {
+      const from = formatDate(new Date(dateRange.value.from), 'YYYY-MM-DD')
+      const to = formatDate(new Date(dateRange.value.to), 'YYYY-MM-DD')
+      return sale.date >= from && sale.date <= to
+    })
+  }
+
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(sale =>
+      sale.paymentMethod.toLowerCase().includes(query) ||
+      sale.items.some(item => item.name.toLowerCase().includes(query))
+    )
+  }
+
+  return filtered
 }
 
 onMounted(async () => await loadSales())

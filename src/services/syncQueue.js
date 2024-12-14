@@ -12,9 +12,18 @@
  */
 
 import { db } from '../db/dexiedb'
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore'
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDoc
+} from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
+import { formatDate } from '../utils/dateUtils'
+import { ref } from 'vue'
 
 /**
  * @constant {Object} SYNC_CONFIG
@@ -23,9 +32,14 @@ import { useNetworkStatus } from './networkStatus'
  * @property {number[]} RETRY_DELAYS - Delay in ms for each retry attempt [1s, 2s, 5s, 10s, 30s]
  * @description Configuration constants for sync operations
  */
-const LOCK_TIMEOUT = 5000 // 5 seconds
+const LOCK_TIMEOUT = 5000
 const MAX_RETRIES = 5
-const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000] // Exponential backoff
+const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000]
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,
+  resetTimeout: 60000,  //wip!!
+  halfOpenTimeout: 30000
+}
 
 /**
  * @class SyncQueue
@@ -55,11 +69,33 @@ class SyncQueue {
    * for lock management.
    */
   constructor() {
+    this.syncProgress = ref({
+      current: 0,
+      total: 0
+    })
+    this.pendingOperations = ref(0)
+    this.isSyncing = ref(false)
+    
     this.isProcessing = false
     this.lockId = 'sync_lock'
     this.processId = Math.random().toString(36).substring(7)
+    this.startNetworkListener()
+    this.monitorPendingOperations()
   }
 
+  startNetworkListener() {
+    window.addEventListener('online', () => this.checkAndProcessQueue())
+    // window.addEventListener('offline', this.processQueue)
+  }
+  async checkAndProcessQueue() {
+    const { isOnline } = useNetworkStatus()
+    if (isOnline.value) {
+      const pendingOperations = await db.syncQueue.where('status').equals('pending').toArray();
+      if (pendingOperations.length > 0)
+        await this.processQueue()
+    }
+    this.startPeriodicSync()
+  }
   /**
    * @async
    * @method addToQueue
@@ -108,6 +144,7 @@ class SyncQueue {
     if (!hasLock) return
 
     this.isProcessing = true
+    this.isSyncing.value = true
 
     try {
       const operations = await db.syncQueue
@@ -115,11 +152,16 @@ class SyncQueue {
         .equals('pending')
         .toArray()
 
+      this.syncProgress.value = {
+        current: 0,
+        total: operations.length
+      }
+
       for (const operation of operations) {
         try {
           await this.processOperation(operation)
-          // Only remove from queue if successfully processed
           await db.syncQueue.delete(operation.id)
+          this.syncProgress.value.current++
         } catch (error) {
           console.error('Error processing operation:', operation, error)
           const nextAttempt = (operation.attempts || 0) + 1
@@ -147,6 +189,8 @@ class SyncQueue {
       console.error('Error processing queue:', error)
     } finally {
       this.isProcessing = false
+      this.isSyncing.value = false
+      this.syncProgress.value = { current: 0, total: 0 }
       await this.releaseLock()
     }
   }
@@ -175,18 +219,24 @@ class SyncQueue {
             const docRef = await addDoc(collection(fireDb, collectionName), {
               ...data,
               localId: data.id.toString(),
+              date: formatDate(data.date),
               updatedAt: new Date().toISOString()
             })
-            // Update local record with Firebase ID
             await db[collectionName].update(data.id, {
               firebaseId: docRef.id,
               syncStatus: 'synced'
             })
           } catch (error) {
-            // If add operation fails, try to update local record with error
+            // If add operation fails, update local record with error and set syncStatus to 'failed'
             await db[collectionName].update(data.id, {
+              firebaseId: null, // Clear firebaseId if add operation failed
               syncStatus: 'failed',
               error: error.message
+            })
+            console.error(`Sync Error for ${operation.type} operation:`, {
+              operation,
+              error: error.message,
+              timestamp: new Date().toISOString()
             })
             throw error
           }
@@ -200,7 +250,6 @@ class SyncQueue {
               throw new Error('No Firebase ID found for update operation')
             }
 
-            // Get Firebase document to check if it exists and handle conflicts
             const docRef = doc(fireDb, collectionName, localRecord.firebaseId)
             const docSnap = await getDoc(docRef)
 
@@ -210,37 +259,39 @@ class SyncQueue {
 
             const firebaseData = docSnap.data()
 
-            // Handle conflict resolution
             if (firebaseData.version > data.version) {
-              // Firebase has newer version, need to merge changes
-              const mergedData = await this.resolveConflict(firebaseData, data)
+              const mergedData = await this.resolveConflict(
+                firebaseData,
+                data
+              )
               await updateDoc(docRef, {
                 ...mergedData,
                 localId: data.id.toString(),
                 updatedAt: new Date().toISOString()
               })
-
-              // Update local with merged data
-              await db[collectionName].update(data.id, {
-                ...mergedData,
-                syncStatus: 'synced'
+              .then(() => {
+                // Update local record with merged data and set syncStatus to 'synced'
+                db[collectionName].update(data.id, {
+                  ...mergedData,
+                  syncStatus: 'synced'
+                })
               })
             } else {
-              // Our version is newer or same, proceed with update
               await updateDoc(docRef, {
                 ...data,
                 localId: data.id.toString(),
                 updatedAt: new Date().toISOString()
               })
-
-              await db[collectionName].update(data.id, {
-                syncStatus: 'synced'
+              .then(() => {
+                // Update local record and set syncStatus to 'synced'
+                db[collectionName].update(data.id, {
+                  syncStatus: 'synced'
+                })
               })
             }
           } catch (error) {
             const shouldRetry = this.handleSyncError(error)
             if (shouldRetry) {
-              // Increment retry count and requeue with delay
               const retryCount = (operation.retryCount || 0) + 1
               if (retryCount <= MAX_RETRIES) {
                 await this.requeueWithDelay(operation, retryCount)
@@ -248,7 +299,7 @@ class SyncQueue {
               }
             }
 
-            // Update local record with error if we're not retrying
+            // Update local record with error and set syncStatus to 'failed'
             await db[collectionName].update(data.id, {
               syncStatus: 'failed',
               error: error.message
@@ -260,13 +311,14 @@ class SyncQueue {
 
         case 'delete': {
           try {
-            if(docId)
+            if (docId){
               await deleteDoc(doc(fireDb, collectionName, docId))
-            else console.warn('No firebaseId found for delete operation')
-
-            const localRecord = await db[collectionName].get(docId)
-            if (localRecord?.id)
-              await deleteDoc(doc(fireDb, collectionName, localRecord.id))
+              await db[collectionName].delete(docId)
+            } else {
+              console.warn('No firebaseId found for delete operation')
+              // You might want to handle this case differently,
+              // e.g., by marking the local record as deleted or retrying later.
+            }
           } catch (error) {
             console.error('Error deleting document:', error)
             throw error
@@ -296,7 +348,9 @@ class SyncQueue {
   async resolveConflict(firebaseData, localData) {
     // Simple last-write-wins strategy
     // Could be enhanced with field-level merging if needed
-    return localData.updatedAt > firebaseData.updatedAt ? localData : firebaseData
+    return localData.updatedAt > firebaseData.updatedAt
+      ? localData
+      : firebaseData
   }
 
   /**
@@ -310,7 +364,8 @@ class SyncQueue {
    * @private
    */
   async requeueWithDelay(operation, retryCount) {
-    const delay = RETRY_DELAYS[retryCount - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1]
+    const delay =
+      RETRY_DELAYS[retryCount - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1]
     await new Promise(resolve => setTimeout(resolve, delay))
     await this.addToQueue({
       ...operation,
@@ -329,7 +384,10 @@ class SyncQueue {
    */
   handleSyncError(error) {
     // Network errors should be retried
-    if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+    if (
+      error.code === 'unavailable' ||
+      error.code === 'network-request-failed'
+    ) {
       return true
     }
     // Document not found or permission errors should not be retried
@@ -353,7 +411,7 @@ class SyncQueue {
       const lock = await db.syncLocks.get(this.lockId)
       const now = Date.now()
 
-      if (lock && (now - lock.timestamp < LOCK_TIMEOUT)) {
+      if (lock && now - lock.timestamp < LOCK_TIMEOUT) {
         return false
       }
 
@@ -400,7 +458,29 @@ class SyncQueue {
       }
     }, interval)
   }
+
+  async monitorPendingOperations() {
+    // Update pending operations count periodically
+    setInterval(async () => {
+      const count = await db.syncQueue
+        .where('status')
+        .equals('pending')
+        .count()
+      this.pendingOperations.value = count
+    }, 5000)
+  }
 }
 
 /** @const {SyncQueue} syncQueue - Singleton instance of SyncQueue */
 export const syncQueue = new SyncQueue()
+
+syncQueue.checkAndProcessQueue()
+
+export function useSyncQueue() {
+  return {
+    pendingOperations: syncQueue.pendingOperations,
+    isSyncing: syncQueue.isSyncing,
+    syncProgress: syncQueue.syncProgress,
+    processQueue: () => syncQueue.processQueue()
+  }
+}

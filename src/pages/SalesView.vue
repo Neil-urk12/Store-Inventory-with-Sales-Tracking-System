@@ -1,24 +1,18 @@
 <script setup>
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useInventoryStore } from '../stores/inventoryStore'
-import { useSalesStore } from 'src/stores/salesStore';
+import { useSalesStore } from 'src/stores/salesStore'
 import { useFinancialStore } from 'src/stores/financialStore'
 import { useQuasar } from 'quasar'
-const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'));
+const Product = defineAsyncComponent(() => import('src/components/sales/Product.vue'))
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
 const salesStore = useSalesStore()
 const financialStore = useFinancialStore()
 
-const paymentMethods = [ 'Cash', 'GCash', 'Growsari']
+const paymentMethods = ['Cash', 'GCash', 'Growsari']
 
-// const categories = computed(() => {
-//   // const uniqueCategories = [...new Set(salesStore.products.map(p => p.category))]
-//   return [...new Set(salesStore.products.map(p => p.category))].map(cat => ({ label: cat, value: cat}))
-//   // const uniqueCategories = [...new Set(products.value.map(p => p.category))]
-//   // return uniqueCategories.map(cat => ({ label: cat, value: cat }))
-// })
 const categories = computed(() => inventoryStore.formattedCategories)
 const subtotal = computed(() =>
   salesStore.getCart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
@@ -38,14 +32,11 @@ const handleUpdateCartQuantity = (item, change) => {
 
 const handleRemoveFromCart = (item) => salesStore.removeFromCart(item)
 
-// const removeFromCart = (item) => (salesStore.cart.value.indexOf(item) > -1) ? salesStore.cart.value.splice(index, 1) : null //Final immutable optimization
-  // const index = cart.value.indexOf(item)   //initial
-  // if (index > -1) cart.value.splice(index, 1)
-  // if(cart.value.indexOf(item) > -1) cart.value.splice(index, 1)  //optimized 1
-
 const processCheckout = async () => {
-  // const result = salesStore.clearCart()
+  salesStore.isCheckoutProcessing = true
   const result = await salesStore.processCheckout()
+  salesStore.isCheckoutProcessing = false
+
   if (result.success) {
     $q.notify({
       type: 'positive',
@@ -53,18 +44,39 @@ const processCheckout = async () => {
     })
     salesStore.clearCart()
     inventoryStore.loadInventory()
-  } else
+    await salesStore.loadSales()
+  } else {
     $q.notify({
       type: 'negative',
       message: result.error
     })
+  }
 }
 
-onMounted(() => {
-  if(inventoryStore.items.length === 0)
-    inventoryStore.loadInventory()
-  if(inventoryStore.categories.length === 0)
-    inventoryStore.loadCategories()
+onMounted(async () => {
+  try {
+    const loadTasks = [
+      salesStore.sales.length === 0 ? salesStore.loadSales().catch(error => {
+        console.error('Error loading sales:', error);
+        $q.notify({
+          type: 'negative',
+          message: 'Error loading sales data. Some features may be limited.',
+          timeout: 5000
+        });
+      }) : Promise.resolve(),
+      inventoryStore.items.length === 0 ? inventoryStore.loadInventory() : Promise.resolve(),
+      inventoryStore.categories.length === 0 ? inventoryStore.loadCategories() : Promise.resolve()
+    ]
+
+    await Promise.all(loadTasks)
+  } catch (error) {
+    console.error('Error during initialization:', error);
+    $q.notify({
+      type: 'negative',
+      message: 'Error initializing the application. Please refresh the page.',
+      timeout: 5000
+    });
+  }
 })
 </script>
 
@@ -193,8 +205,9 @@ onMounted(() => {
                 color="primary"
                 class="full-width"
                 label="Checkout"
-                :disable="!salesStore.getCart.length"
-                @click="salesStore.showCheckoutDialog = true"
+                :disable="!salesStore.getCart.length || salesStore.isCheckoutProcessing"
+                @click="salesStore.showCheckoutDialog = !salesStore.isCheckoutProcessing ? true : salesStore.showCheckoutDialog"
+                :loading="salesStore.isCheckoutProcessing"
               />
             </div>
           </q-card-section>
@@ -216,12 +229,18 @@ onMounted(() => {
             <div class="text-subtitle2">Payment Method</div>
             <div>{{ salesStore.selectedPaymentMethod }}</div>
           </div>
-          <div class="text-h6">Total: ₱{{ financialStore.formatCurrency(total) }}</div>
+          <div class="text-h6">Total: {{ financialStore.formatCurrency(total) }}</div>
         </q-card-section>
 
         <q-card-actions align="right">
           <q-btn flat label="Cancel" color="primary" v-close-popup />
-          <q-btn flat label="Confirm" color="primary" @click="processCheckout" />
+          <q-btn
+            flat
+            label="Confirm"
+            color="primary"
+            @click="processCheckout"
+            :disable="salesStore.isCheckoutProcessing"
+            :loading="salesStore.isCheckoutProcessing"/>
         </q-card-actions>
       </q-card>
     </q-dialog>

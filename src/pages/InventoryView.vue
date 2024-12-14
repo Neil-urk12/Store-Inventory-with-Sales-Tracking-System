@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from "vue"
+import { onMounted, onUnmounted, onBeforeUnmount } from "vue"
 import { useInventoryStore } from "src/stores/inventoryStore"
 import { defineAsyncComponent } from "vue"
 const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/inventory/InventoryHeaderActions.vue'))
@@ -8,9 +8,18 @@ const ItemDialog = defineAsyncComponent(() => import('src/components/inventory/I
 const InventoryListView = defineAsyncComponent(() => import('src/components/inventory/InventoryListView.vue'))
 const inventoryStore = useInventoryStore()
 
-onMounted(async () =>
+onMounted(async () => {
+  await inventoryStore.cleanupDuplicates()
   await inventoryStore.initializeDb()
-)
+})
+
+onUnmounted(() => {
+  inventoryStore.cleanup(true)
+})
+
+onBeforeUnmount(() => {
+  inventoryStore.cleanupListeners()
+})
 </script>
 
 <template>

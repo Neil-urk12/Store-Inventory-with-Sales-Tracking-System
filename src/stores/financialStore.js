@@ -1,5 +1,18 @@
 /**
- * @fileoverview Manages financial operations including cash flow and transactions
+ * @fileoverview Manages financial data and reporting.
+ * Features:
+ * - Revenue tracking
+ * - Expense management
+ * - Profit calculations
+ * - Financial reporting
+ */
+
+/**
+ * @typedef {Object} FinancialReport
+ * @property {Object} revenue - Revenue breakdown
+ * @property {Object} expenses - Expense categories
+ * @property {Object} profit - Profit analysis
+ * @property {Object} trends - Historical trends
  */
 
 import { defineStore } from 'pinia'
@@ -28,28 +41,77 @@ export const useFinancialStore = defineStore('financial', {
     },
     profitTimeframe: 'daily',
     isLoading: false,
-    error: null
+    error: null,
+    cachedGetters: {} // Add this line
   }),
 
   getters: {
-    getDailyProfit() {
-      const today = new Date()
-      const todayStr = formatDate(today, 'YYYY-MM-DD')
-      return this.financialData
-        .filter(item => item.date === todayStr)
-        .reduce((sum, item) => sum + item.profit, 0)
-    },
+    getDailyExpense(state) {
+      const today = formatDate(new Date(), 'YYYY-MM-DD')
+      const cacheKey = JSON.stringify({ financialData: state.financialData, today })
 
-    getDailyExpense() {
-      const today = new Date()
-      const todayStr = formatDate(today, 'YYYY-MM-DD')
-      return this.financialData
-        .filter(item => item.date === todayStr && item.type === 'expense')
+      if (this.cachedGetters[cacheKey])
+        return this.cachedGetters[cacheKey];
+
+      const result = state.financialData
+        .filter(item => item.date === today && item.type === 'expense')
         .reduce((sum, item) => sum + Number(item.amount), 0)
+
+      this.cachedGetters[cacheKey] = result;
+      return result
+    },
+    /**
+     * @getter
+     * @returns {Array} Returns array of sales
+    */
+    getDailyProfit(state) {
+      const today = formatDate(new Date(), 'YYYY-MM-DD');
+      const cacheKey = JSON.stringify({ financialData: state.financialData, today, type: 'income' })
+
+      if (this.cachedGetters[cacheKey])
+        return this.cachedGetters[cacheKey]
+
+      const result = state.financialData
+        .filter(item => item.date === today && item.type === 'income')
+        .reduce((sum, item) => sum + Number(item.amount), 0)
+
+      this.cachedGetters[cacheKey] = result
+      return result
+    },
+    getWeeklyExpense(state) {
+      const today = formatDate(new Date(), 'YYYY-MM-DD')
+      const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()))
+      const endOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 6))
+      const cacheKey = JSON.stringify({ financialData: state.financialData, startOfWeek, endOfWeek, type: 'expense' })
+
+      if (this._cachedGetters[cacheKey])
+        return this._cachedGetters[cacheKey]
+
+      const result = state.financialData
+        .filter(item => {
+          const itemDate = new Date(item.date);
+          return itemDate >= startOfWeek && itemDate <= endOfWeek && item.type === 'expense'
+        })
+        .reduce((sum, item) => sum + Number(item.amount), 0)
+
+      this.cachedGetters[cacheKey] = result
+      return result
     }
   },
 
   actions: {
+    /**
+     *
+     *
+    */
+    async loadTransactions(){
+      try {
+        if(this.financialData.length === 0)
+          this.financialData = await db.getAllTransactions()
+      } catch (error) {
+        console.error('Error loading transactions', error)
+      }
+    },
     /**
      * @method syncWithFirestore
      * @description Syncs unsynced transactions with Firestore when online
@@ -61,11 +123,17 @@ export const useFinancialStore = defineStore('financial', {
       if (!fireDb)
         return console.error('Firebase DB not initialized')
 
+      if (this.financialData.length === 0)
+        this.loadTransactions()
+
       try {
-        const unsyncedTransactions = await db.cashFlow
-          .where('syncStatus')
-          .equals('pending')
-          .toArray()
+        // const unsyncedTransactions = await db.cashFlow
+        //   .where('syncStatus')
+        //   .equals('pending')
+        //   .toArray()
+        const unsyncedTransactions = this.financialData.filter(
+          transaction => transaction.syncStatus === 'pending'
+        )
 
         if (unsyncedTransactions.length === 0) return console.log('No transactions to sync')
 
@@ -84,7 +152,7 @@ export const useFinancialStore = defineStore('financial', {
                 syncStatus: 'validation_failed',
                 syncError: validation.errors.join(', ')
               })
-              continue // Skip to the next transaction
+              continue
             }
 
             const cleanTransaction = {
@@ -203,7 +271,7 @@ export const useFinancialStore = defineStore('financial', {
           paymentMethod: transactionData.paymentMethod,
           type: transactionData.type,
           amount: Number(transactionData.amount),
-          date: transactionData.date || formatDate(new Date(), 'YYYY-MM-DD'),
+          date: formatDate(transactionData.date, 'YYYY-MM-DD') || formatDate(new Date(), 'YYYY-MM-DD'),
           description: transactionData.description?.trim() || '',
           syncStatus: 'pending',
           createdAt: new Date().toISOString(),

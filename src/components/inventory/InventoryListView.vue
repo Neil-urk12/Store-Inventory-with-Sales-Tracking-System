@@ -1,8 +1,9 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { useFinancialStore } from 'src/stores/financialStore';
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
+import { debounce } from 'lodash'
 
 const $q = useQuasar()
 const inventoryStore = useInventoryStore()
@@ -13,12 +14,6 @@ const items = computed(() => inventoryStore.sortedItems)
 
 const columns = [
   { name: 'sku', label: 'SKU', field: 'sku', align: 'left', sortable: true },
-  // {
-  //   name: 'image',
-  //   label: 'Image',
-  //   field: 'image',
-  //   align: 'left'
-  // },
   {
     name: 'name',
     label: 'Name',
@@ -38,11 +33,66 @@ const pagination = ref({
   sortBy: 'name',
   descending: false,
   page: 1,
-  rowsPerPage: 10
+  rowsPerPage: 8
 })
 
+const stockFilter = ref('all')
+
+const filteredItems = computed(() => {
+  let result = [...items.value]
+  
+  // Stock filter
+  if (stockFilter.value === 'low') {
+    result = result.filter(item => item.quantity <= 10 && item.quantity > 0)
+  } else if (stockFilter.value === 'out') {
+    result = result.filter(item => item.quantity <= 0)
+  }
+  
+  return result
+})
+
+const lowStockItems = computed(() => 
+  items.value.filter(item => item.quantity <= 10)
+)
+
+const outOfStockItems = computed(() => 
+  items.value.filter(item => item.quantity <= 0)
+)
+
+function exportToCSV() {
+  if (!filteredItems.value || filteredItems.value.length === 0) {
+    $q.notify({
+      type: 'warning',
+      message: 'No data available to export',
+      position: 'top',
+      timeout: 2000
+    })
+    return
+  }
+
+  const headers = columns
+    .filter(col => col.name !== 'actions')
+    .map(col => col.label)
+    .join(',')
+  
+  const rows = filteredItems.value.map(item => 
+    columns
+      .filter(col => col.name !== 'actions')
+      .map(col => `"${item[col.field]}"`)
+      .join(',')
+  ).join('\n')
+  
+  const csv = `${headers}\n${rows}`
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `inventory-${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+
 async function updateField(item, field, value) {
-  // Prevent unnecessary updates and type coercion issues
   if (String(value) === String(item[field])) return
 
   const updatePromise = (async () => {
@@ -69,7 +119,6 @@ async function updateField(item, field, value) {
     }
   })()
 
-  // Debounce rapid updates
   await debounce(() => updatePromise, 300)()
 }
 
@@ -97,20 +146,82 @@ function customSort(rows, sortBy, descending) {
       : aValue - bValue
   })
 }
+
+onMounted(() => {
+  checkLowStock()
+})
+
+function checkLowStock() {
+  if (lowStockItems.value.length > 0) {
+    $q.notify({
+      type: 'warning',
+      message: `${lowStockItems.value.length} items are running low on stock`,
+      position: 'top-right',
+      timeout: 5000,
+      actions: [
+        { label: 'View', color: 'white', handler: () => {
+          pagination.value.sortBy = 'quantity'
+          pagination.value.descending = true
+        }}
+      ]
+    })
+  }
+  
+  if (outOfStockItems.value.length > 0) {
+    $q.notify({
+      type: 'negative',
+      message: `${outOfStockItems.value.length} items are out of stock`,
+      position: 'top-right',
+      timeout: 5000,
+      actions: [
+        { label: 'View', color: 'white', handler: () => {
+          pagination.value.sortBy = 'quantity'
+          pagination.value.descending = true
+        }}
+      ]
+    })
+  }
+}
 </script>
 
 <template>
   <div class="q-pa-md">
     <div class="row q-mb-md items-center justify-between">
-      <q-btn
-        color="primary"
-        icon="cleaning_services"
-        label="Clean Duplicates"
-        @click="inventoryStore.cleanupDuplicates()"
-      />
+      <div class="row q-gutter-md items-center">
+        <q-select
+          v-model="stockFilter"
+          :options="[
+            { label: 'All Stock', value: 'all' },
+            { label: 'Low Stock', value: 'low' },
+            { label: 'Out of Stock', value: 'out' }
+          ]"
+          dense
+          outlined
+          emit-value
+          map-options
+          class="col-auto"
+          style="min-width: 150px"
+        />
+      </div>
+      
+      <div class="row q-gutter-sm">
+        <q-btn
+          color="primary"
+          icon="cleaning_services"
+          label="Clean Duplicates"
+          @click="inventoryStore.cleanupDuplicates()"
+        />
+        <q-btn
+          color="primary"
+          icon="download"
+          label="Export CSV"
+          @click="exportToCSV"
+        />
+      </div>
     </div>
+
     <q-table
-      :rows="items"
+      :rows="filteredItems"
       :columns="columns"
       row-key="id"
       :loading="loading"
@@ -124,16 +235,6 @@ function customSort(rows, sortBy, descending) {
       sticky-header
       :rows-per-page-options="[5, 10, 20, 50, 100]"
     >
-      <!-- <template v-slot:body-cell-image="props">
-        <q-td :props="props" auto-width>
-          <q-img
-            :src="props.row.image"
-            spinner-color="primary"
-            style="height: 50px; width: 50px"
-            loading="lazy"
-          />
-        </q-td>
-      </template> -->
       <template v-slot:body-cell-name="props">
         <q-td :props="props">
           <q-popup-edit
@@ -243,7 +344,7 @@ function customSort(rows, sortBy, descending) {
 
 <style lang="scss" scoped>
 .inventory-table {
-  height: calc(100vh - 150px);
+  height: calc(80vh - 150px);
   :deep(.q-table) {
     td[style*="position: sticky"],
     th[style*="position: sticky"] {
@@ -274,6 +375,17 @@ function customSort(rows, sortBy, descending) {
       font-size: 12px;
       padding: 8px;
       max-width: 120px;
+    }
+  }
+  .row {
+    flex-direction: column;
+    .q-input, .q-select {
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    .q-gutter-sm {
+      width: 100%;
+      justify-content: space-between;
     }
   }
 }

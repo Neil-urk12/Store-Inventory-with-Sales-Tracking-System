@@ -32,12 +32,9 @@ const isLoading = ref(true)
  */
 const chartData = computed(() => {
   const items = inventoryStore.items || []
-  console.log('Chart data items:', items)
-  console.log('Items length:', items.length)
-  console.log('Raw items data:', JSON.stringify(items, null, 2))
 
   if (!items.length) {
-    console.log('No items found, returning default data')
+    console.warn('No items found, returning default data')
     return {
       labels: ['No Data'],
       datasets: [{
@@ -51,13 +48,9 @@ const chartData = computed(() => {
   items.forEach(item => {
     const category = item.category || 'Uncategorized'
     const quantity = Number(item.quantity) || 0
-    console.log(`Processing item: ${item.name}, category: ${category}, quantity: ${quantity}`)
+    // console.log(`Processing item: ${item.name}, category: ${category}, quantity: ${quantity}`)
     categories[category] = (categories[category] || 0) + quantity
   })
-
-  console.log('Processed categories:', categories)
-  console.log('Category keys:', Object.keys(categories))
-  console.log('Category values:', Object.values(categories))
 
   return {
     labels: Object.keys(categories),
@@ -73,7 +66,7 @@ const chartData = computed(() => {
  * @type {import('vue').ComputedRef<Object>}
  * @description Computes the chart options based on current theme.
  * @returns {Object} Chart.js configuration options
- */
+*/
 const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -99,29 +92,19 @@ const options = computed(() => ({
  * @returns {Promise<void>}
  */
 async function createChart() {
-  console.log('Creating chart...')
-
-  // Wait for the next DOM update
   await nextTick()
 
-  if (!chartCanvas.value) {
-    console.warn('Canvas element still not found after nextTick')
-    return
-  }
+  if (!chartCanvas.value)
+    return console.warn('Canvas element still not found after nextTick')
 
   try {
-    if (doughnutChart) {
-      console.log('Destroying old chart')
+    if (doughnutChart)
       doughnutChart.destroy()
-    }
 
     const ctx = chartCanvas.value.getContext('2d')
-    if (!ctx) {
-      console.error('Could not get 2d context from canvas')
-      return
-    }
+    if (!ctx)
+      return console.error('Could not get 2d context from canvas')
 
-    console.log('Chart data:', chartData.value)
     doughnutChart = new Chart(ctx, {
       type: "doughnut",
       data: chartData.value,
@@ -133,18 +116,16 @@ async function createChart() {
   }
 }
 
-// Watch for dark mode changes
-watch(() => $q.dark.isActive, () => {
-  createChart()
-})
+watch(() => $q.dark.isActive, () => createChart() )
 
 onMounted(async () => {
-  console.log('Component mounted')
   try {
-    await inventoryStore.loadInventory()
+    if(inventoryStore.items.length === 0)
+      await inventoryStore.loadInventory()
+
     console.log('Inventory loaded')
     isLoading.value = false
-    await nextTick()
+    // await nextTick()
     await createChart()
   } catch (error) {
     console.error('Error in mount:', error)
@@ -152,9 +133,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (doughnutChart) {
+  if (doughnutChart)
     doughnutChart.destroy()
-  }
 })
 </script>
 
@@ -177,14 +157,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .chart-container {
-  height: 300px;
+  height: 350px;
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
-  padding: 1rem;
 }
 
 .canvas-wrapper {

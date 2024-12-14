@@ -21,6 +21,7 @@ import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import { syncQueue } from '../services/syncQueue'
 import { debounce } from 'lodash'
+import { formatDate } from '../utils/dateUtils'
 import { validateContact, validateContactCategory, validateDataBeforeSync } from '../utils/validation'
 import { DatabaseError, ValidationError } from '../db/dexiedb'
 
@@ -161,26 +162,100 @@ export const useContactsStore = defineStore('contacts', {
      */
     async addContact(contact) {
       try {
-        if(this.contactsList.length === 0) this.contactsList = await db.getAllContacts()
-        const validation = await validateContact(contact, this.contactsList, contact.id)
+        // Ensure all fields that might be used as keys are of valid types
+        const sanitizedContact = {
+          ...contact,
+          id: contact.id?.toString(),
+          name: contact.name?.trim() || '',
+          email: contact.email?.trim() || null,
+          phone: contact.phone?.trim() || null,
+
+          categoryId: contact.categoryId?.toString(),
+          syncStatus: 'pending',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+
+        // Remove undefined values but keep null values
+        Object.keys(sanitizedContact).forEach(key => {
+          if (sanitizedContact[key] === undefined) {
+            delete sanitizedContact[key]
+          }
+        })
+
+        // Ensure compound key fields are valid strings
+        const contactPerson = {
+          ...sanitizedContact,
+          // Ensure compound key fields are strings
+          categoryId: sanitizedContact.categoryId || '',
+          name: sanitizedContact.name || '',
+          // Keep email and phone as null if empty
+          email: sanitizedContact.email || null,
+          phone: sanitizedContact.phone || null
+        }
+
+        if(this.contactsList.length === 0) 
+          this.contactsList = await db.getAllContacts()
+
+        const validation = await validateContact(contactPerson, this.contactsList, contact.id)
+
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
-        const id = await db.addContact(contact)
+
+        const id = (await db.addContact(contactPerson)).toString()
+
+        const newContact = {
+          ...contactPerson,
+          id: id
+        }
+        
+        const category = this.contactCategories.find(c => c.id === sanitizedContact.categoryId)
+        if (category) {
+          if (!category.contacts) category.contacts = []
+          category.contacts.push(newContact)
+        }
 
         if (isOnline.value) {
+          try {
+            const contactRef = doc(fireDb, 'contactsList', id.toString())
+            await setDoc(contactRef, {
+              ...contactPerson,
+              id: id.toString(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            await syncQueue.addToQueue({
+              type: 'add',
+              collection: 'contactsList',
+              data: { 
+                ...contactPerson, 
+                id: id.toString(),
+                createdAt: contactPerson.createdAt.toISOString(),
+                updatedAt: contactPerson.updatedAt.toISOString()
+              },
+              timestamp: new Date()
+            })
+          }
+        } else {
           await syncQueue.addToQueue({
             type: 'add',
             collection: 'contactsList',
-            data: { ...contact, id: id.toString() },
+            data: { 
+              ...contactPerson, 
+              id: id.toString(),
+              createdAt: contactPerson.createdAt.toISOString(),
+              updatedAt: contactPerson.updatedAt.toISOString()
+            },
             timestamp: new Date()
           })
-          await processQueueDebounced()
         }
 
         await this.loadContactCategories()
         return id
       } catch (error) {
         this._handleActionError(error, 'addContact')
+        throw error
       }
     },
 
@@ -199,15 +274,46 @@ export const useContactsStore = defineStore('contacts', {
           throw new ValidationError(validation.errors[0])
 
         const id = await db.addContactCategory(contactCategory)
+        
+        // Create the new category object with the generated ID
+        const newCategory = {
+          id: id.toString(),
+          ...contactCategory,
+          contacts: [] // Initialize with empty contacts array
+        }
+        
+        // Update local state immediately
+        this.contactCategories.push(newCategory)
+        
         if (isOnline.value) {
+          // If online, add directly to Firestore
+          try {
+            const categoryRef = doc(fireDb, 'contactCategories', id.toString())
+            await setDoc(categoryRef, {
+              ...contactCategory,
+              id: id.toString(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            // If Firestore operation fails, fall back to queue
+            await syncQueue.addToQueue({
+              type: 'add',
+              collection: 'contactCategories',
+              data: { ...contactCategory, localId: id },
+              timestamp: new Date()
+            })
+          }
+        } else {
+          // If offline, add to queue
           await syncQueue.addToQueue({
             type: 'add',
             collection: 'contactCategories',
             data: { ...contactCategory, localId: id },
             timestamp: new Date()
           })
-          await processQueueDebounced()
         }
+
         await this.loadContactCategories()
         return id
       } catch (error) {
@@ -226,7 +332,27 @@ export const useContactsStore = defineStore('contacts', {
     async updateContactCategory(id, changes) {
       try {
         await db.updateContactCategory(id, changes)
+        
         if (isOnline.value) {
+          // If online, update Firestore directly
+          try {
+            const categoryRef = doc(fireDb, 'contactCategories', id.toString())
+            await updateDoc(categoryRef, {
+              ...changes,
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            // If Firestore operation fails, fall back to queue
+            await syncQueue.addToQueue({
+              type: 'update',
+              collection: 'contactCategories',
+              docId: id,
+              data: changes,
+              timestamp: new Date()
+            })
+          }
+        } else {
+          // If offline, add to queue
           await syncQueue.addToQueue({
             type: 'update',
             collection: 'contactCategories',
@@ -234,8 +360,8 @@ export const useContactsStore = defineStore('contacts', {
             data: changes,
             timestamp: new Date()
           })
-          await processQueueDebounced()
         }
+
         await this.loadContactCategories()
       } catch (error) {
         this._handleActionError(error, 'updateContactCategory')
@@ -278,7 +404,27 @@ export const useContactsStore = defineStore('contacts', {
     async updateContact(id, changes) {
       try {
         await db.updateContact(id, changes)
+        
         if (isOnline.value) {
+          // If online, update Firestore directly
+          try {
+            const contactRef = doc(fireDb, 'contactsList', id.toString())
+            await updateDoc(contactRef, {
+              ...changes,
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            // If Firestore operation fails, fall back to queue
+            await syncQueue.addToQueue({
+              type: 'update',
+              collection: 'contactsList',
+              docId: id.toString(),
+              data: { ...changes, id: id.toString() },
+              timestamp: new Date()
+            })
+          }
+        } else {
+          // If offline, add to queue
           await syncQueue.addToQueue({
             type: 'update',
             collection: 'contactsList',
@@ -286,8 +432,8 @@ export const useContactsStore = defineStore('contacts', {
             data: { ...changes, id: id.toString() },
             timestamp: new Date()
           })
-          await processQueueDebounced()
         }
+
         await this.loadContactCategories()
       } catch (error) {
         this._handleActionError(error, 'updateContact')
@@ -304,7 +450,7 @@ export const useContactsStore = defineStore('contacts', {
     async deleteContact(contactId) {
       try {
         const localRecord = await this.contactCategories.flatMap(c => c.contacts).find(c => c.id === contactId || c.localId === contactId)
-        const firebaseRecord = localRecord ? localRecord.localId : localRecord.id
+        const firebaseRecord = localRecord ? localRecord.firebaseId : localRecord.localId || localRecord.id
         await db.deleteContact(contactId)
 
         const deleteOperation = {
@@ -441,17 +587,6 @@ export const useContactsStore = defineStore('contacts', {
             }
           }))
 
-          // currentBatch.forEach(item => {
-          //   const { id, ...itemData } = item
-          //   const docRef = id && typeof id === 'string' ? doc(collectionRef, id) : doc(collectionRef);
-          //   const isUpdate = id && typeof id === 'string';
-          //   const timestampData = isUpdate
-          //       ? { updatedAt: serverTimestamp() }
-          //       : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-
-          //   batch[isUpdate ? 'update' : 'set'](docRef, { ...itemData, ...timestampData }, { merge: isUpdate });
-          // });
-
           try {
             await batch.commit()
           } catch (error) {
@@ -459,49 +594,6 @@ export const useContactsStore = defineStore('contacts', {
           }
         }
       }
-
-      // async function processBatchUpdates(collectionName, items){
-      //   if(!items || items.length === 0) return
-
-      //   const collectionRef = collection(fireDb, collectionName)
-      //   for (let i = 0; i < items.length; i += batchSize) {
-      //     const batch = writeBatch(fireDb)
-      //     const currentBatch = items.slice(i, Math.min(i + batchSize, items.length))
-
-      //     for (const item of currentBatch) {
-      //       const { id, ...itemData } = item
-      //       if (id && typeof id === 'string') {
-      //         const docRef = doc(collectionRef, id)
-      //         const docSnapshot = await getDoc(docRef)
-      //         if (docSnapshot.exists()) {
-      //           batch.update(docRef, {
-      //             ...itemData,
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         } else {
-      //           batch.set(docRef, {
-      //             ...itemData,
-      //             createdAt: serverTimestamp(),
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         }
-      //       } else {
-      //         const newDocRef = doc(collectionRef)
-      //         batch.set(newDocRef, {
-      //           ...itemData,
-      //           createdAt: serverTimestamp(),
-      //           updatedAt: serverTimestamp()
-      //         })
-      //       }
-      //     }
-
-      //     try {
-      //       await batch.commit()
-      //     } catch (error) {
-      //       console.error(`${collectionName} batch update failed:`, error)
-      //     }
-      //   }
-      // }
 
       async function deleteDuplicates(collectionName, uniqueField) {
         const collectionRef = collection(fireDb, collectionName)
@@ -534,95 +626,11 @@ export const useContactsStore = defineStore('contacts', {
       await Promise.all([
         deleteDuplicates('contactCategories', 'name'),
         deleteDuplicates('contactsList', 'name')
-      ]);
+      ])
       await Promise.all([
         processBatchUpdates('contactCategories', mergedContactCategories),
         processBatchUpdates('contactsList', mergedContacts)
       ])
-
-
-      // if (mergedContactCategories.length > 0) {
-      //   const contactCategoriesRef = collection(fireDb, 'contactCategories')
-      //   for (let i = 0; i < mergedContactCategories.length; i += batchSize) {
-      //     const batch = writeBatch(fireDb)
-      //     const currentBatch = mergedContactCategories.slice(i, Math.min(i + batchSize, mergedContactCategories.length))
-
-      //     for (const category of currentBatch) {
-      //       const { id, ...categoryData } = category
-      //       if (id && typeof id === 'string') {
-      //         const docRef = doc(contactCategoriesRef, id)
-      //         const docSnapshot = await getDoc(docRef)
-      //         if (docSnapshot.exists()) {
-      //           batch.update(docRef, {
-      //             ...categoryData,
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         } else {
-      //           batch.set(docRef, {
-      //             ...categoryData,
-      //             createdAt: serverTimestamp(),
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         }
-      //       } else {
-      //         const newDocRef = doc(contactCategoriesRef)
-      //         batch.set(newDocRef, {
-      //           ...categoryData,
-      //           createdAt: serverTimestamp(),
-      //           updatedAt: serverTimestamp()
-      //         })
-      //       }
-      //     }
-
-      //     try {
-      //       await batch.commit()
-      //     } catch (error) {
-      //       console.error('Contact category batch update failed:', error)
-      //     }
-      //   }
-      // }
-
-      // Update contacts in Firebase
-      // if (mergedContacts.length > 0) {
-      //   const contactsRef = collection(fireDb, 'contactsList')
-      //   for (let i = 0; i < mergedContacts.length; i += batchSize) {
-      //     const batch = writeBatch(fireDb)
-      //     const currentBatch = mergedContacts.slice(i, Math.min(i + batchSize, mergedContacts.length))
-
-      //     for (const contact of currentBatch) {
-      //       const { id, ...contactData } = contact
-      //       if (id && typeof id === 'string') {
-      //         const docRef = doc(contactsRef, id)
-      //         const docSnapshot = await getDoc(docRef)
-      //         if (docSnapshot.exists()) {
-      //           batch.update(docRef, {
-      //             ...contactData,
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         } else {
-      //           batch.set(docRef, {
-      //             ...contactData,
-      //             createdAt: serverTimestamp(),
-      //             updatedAt: serverTimestamp()
-      //           })
-      //         }
-      //       } else {
-      //         const newDocRef = doc(contactsRef)
-      //         batch.set(newDocRef, {
-      //           ...contactData,
-      //           createdAt: serverTimestamp(),
-      //           updatedAt: serverTimestamp()
-      //         })
-      //       }
-      //     }
-
-      //     try {
-      //       await batch.commit()
-      //     } catch (error) {
-      //       console.error('Contact batch update failed:', error)
-      //     }
-      //   }
-      // }
     },
 
     /**
@@ -782,9 +790,9 @@ export const useContactsStore = defineStore('contacts', {
      * @returns {Promise<Array>} An array of merged items without duplicates.  The merge prioritizes items with more recent `updatedAt` timestamps.  If items have the same name, the local item is prioritized if it's newer.  If both items have the same name and timestamp, the Firestore item is kept.  Duplicate items are logged to the console.
      */
     async mergeChanges(localItems, firestoreItems, uniqueField) {
-      const mergedItems = new Map();
-      const usedIds = new Set();
-      const duplicateItems = [];
+      const mergedItems = new Map()
+      const usedIds = new Set()
+      const duplicateItems = []
 
       // Helper function to determine which item is newer based on updatedAt timestamp
       function isLocalItemNewer(localItem, existingItem) {
@@ -863,57 +871,11 @@ export const useContactsStore = defineStore('contacts', {
           }
 
           mergedItems.set(key, itemToMerge)
-
-          // if(localItem.id && usedIds.has(localItem.id)){
-          //   itemToMerge.id = generateNewId(localItem)
-          //   itemToMerge.localId = localItem.id
-          //   console.log('itemToMerge:', itemToMerge)
-          // }
-          // if(existingItem.name === localItem.name){
-          //   console.warn('Duplicate item detected:', localItem)
-          //   mergedItems.delete(key)
-          // }
-          // console.log('mergedItems:', mergedItems)
-          // console.log('usedIds:', usedIds)
-          // console.log('itemToMerge:', itemToMerge)
-          // usedIds.add(itemToMerge.id)
-        } else if (existingItem.name === localItem.name){
+        } else if (existingItem.name === localItem.name)
           duplicateItems.push(localItem)
-        }
       }
 
       return Array.from(mergedItems.values())
-
-      // localItems.forEach(localItem => {
-      //   const key = useCompoundKey ? `${localItem.categoryId}-${localItem.name}` : localItem[uniqueField];
-      //   if (!key) return console.warn('Local item missing unique field:', localItem);
-
-      //   const existingItem = merged.get(key);
-      //   if (!existingItem) {
-      //     if (!localItem.id || !seenIds.has(localItem.id)) merged.set(key, localItem);
-      //     return;
-      //   }
-
-      //   const localDate = new Date(localItem.updatedAt || 0);
-      //   const existingDate = new Date(existingItem.updatedAt || 0);
-
-      //   if (localDate > existingDate) {
-      //     merged.set(key, { ...localItem, id: existingItem.id });
-      //   }
-      // })
-
-      // const result = Array.from(merged.values())
-      // const uniqueCheck = new Set()
-      // return result.filter(item => {
-      //   const key = useCompoundKey ? `${item.categoryId}-${item.name}` : item[uniqueField];
-      //   if (!key || uniqueCheck.has(key)) {
-      //     console.warn('Duplicate or invalid item filtered out:', item)
-      //     return false
-      //   }
-      //   uniqueCheck.add(key)
-      //   return true
-      // })
     }
-
   }
 })

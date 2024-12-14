@@ -7,7 +7,9 @@
   "private": true,
   "scripts": {
     "dev": "quasar dev",
+    "dev:pwa": "quasar dev -m pwa",
     "build": "quasar build",
+    "build:pwa": "quasar build -m pwa",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -24,6 +26,7 @@
     "lodash": "^4.17.21",
     "pinia": "^2.0.11",
     "quasar": "^2.16.0",
+    "register-service-worker": "^1.7.2",
     "vite": "^5.0.0",
     "vue": "^3.4.18",
     "vue-chartjs": "^5.3.1",

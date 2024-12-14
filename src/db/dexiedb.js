@@ -1,10 +1,29 @@
 /**
- * @fileoverview The local database instance.
- * All functions and methods are managed and implemented in this file.
- * **/
+ * @fileoverview Local database implementation using Dexie.js.
+ * Provides offline-first storage with:
+ * - Schema versioning
+ * - CRUD operations
+ * - Data validation
+ * - Sync status tracking
+ */
+
+/**
+ * @typedef {Object} ValidationError
+ * @property {string} code - Error code
+ * @property {string} message - Error message
+ * @property {string} field - Field that failed validation
+ */
+
+/**
+ * @typedef {Object} DatabaseError
+ * @property {string} code - Error code
+ * @property {string} message - Error message
+ * @property {Error} [originalError] - Original error object
+ */
 
 import Dexie from 'dexie';
 import { useInventoryStore } from 'src/stores/inventoryStore';
+import { formatDate } from '../utils/dateUtils';
 
 
 export class ValidationError extends Error {
@@ -33,13 +52,13 @@ class AppDatabase extends Dexie {
   constructor() {
     super('inventoryDb'); // Name of the database
 
-    this.version(2).stores({
+    this.version(3).stores({
       // Inventory tables
       categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
       items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
 
       // Sales tables
-      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId',
+      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
 
       cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
 
@@ -50,35 +69,35 @@ class AppDatabase extends Dexie {
       // Sync queue table
       syncQueue: '++id, type, collection, data, docId, timestamp, attempts, lastAttempt, status, error',
       syncLocks: 'lockId, timestamp, owner'
-    });
+    })
 
     this.items.hook('creating', (primKey, obj) => {
-      obj.createdAt = new Date().toISOString();
-      obj.updatedAt = new Date().toISOString();
+      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
+      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
       // Ensure category information is preserved
       if (obj.categoryId && !obj.category) {
-        const store = useInventoryStore();
-        obj.category = store.getCategoryName(obj.categoryId);
+        const store = useInventoryStore()
+        obj.category = store.getCategoryName(obj.categoryId)
       }
-    });
+    })
 
     this.items.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = new Date().toISOString();
+      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
       // Ensure category information is preserved during updates
       if (modifications.categoryId && !modifications.category) {
-        const store = useInventoryStore();
-        modifications.category = store.getCategoryName(modifications.categoryId);
+        const store = useInventoryStore()
+        modifications.category = store.getCategoryName(modifications.categoryId)
       }
-    });
+    })
 
     this.categories.hook('creating', (primKey, obj) => {
-      obj.createdAt = new Date().toISOString();
-      obj.updatedAt = new Date().toISOString();
-    });
+      obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
+      obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+    })
 
     this.categories.hook('updating', (modifications, primKey, obj) => {
-      modifications.updatedAt = new Date().toISOString();
-    });
+      modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
+    })
   }
 
   // Inventory Methods--------------------------------------------------
@@ -89,7 +108,7 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all items in the database.
   */
   async getAllItems() {
-    return await this.items.toArray();
+    return await this.items.toArray()
   }
   /**
    * @async
@@ -102,37 +121,39 @@ class AppDatabase extends Dexie {
   async createItem(item) {
     // Validate required fields
     if (!item.name?.trim())
-      throw new ValidationError('Item name is required');
+      throw new ValidationError('Item name is required')
     if (!item.categoryId)
-      throw new ValidationError('Category is required');
+      throw new ValidationError('Category is required')
     if (typeof item.price !== 'number' || item.price < 0)
-      throw new ValidationError('Valid price is required');
+      throw new ValidationError('Valid price is required')
+    if (!item.sku || item.sku.length > 9)
+      throw new ValidationError('Invalid SKU format')
 
     // Sanitize and prepare item data
     const newItem = {
       ...item,
       name: item.name.trim(),
-      sku: item.sku?.trim() || null,
+      sku: item.sku,
       quantity: Math.max(0, parseInt(item.quantity) || 0),
       price: parseFloat(item.price),
       image: item.image?.trim() || null,
       syncStatus: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
+      updatedAt: formatDate(new Date(), 'YYYY-MM-DD')
     }
 
     try {
-      // Check for duplicate SKU if provided
-      if (newItem.sku) {
-        const existingItem = await this.items.where('sku').equals(newItem.sku).first()
-        if (existingItem)
-          throw new ValidationError(`Item with SKU ${newItem.sku} already exists`);
-      }
-
-      return await this.items.add(newItem)
+      // Check for duplicate SKU
+      const existingItem = await this.items.where('sku').equals(newItem.sku).first()
+      if (existingItem)
+        throw new ValidationError(`Item with SKU ${newItem.sku} already exists`)
+      
+      return await this.transaction('rw', this.items, async () => {
+        return await this.items.add(newItem)
+      })
     } catch (error) {
       console.error('Database error creating item:', error)
-      throw DatabaseError('Failed to create item')
+      throw error instanceof ValidationError ? error : new DatabaseError('Failed to create item')
     }
   }
 
@@ -147,29 +168,24 @@ class AppDatabase extends Dexie {
   */
   async updateExistingItem(id, changes) {
     // Check if item exists
-    const existingItem = await this.items.get(id);
-    if (!existingItem) {
-      throw new Error('Item not found');
-    }
+    const existingItem = await this.items.get(id)
+    if (!existingItem)
+      throw new Error('Item not found')
 
     // Validate changes
-    if (changes.name !== undefined && !changes.name?.trim()) {
-      throw new Error('Item name cannot be empty');
-    }
-    if (changes.price !== undefined && (typeof changes.price !== 'number' || changes.price < 0)) {
-      throw new Error('Price must be a non-negative number');
-    }
-    if (changes.quantity !== undefined && (typeof changes.quantity !== 'number' || changes.quantity < 0)) {
-      throw new Error('Quantity must be a non-negative number');
-    }
+    if (changes.name !== undefined && !changes.name?.trim())
+      throw new Error('Item name cannot be empty')
+    if (changes.price !== undefined && (typeof changes.price !== 'number' || changes.price < 0))
+      throw new Error('Price must be a non-negative number')
+    if (changes.quantity !== undefined && (typeof changes.quantity !== 'number' || changes.quantity < 0))
+      throw new Error('Quantity must be a non-negative number')
 
     try {
       // Check for duplicate SKU if SKU is being changed
       if (changes.sku && changes.sku !== existingItem.sku) {
-        const duplicateSku = await this.items.where('sku').equals(changes.sku.trim()).first();
-        if (duplicateSku) {
-          throw new Error(`Item with SKU ${changes.sku} already exists`);
-        }
+        const duplicateSku = await this.items.where('sku').equals(changes.sku.trim()).first()
+        if (duplicateSku)
+          throw new Error(`Item with SKU ${changes.sku} already exists`)
       }
 
       // Sanitize and prepare update data
@@ -180,14 +196,14 @@ class AppDatabase extends Dexie {
         quantity: changes.quantity !== undefined ? Math.max(0, parseInt(changes.quantity)) : existingItem.quantity,
         price: changes.price !== undefined ? parseFloat(changes.price) : existingItem.price,
         image: changes.image?.trim() || existingItem.image,
-        updatedAt: new Date().toISOString(),
+        updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
         syncStatus: 'pending'
-      };
+      }
 
-      return await this.items.update(id, updatedChanges);
+      return await this.items.update(id, updatedChanges)
     } catch (error) {
-      console.error('Database error updating item:', error);
-      throw error;
+      console.error('Database error updating item:', error)
+      throw error
     }
   }
   /**
@@ -198,7 +214,7 @@ class AppDatabase extends Dexie {
    * @description Adds an item to the database.
   */
   async addItem(item) {
-    return await this.items.add(item);
+    return await this.items.add(item)
   }
   /**
    * @async
@@ -209,7 +225,7 @@ class AppDatabase extends Dexie {
    * @description Updates an item in the database.
   */
   async updateItem(id, changes) {
-    return await this.items.update(id, changes);
+    return await this.items.update(id, changes)
   }
   /**
    * @async
@@ -219,7 +235,7 @@ class AppDatabase extends Dexie {
    * @description Deletes an item from the database.
   */
   async deleteItem(id) {
-    return await this.items.delete(id);
+    return await this.items.delete(id)
   }
   /**
    * @async
@@ -231,8 +247,8 @@ class AppDatabase extends Dexie {
   async addSale(sale) {
     return await this.sales.add({
       ...sale,
-      date: new Date().toISOString()
-    });
+      date: formatDate(new Date(), 'YYYY-MM-DD')
+    })
   }
   /**
    * @async
@@ -241,8 +257,58 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all sales in the database.
   */
   async getAllSales() {
-    return await this.sales.toArray();
+    return await this.sales.toArray()
   }
+  /**
+   * @async
+   * @method deleteSale
+   * @param {number} saleId
+   * @returns {Promise<void>}
+   * @description Deletes a sale from the database by its ID.
+   * @throws {Error} If an error occurs during deletion.
+   */
+  async deleteSale(saleId) {
+    try {
+      await this.sales.delete(saleId)
+    } catch (error) {
+      console.error('Database error deleting sale:', error)
+      throw error; // Re-throw the error for handling by the caller
+    }
+  }
+
+  /**
+   * @async
+   * @method bulkDeleteSales
+   * @param {Array<number>} saleIds - An array of sale IDs to delete.
+   * @returns {Promise<void>}
+   * @description Deletes multiple sales from the database by their IDs.
+   * @throws {Error} If an error occurs during deletion.
+   */
+  async bulkDeleteSales(saleIds) {
+    try {
+      await this.sales.bulkDelete(saleIds);
+    } catch (error) {
+      console.error('Database error deleting sales:', error)
+      throw error; // Re-throw the error for handling by the caller
+    }
+  }
+  /**
+   *
+   *
+  */
+    async getAllTransactions(){
+      try {
+        const transactions = await this.cashFlow.toArray()
+        return transactions.map(transaction => ({
+          ...transaction,
+          syncStatus: transaction.syncStatus || null,  // Example
+          syncError: transaction.syncError || null     // Example
+        }))
+      } catch (error) {
+        console.error('Error getting all transactions:', error)
+        throw error
+      }
+    }
   /**
    * @async
    * @method addCashFlowTransaction
@@ -253,7 +319,7 @@ class AppDatabase extends Dexie {
   async addCashFlowTransaction(transaction) {
     return await this.cashFlow.add({
       ...transaction,
-      date: new Date().toISOString()
+      date: formatDate(new Date(), 'YYYY-MM-DD')
     });
   }
 //--------------------------------------------------------------------
@@ -265,7 +331,7 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all contact categories in the database.
   */
   async getAllContactCategories() {
-    return await this.contactCategories.toArray();
+    return await this.contactCategories.toArray()
   }
   /**
    * @async
@@ -275,7 +341,7 @@ class AppDatabase extends Dexie {
    * @description Adds a contact category to the database.
   */
   async addContactCategory(contactCategory) {
-    return await this.contactCategories.add(contactCategory);
+    return await this.contactCategories.add(contactCategory)
   }
   /**
    * @async
@@ -327,77 +393,105 @@ class AppDatabase extends Dexie {
    * @description Adds a contact to the database.
   */
   async addContact(contactPerson) {
-    if(!contactPerson.name?.trim()) throw new ValidationError('Contact name is required')
-    if(!contactPerson.categoryId) throw new ValidationError('Contact category is required')
+    if (!contactPerson.name?.trim()) {
+      throw new ValidationError('Contact name is required');
+    }
+    if (!contactPerson.categoryId) {
+      throw new ValidationError('Contact category is required');
+    }
 
     try {
-      let query = this.contactsList
-        .where('[categoryId+name]')
-        .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
-
-      if (contactPerson.email?.trim() && contactPerson.email?.trim() !== '')
-        query = query.or('email').equals(contactPerson.email.trim().toLowerCase())
-
-      if (contactPerson.phone?.trim() && contactPerson.phone?.trim() !== '')
-        query = query.or('phone').equals(contactPerson.phone.trim())
-      const existingContact = await query.first()
-      if (existingContact) {
-        const errorMessage = existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
-          ? 'A contact with this name already exists in the category'
-          : existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase()
-            ? 'A contact with this email already exists'
-            : 'A contact with this phone number already exists';
-        console.error(`addContact: Duplicate contact detected: ${errorMessage}`);
-        throw new ValidationError(errorMessage);
-      }
-    // if (existingContact) {
-    //   if (existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase())
-    //     throw new ValidationError('A contact with this name already exists in the category')
-    //   else if (existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase())
-    //     throw new ValidationError('A contact with this email already exists')
-    //   else if (existingContact.phone === contactPerson.phone?.trim())
-    //     throw new ValidationError('A contact with this phone number already exists')
-    // }
-    //====================================
-    // const existingContact = await this.contactsList
-    //   .where('[categoryId+name]')
-    //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
-    //   .or('email')
-    //   .equals(contactPerson.email?.trim().toLowerCase() || undefined)
-    //   .or('phone')
-    //   .equals(contactPerson.phone?.trim() || undefined)
-    //   .first()
-    //====================================
-    // const existingContact = await this.contactsList
-    //   .where('[categoryId+name]')
-    //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
-    //   .or('email')
-    //   .equals(contactPerson.email?.trim().toLowerCase())
-    //   .first()
-
-    // if (existingContact) {
-    //   throw new ValidationError(
-    //     existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
-    //       ? 'A contact with this name already exists in the category'
-    //       : 'A contact with this email already exists'
-    //   )
-    // }
-
-      const newContact = {
+      // Prepare contact data with proper types
+      const contact = {
         ...contactPerson,
-        name: contactPerson.name.trim(),
-        email: contactPerson.email?.trim().toLowerCase() || null,
+        name: contactPerson.name.trim().toLowerCase(),
+        email: contactPerson.email?.trim()?.toLowerCase() || null,
         phone: contactPerson.phone?.trim() || null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        categoryId: contactPerson.categoryId.toString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         syncStatus: 'pending'
+      };
+
+      // Check for duplicates
+      const duplicateCheck = await this.checkDuplicateContact(contact);
+      if (duplicateCheck.exists) {
+        const errorMessages = {
+          '[categoryId+name]': 'A contact with this name already exists in the category',
+          'email': 'A contact with this email already exists',
+          'phone': 'A contact with this phone number already exists'
+        };
+        throw new ValidationError(errorMessages[duplicateCheck.field]);
       }
 
-      console.log(`addContact: Adding new contact:`, newContact);
-      return await this.contactsList.add(newContact)
+      // Add the contact
+      const id = await this.contactsList.add(contact);
+      return id;
+
     } catch (error) {
-      console.error('Database error adding contact:', error)
-      throw new DatabaseError('Failed to add contact')
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      console.error('Database error adding contact:', error);
+      throw new DatabaseError('Failed to add contact');
+    }
+  }
+  /**
+   * @async
+   * @method checkDuplicateContact
+   * @param {Object} contact
+   * @returns {Promise<Object>}
+   * @description Checks for duplicate contacts in the database.
+  */
+  async checkDuplicateContact(contact) {
+    try {
+      // First check the compound key (categoryId + name)
+      const existingByName = await this.contactsList
+        .where('[categoryId+name]')
+        .equals([contact.categoryId.toString(), contact.name.trim().toLowerCase()])
+        .first();
+
+      if (existingByName) {
+        return {
+          exists: true,
+          field: '[categoryId+name]'
+        };
+      }
+
+      // Then check email if provided
+      if (contact.email?.trim()) {
+        const existingByEmail = await this.contactsList
+          .where('email')
+          .equals(contact.email.trim().toLowerCase())
+          .first();
+
+        if (existingByEmail) {
+          return {
+            exists: true,
+            field: 'email'
+          };
+        }
+      }
+
+      // Finally check phone if provided
+      if (contact.phone?.trim()) {
+        const existingByPhone = await this.contactsList
+          .where('phone')
+          .equals(contact.phone.trim())
+          .first();
+
+        if (existingByPhone) {
+          return {
+            exists: true,
+            field: 'phone'
+          };
+        }
+      }
+
+      return { exists: false };
+    } catch (error) {
+      console.error('Error checking for duplicate contact:', error);
+      throw new DatabaseError('Error checking for duplicate contact');
     }
   }
   /**
@@ -482,6 +576,40 @@ class AppDatabase extends Dexie {
           this.syncLocks.clear()
         ])
     });
+  }
+
+  /**
+   * @async
+   * @method deleteCategory
+   * @param {string} categoryId - ID of the category to delete
+   * @returns {Promise<void>}
+   * @description Deletes a category if it has no associated items
+   * @throws {Error} If category has associated items or deletion fails
+   */
+  async deleteCategory(categoryId) {
+    try {
+      // Check if category exists
+      const category = await this.categories.get(categoryId)
+      if (!category) {
+        throw new Error('Category not found')
+      }
+
+      // Check if any items use this category
+      const itemsCount = await this.items
+        .where('categoryId')
+        .equals(categoryId)
+        .count()
+
+      if (itemsCount > 0) {
+        throw new Error('Cannot delete category with existing items')
+      }
+
+      // Delete the category
+      await this.categories.delete(categoryId)
+    } catch (error) {
+      console.error('Database error deleting category:', error)
+      throw error
+    }
   }
 
 }
