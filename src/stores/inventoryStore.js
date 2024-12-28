@@ -595,6 +595,7 @@ export const useInventoryStore = defineStore('inventory', {
               await this.loadInventory()
             }
           }, 1000),
+          
           (error) => {
             console.error('Firestore sync error:', error)
             this.error = handleError(error, 'Failed to sync with Firestore')
