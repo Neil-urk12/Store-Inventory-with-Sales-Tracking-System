@@ -214,7 +214,7 @@ const validateAndSave = async () => {
           label="Cancel"
           color="primary"
           v-close-popup
-          :disable="loading || submitting"
+          :disable="submitting"
         />
         <q-btn
           flat
@@ -222,8 +222,8 @@ const validateAndSave = async () => {
           :color="isOnline ? 'primary' : 'warning'"
           type="submit"
           @click="validateAndSave"
-          :loading="loading || submitting"
-          :disable="loading || submitting"
+          :loading="submitting"
+          :disable="submitting"
         >
           <template v-slot:loading>
             <q-spinner-dots />
