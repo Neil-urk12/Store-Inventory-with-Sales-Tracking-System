@@ -61,12 +61,21 @@ watch(() => editedItem.value.image, (newUrl) => {
 })
 
 const validateAndSave = async () => {
-  if (!formRef.value || submitting.value) return
+  if (!formRef.value || submitting.value) 
+    return submitting.value = false
 
   try {
     submitting.value = true
     const isValid = await formRef.value.validate()
-    if (!isValid) return
+    if (!isValid) {
+      $q.notify({
+        color: 'negative',
+        message: 'Please fill out all required fields',
+        position: 'top'
+      })
+      submitting.value = false
+      return
+    }
 
     if (!editMode.value) {
       try {

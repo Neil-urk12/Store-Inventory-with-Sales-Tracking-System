@@ -17,9 +17,9 @@ onUnmounted(() => {
   inventoryStore.cleanup(true)
 })
 
-onBeforeUnmount(() => {
-  inventoryStore.cleanupListeners()
-})
+// onBeforeUnmount(() => {
+//   inventoryStore.cleanupListeners()
+// })
 </script>
 
 <template>
