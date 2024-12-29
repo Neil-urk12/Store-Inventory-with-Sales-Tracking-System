@@ -15,12 +15,16 @@ import {
   limit,
   doc,
   updateDoc,
-  serverTimestamp
+  serverTimestamp,
+  getDocs,
+  where,
+  runTransaction
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
 import debounce from 'lodash/debounce'
 import { db } from '../db/dexiedb'
+import { syncQueue } from './syncQueue'
 
 /**
  * @class CentralizedSyncService
@@ -45,112 +49,124 @@ class CentralizedSyncService {
       maxRetries: 3,
       retryDelay: 1000
     })
-    this.unsubscribeItems = null
-    this.unsubscribeCategories = null
+
+    this.unsubscribers = new Map()
   }
 
-  async syncData(options) {
-    // Implementation will be added here
-    console.log('Syncing data with options:', options)
-  }
-
-  async syncWithFirestore(collectionName, processItem, validateItem) {
+  async syncWithFirestore(collectionName, options = {}) {
     const { isOnline } = useNetworkStatus()
     if (!isOnline.value || this.syncStatus.value.inProgress) return
 
+    const {
+      processItem,
+      validateItem,
+      orderByField = 'updatedAt',
+      batchSize = 500,
+      queryLimit = 100
+    } = options
+
     try {
       this.syncStatus.value.inProgress = true
-
-      // Ensure we clean up any existing listeners
-      this.cleanupListeners()
+      this.cleanupListener(collectionName)
 
       const localItems = await db[collectionName].toArray()
       let firestoreQuery = query(
         collection(fireDb, collectionName),
-        orderBy('updatedAt', 'desc'),
-        // Limit the query to prevent excessive data transfer
-        limit(100)
+        orderBy(orderByField, 'desc'),
+        limit(queryLimit)
       )
 
-      this.unsubscribeItems = onSnapshot(
-        firestoreQuery,
-        { includeMetadataChanges: true },
-        debounce(async (snapshot) => {
-          if (snapshot.metadata.hasPendingWrites) return
-
-          const localUpdates = []
-          const batch = writeBatch(fireDb)
-          let batchCount = 0
-
-          for (const change of snapshot.docChanges()) {
-            // Skip if this is a local change
-            if (change.doc.metadata.hasPendingWrites) continue
-
-            const firestoreItem = { ...change.doc.data(), firebaseId: change.doc.id }
-
-            if (change.type === 'added' || change.type === 'modified') {
-              const existingItem = localItems.find(
-                item => item.firebaseId === firestoreItem.firebaseId
-              )
-
-              if (existingItem) {
-                // Only update if Firestore version is newer
-                const firestoreDate = firestoreItem.updatedAt?.toDate() || new Date()
-                const localDate = new Date(existingItem.updatedAt)
-
-                if (firestoreDate > localDate && existingItem.syncStatus !== 'pending') {
-                  localUpdates.push({ id: existingItem.id, data: firestoreItem })
-                }
-              } else {
-                // Check for duplicates before adding
-                const duplicateCheck = await db[collectionName]
-                  .where('firebaseId')
-                  .equals(firestoreItem.firebaseId)
-                  .count()
-
-                if (duplicateCheck === 0) {
-                  localUpdates.push({ data: firestoreItem })
-                }
-              }
-            } else if (change.type === 'removed') {
-              const existingItem = localItems.find(
-                item => item.firebaseId === firestoreItem.firebaseId
-              )
-              if (existingItem) {
-                await db[collectionName].delete(existingItem.id)
-              }
-            }
-
-            batchCount++
-            if (batchCount >= 500) {
-              await batch.commit()
-              batchCount = 0
-            }
-          }
-
-          if (batchCount > 0) {
-            await batch.commit()
-          }
-
-          // Process updates in smaller batches
-          if (localUpdates.length > 0) {
-            await this.processBatchUpdates(localUpdates, collectionName)
-            // await this.loadInventory()
-          }
-        }, 1000),
-
-        (error) => {
-          console.error('Firestore sync error:', error)
-          this.syncStatus.value.error = error.message
-          this.syncStatus.value.inProgress = false
-          this.cleanupListeners()
-        }
+      // Set up real-time listener
+      this.unsubscribers.set(
+        collectionName,
+        onSnapshot(
+          firestoreQuery,
+          { includeMetadataChanges: true },
+          debounce(async (snapshot) => {
+            if (snapshot.metadata.hasPendingWrites) return
+            await this.handleFirestoreChanges(snapshot, collectionName, {
+              localItems,
+              processItem,
+              validateItem,
+              batchSize
+            })
+          }, 1000),
+          (error) => this.handleSyncError(error, collectionName)
+        )
       )
+
+      // Initial sync for existing data
+      const snapshot = await getDocs(firestoreQuery)
+      await this.handleFirestoreChanges(snapshot, collectionName, {
+        localItems,
+        processItem,
+        validateItem,
+        batchSize
+      })
+
     } catch (error) {
-      console.error('Error in syncWithFirestore:', error)
-      this.syncStatus.value.error = error.message
+      this.handleSyncError(error, collectionName)
     } finally {
       this.syncStatus.value.inProgress = false
+    }
+  }
+
+  async handleFirestoreChanges(snapshot, collectionName, options) {
+    const { localItems, processItem, validateItem, batchSize } = options
+    const localUpdates = []
+    const batch = writeBatch(fireDb)
+    let batchCount = 0
+
+    for (const change of snapshot.docChanges?.() || snapshot.docs) {
+      const doc = change.doc || change
+      if (doc.metadata?.hasPendingWrites) continue
+
+      let processedItem = { ...doc.data(), firebaseId: doc.id }
+      
+      if (validateItem && !validateItem(processedItem)) {
+        console.warn(`Invalid item in Firestore: ${doc.id}`)
+        continue
+      }
+
+      if (processItem) {
+        processedItem = processItem(processedItem)
+      }
+
+      const existingItem = localItems.find(
+        item => item.firebaseId === processedItem.firebaseId
+      )
+
+      if (existingItem) {
+        const firestoreDate = processedItem.updatedAt || new Date()
+        const localDate = new Date(existingItem.updatedAt || 0)
+
+        if (firestoreDate > localDate && existingItem.syncStatus !== 'pending') {
+          localUpdates.push({ id: existingItem.id, data: processedItem })
+        }
+      } else {
+        const duplicateCheck = await db[collectionName]
+          .where('firebaseId')
+          .equals(processedItem.firebaseId)
+          .count()
+
+        if (duplicateCheck === 0) {
+          localUpdates.push({ data: processedItem })
+        }
+      }
+
+      batchCount++
+      if (batchCount >= batchSize) {
+        await batch.commit()
+        batchCount = 0
+      }
+    }
+
+    if (batchCount > 0) {
+      await batch.commit()
+    }
+
+    if (localUpdates.length > 0) {
+      await this.processBatchUpdates(localUpdates, collectionName)
     }
   }
 
@@ -178,26 +194,37 @@ class CentralizedSyncService {
     }
   }
 
-  // Add a new method to cleanup listeners
-  cleanupListeners() {
-    if (this.unsubscribeItems) {
-      this.unsubscribeItems()
-      this.unsubscribeItems = null
+  handleSyncError(error, collectionName) {
+    console.error(`Firestore sync error for ${collectionName}:`, error)
+    this.syncStatus.value.error = error.message
+    this.syncStatus.value.inProgress = false
+    this.cleanupListener(collectionName)
+  }
+
+  cleanupListener(collectionName) {
+    const unsubscribe = this.unsubscribers.get(collectionName)
+    if (unsubscribe) {
+      unsubscribe()
+      this.unsubscribers.delete(collectionName)
     }
-    if (this.unsubscribeCategories) {
-      this.unsubscribeCategories()
-      this.unsubscribeCategories = null
+  }
+
+  cleanupAllListeners() {
+    for (const [collectionName] of this.unsubscribers) {
+      this.cleanupListener(collectionName)
     }
   }
 }
 
-/** @const {CentralizedSyncService} centralizedSyncService - Singleton instance of CentralizedSyncService */
 export const centralizedSyncService = new CentralizedSyncService()
 
 export function useCentralizedSyncService() {
   return {
     syncProgress: centralizedSyncService.syncProgress,
     isSyncing: centralizedSyncService.isSyncing,
-    syncData: (options) => centralizedSyncService.syncData(options)
+    syncStatus: centralizedSyncService.syncStatus,
+    syncWithFirestore: (collectionName, options) => 
+      centralizedSyncService.syncWithFirestore(collectionName, options),
+    cleanupAllListeners: () => centralizedSyncService.cleanupAllListeners()
   }
 }
