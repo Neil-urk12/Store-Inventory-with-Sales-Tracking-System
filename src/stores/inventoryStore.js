@@ -19,7 +19,7 @@ import {
   where,
   onSnapshot,
   limit,
-  getDocs
+  getDoc
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -28,8 +28,8 @@ import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
 import filterItems from 'src/utils/filterUtils'
-import { centralizedSyncService, useCentralizedSyncService } from '../services/centralizedSyncService'
-const { syncWithFirestore } = useCentralizedSyncService()
+import { useCentralizedSyncService } from '../services/centralizedSyncService'
+const { syncWithFirestore, syncStatus } = useCentralizedSyncService()
 
 /**
  * @typedef {Object} SyncStatus
@@ -295,7 +295,11 @@ export const useInventoryStore = defineStore('inventory', {
     async initializeDb() {
       try {
         if (isOnline.value) {
-          await syncWithFirestore('items', processItem, validateItem)
+          await syncWithFirestore('items', {
+            processItem,
+            validateItem,
+            orderByField: 'updatedAt'
+          })
           await syncQueue.processQueue()
         }
 
@@ -509,31 +513,19 @@ export const useInventoryStore = defineStore('inventory', {
         this.categories = localCategories
 
         if (isOnline.value) {
-          try {
-            // const lastSync = this.syncStatus.lastSync
-            // let firestoreQuery = query(collection(fireDb, 'categories'), orderBy('updatedAt', 'desc'))
+          await syncWithFirestore('categories', {
+            validateItem: (category) => {
+              return category && typeof category.name === 'string'
+            },
+            processItem: (category) => ({
+              ...category,
+              createdAt: category.createdAt || new Date(),
+              updatedAt: category.updatedAt || new Date()
+            }),
+            orderByField: 'updatedAt'
+          })
 
-            // if (lastSync) {
-            //   firestoreQuery = query(
-            //     collection(fireDb, 'categories'),
-            //     where('updatedAt', '>', new Date(lastSync)),
-            //     orderBy('updatedAt', 'desc')
-            //   )
-            // }
-
-            // const snapshot = await getDocs(firestoreQuery)
-            // const firestoreCategories = snapshot.docs.map(doc => ({
-            //   id: doc.id,
-            //   ...doc.data(),
-            //   createdAt: doc.data().createdAt?.toDate() || new Date(),
-            //   updatedAt: doc.data().updatedAt?.toDate() || new Date()
-            // }))
-
-            // await this.mergeCategoriesWithFirestore(localCategories, firestoreCategories)
-            await syncWithFirestore('categories')
-          } catch (error) {
-            console.error('Error syncing categories with Firestore:', error)
-          }
+          this.categories = await db.categories.toArray()
         }
       } catch (error) {
         console.error('Error loading categories:', error)
@@ -625,7 +617,7 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async addCategory(categoryName) {
       try {
-        if (!categoryName || typeof categoryName !== 'string')
+        if (!categoryName.trim() || typeof categoryName !== 'string')
           throw new Error('Invalid category name')
 
         const existingCategory = this.categories.find(
@@ -634,63 +626,55 @@ export const useInventoryStore = defineStore('inventory', {
         if (existingCategory)
           throw new Error('Category already exists')
 
-        const tempId = 'temp_' + Date.now()
-        const newCategory = {
-          id: tempId,
-          name: categoryName,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-
-        await db.categories.add(newCategory)
-        this.categories.push(newCategory)
-
+        // If online, create in Firestore first to get the server timestamp
         if (isOnline.value) {
           try {
             const docRef = await addDoc(collection(fireDb, 'categories'), {
+              id: crypto.randomUUID(),
               name: categoryName,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
 
-            await db.categories.where('id').equals(tempId).modify(category => {
-              category.id = docRef.id
-            })
+            // Get the document to access the server timestamp
+            const docSnap = await getDoc(docRef)
+            const firestoreData = docSnap.data()
 
-            this.categories = this.categories.map(c =>
-              c.id === tempId ? { ...c, id: docRef.id } : c
-            )
+            const newCategory = {
+              id: firestoreData.id,
+              name: categoryName,
+              createdAt: firestoreData.createdAt.toDate(),
+              updatedAt: firestoreData.updatedAt.toDate(),
+              firebaseId: docRef.id
+            }
 
-            return { id: docRef.id, name: categoryName }
+            // Add to local database
+            await db.categories.add(newCategory)
+            this.categories.push(newCategory)
+
+            return { id: newCategory.id, name: categoryName, firebaseId: docRef.id }
           } catch (error) {
             console.error('Error adding category to Firestore:', error)
-            await syncQueue.addToQueue({
-              type: 'add',
-              collection: 'categories',
-              data: {
-                name: categoryName,
-                createdAt: new Date(),
-                updatedAt: new Date()
-              },
-              tempId
-            })
-            return { id: tempId, name: categoryName }
           }
-        } else {
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'categories',
-            data: {
-              name: categoryName,
-              createdAt: new Date(),
-              updatedAt: new Date()
-            },
-            tempId
-          })
-          return { id: tempId, name: categoryName }
         }
+
+        // Offline handling or if Firestore failed
+        const now = new Date()
+        const newCategory = {
+          id: crypto.randomUUID(),
+          name: categoryName,
+          createdAt: now,
+          updatedAt: now
+        }
+
+        // Add to local database
+        await db.categories.add(newCategory)
+        this.categories.push(newCategory)
+
+        return { id: newCategory.id, name: categoryName }
       } catch (error) {
         console.error('Error adding category:', error)
+        this.error = error.message
         return null
       }
     },
@@ -972,7 +956,7 @@ export const useInventoryStore = defineStore('inventory', {
      * Used for cleanup before navigation or component unmount.
      */
     cleanup(fullCleanup = false) {
-      this.cleanupListeners()
+      // this.cleanupListeners()
 
       // Reset UI state
       this.loading = false
@@ -996,19 +980,19 @@ export const useInventoryStore = defineStore('inventory', {
         this.topSellingProducts = []
       }
 
-      // Reset sync status
-      this.syncStatus = {
-        lastSync: null,
-        inProgress: false,
-        error: null,
-        pendingChanges: 0,
-        totalItems: 0,
-        processedItems: 0,
-        failedItems: [],
-        retryCount: 0,
-        maxRetries: 3,
-        retryDelay: 1000
-      }
+      // // Reset sync status
+      // this.syncStatus = {
+      //   lastSync: null,
+      //   inProgress: false,
+      //   error: null,
+      //   pendingChanges: 0,
+      //   totalItems: 0,
+      //   processedItems: 0,
+      //   failedItems: [],
+      //   retryCount: 0,
+      //   maxRetries: 3,
+      //   retryDelay: 1000
+      // }
     },
 
     /**
