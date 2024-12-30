@@ -23,7 +23,6 @@ import {
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
-import { syncQueue } from '../services/syncQueue'
 import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
 import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
@@ -300,7 +299,6 @@ export const useInventoryStore = defineStore('inventory', {
             validateItem,
             orderByField: 'updatedAt'
           })
-          await syncQueue.processQueue()
         }
 
         await this.loadInventory()
@@ -366,23 +364,12 @@ export const useInventoryStore = defineStore('inventory', {
           await db.updateItem(result, { firebaseId: docRef.id })
           await this.loadInventory()
           return { id: result, firebaseId: docRef.id, offline: false }
-        } else {
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'items',
-            data: processedItem,
-            docId: result
-          })
-          await this.loadInventory()
-          return { id: result, offline: true }
         }
+
+        await this.loadInventory()
+        return { id: result, offline: true }
       } catch (error) {
         console.error('Error creating item:', error)
-        // this.syncStatus.failedItems.push({
-        //   ...item,
-        //   error: error.message,
-        //   syncOperation: 'add'
-        // })
         throw error
       } finally {
         this.loading = false
@@ -418,21 +405,10 @@ export const useInventoryStore = defineStore('inventory', {
           }
         }
 
-        await syncQueue.addToQueue({
-          type: 'update',
-          collection: 'items',
-          data: processedChanges,
-          docId: id
-        })
         await this.loadInventory()
         return { id, offline: true }
       } catch (error) {
         console.error('Error updating item:', error)
-        // this.syncStatus.failedItems.push({
-        //   ...changes,
-        //   error: error.message,
-        //   syncOperation: 'update'
-        // })
         throw error
       } finally {
         this.loading = false
@@ -460,34 +436,15 @@ export const useInventoryStore = defineStore('inventory', {
             await deleteDoc(docRef)
           } catch (error) {
             console.error('Error deleting from Firestore:', error)
-            await syncQueue.addToQueue({
-              type: 'delete',
-              collection: 'items',
-              docId: id,
-              firebaseId: item.firebaseId
-            })
           }
-        } else if (item.firebaseId) {
-          await syncQueue.addToQueue({
-            type: 'delete',
-            collection: 'items',
-            docId: id,
-            firebaseId: item.firebaseId
-          })
         }
 
         return id
       } catch (error) {
         console.error('Error in deleteItem:', error)
-        this.syncStatus.failedItems.push({
-          id,
-          error: error.message,
-          syncOperation: 'delete'
-        })
         throw error
       }
     },
-
 
     /**
      * @async

@@ -10,8 +10,7 @@ import { clientsClaim } from 'workbox-core'
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
 import { NetworkOnly, NetworkFirst, CacheFirst } from 'workbox-strategies';
-import { BackgroundSyncPlugin } from 'workbox-background-sync';
-import { syncQueue } from '../services/syncQueue';
+import { centralizedSyncService } from '../services/centralizedSyncService';
 
 self.skipWaiting()
 clientsClaim()
@@ -32,16 +31,11 @@ if (process.env.MODE !== 'ssr' || process.env.PROD) {
   )
 }
 
-const bgSyncPlugin = new BackgroundSyncPlugin('syncQueue', {
-  maxRetentionTime: 24 * 60, // Retry for up to 24 hours
-});
-
 // Cache API requests for offline access
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api'),
   new NetworkFirst({
-    cacheName: 'api-cache',
-    plugins: [bgSyncPlugin],
+    cacheName: 'api-cache'
   })
 );
 
@@ -49,7 +43,7 @@ registerRoute(
 self.addEventListener('sync', (event) => {
   if (event.tag === 'syncData') {
     event.waitUntil(
-      // Notify the client to process the queue
+      // Notify the client to process the sync
       self.clients.matchAll().then(clients => {
         clients.forEach(client => {
           client.postMessage({
@@ -58,7 +52,11 @@ self.addEventListener('sync', (event) => {
         })
       })
     )
-    syncQueue.checkAndProcessQueue()
+    // Trigger sync for all collections
+    const collections = ['sales', 'inventory', 'categories', 'financial'];
+    collections.forEach(collection => {
+      centralizedSyncService.syncWithFirestore(collection);
+    });
   }
 })
 

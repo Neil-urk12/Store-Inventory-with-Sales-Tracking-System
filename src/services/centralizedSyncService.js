@@ -13,18 +13,12 @@ import {
   writeBatch,
   onSnapshot,
   limit,
-  doc,
-  updateDoc,
-  serverTimestamp,
   getDocs,
-  where,
-  runTransaction
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from './networkStatus'
 import debounce from 'lodash/debounce'
 import { db } from '../db/dexiedb'
-import { syncQueue } from './syncQueue'
 
 /**
  * @class CentralizedSyncService
