@@ -4,16 +4,6 @@
  * - Cart management
  * - Transaction processing
  * - Sales history
- * - Offline support
- */
-
-/**
- * @typedef {Object} Sale
- * @property {string} id - Unique sale ID
- * @property {Array<CartItem>} items - Items in the sale
- * @property {number} total - Total sale amount
- * @property {string} paymentMethod - Payment method used
- * @property {Date} createdAt - Sale timestamp
  */
 
 import { defineStore } from 'pinia'
@@ -21,7 +11,6 @@ import { db } from '../db/dexiedb'
 import {
   doc,
   serverTimestamp,
-  runTransaction,
   setDoc
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
@@ -29,9 +18,6 @@ import { useNetworkStatus } from '../services/networkStatus'
 import { formatDate } from '../utils/dateUtils'
 import { useInventoryStore } from './inventoryStore'
 import { useFinancialStore } from './financialStore'
-import { validateSales } from 'src/utils/validation'
-import { syncQueue } from 'src/services/syncQueue'
-import filterItems from 'src/utils/filterUtils'
 import { useCentralizedSyncService } from '../services/centralizedSyncService'
 
 const { isOnline } = useNetworkStatus()
@@ -40,12 +26,12 @@ const inventoryStore = useInventoryStore()
 const financialStore = useFinancialStore()
 
 function isValidDate(dateString) {
-  if (!dateString) return false;
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(dateString)) return false;
+  if (!dateString) return false
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+  if (!dateRegex.test(dateString)) return false
   
-  const date = new Date(dateString);
-  return date instanceof Date && !isNaN(date);
+  const date = new Date(dateString)
+  return date instanceof Date && !isNaN(date)
 }
 
 /**
@@ -62,21 +48,10 @@ export const useSalesStore = defineStore('sales', {
     selectedPaymentMethod: null,
     showCheckoutDialog: false,
     loading: false,
+    isCheckoutProcessing: false,
     dateRange: {
       from: formatDate(new Date(), 'YYYY-MM-DD'),
       to: formatDate(new Date(), 'YYYY-MM-DD')
-    },
-    syncStatus: {
-      lastSync: null,
-      inProgress: false,
-      error: null,
-      pendingChanges: 0,
-      totalItems: 0,
-      processedItems: 0,
-      failedItems: [],
-      retryCount: 0,
-      maxRetries: 3,
-      retryDelay: 1000
     }
   }),
 
@@ -163,63 +138,6 @@ export const useSalesStore = defineStore('sales', {
       }
     },
     /**
-     * @async
-     * @method uploadSalesData
-     * @description Uploads all sales data from the local database to Firestore
-     * @returns {Promise<void>}
-     */
-    async uploadSalesData(changedSales) {
-      if (!isOnline.value)
-        return console.warn('Offline. Sales data will be uploaded when online.')
-
-      if (changedSales.length === 0)
-        return console.log('No sales changes to upload.')
-
-      syncStatus.value.inProgress = true
-      syncStatus.value.error = null
-
-      console.log('Uploading changed sales data:', changedSales)
-
-      for (const sale of changedSales) {
-        try {
-          await runTransaction(fireDb, async (transaction) => {
-            const saleRef = doc(fireDb, 'sales', sale.id)
-            transaction.set(saleRef, {
-              ...sale,
-              dateTimeframe: new Date().toISOString(),
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            })
-          })
-          console.log(`Sale ${sale.id} uploaded successfully!`)
-          syncStatus.value.processedItems++
-        } catch (error) {
-          console.error(`Error uploading sale ${sale.id}:`, error)
-          syncStatus.value.failedItems.push({
-            ...sale,
-            error: error.message,
-            syncOperation: 'create'
-          })
-          
-          // Comment out syncQueue usage
-          // if (error.code !== 'already-exists') {
-          //     await syncQueue.addToQueue({
-          //         type: 'add',
-          //         data: sale,
-          //         retries: 0,
-          //         onError: err => {
-          //             console.error(
-          //                 `Failed to upload sale ${sale.id} after multiple retries:`,
-          //                 err
-          //             )
-          //         }
-          //     })
-          // }
-        }
-      }
-      syncStatus.value.inProgress = false
-    },
-    /**
      *  Unya na
      *
      */
@@ -228,7 +146,6 @@ export const useSalesStore = defineStore('sales', {
         this.loading = true
         const localSales = await db.getAllSales() || []
         
-        // Ensure all sales have valid dates
         this.sales = localSales.map(sale => ({
           ...sale,
           date: isValidDate(sale.date) ? sale.date : formatDate(new Date(), 'YYYY-MM-DD')
@@ -261,15 +178,6 @@ export const useSalesStore = defineStore('sales', {
 
       if (newQuantity <= product.quantity) {
         existingItem.quantity = newQuantity
-        this.syncStatus.pendingChanges++
-        syncQueue.addToQueue({
-          type: 'update',
-          collection: 'items',
-          data: {
-            quantity: newQuantity
-          },
-          docId: item.id
-        })
         return { success: true }
       }
 
@@ -283,39 +191,7 @@ export const useSalesStore = defineStore('sales', {
     removeFromCart(item) {
       const index = this.cart.findIndex(i => i.id === item.id)
       if (index > -1) this.cart.splice(index, 1)
-      this.syncStatus.pendingChanges++
-      syncQueue.addToQueue({
-        type: 'update',
-        collection: 'items',
-        data: {
-          quantity: item.quantity
-        },
-        docId: item.id
-      })
       return { success: true }
-    },
-
-    async addToCartWithRetry(product) {
-      let retries = 0;
-      const maxRetries = 3;
-
-      while (retries < maxRetries) {
-        try {
-          const result = this.addToCart(product);
-          if (result.success) {
-            return result;
-          } else {
-            return result;
-          }
-        } catch (error) {
-          retries++;
-          console.error(`Error adding to cart (attempt ${retries}):`, error);
-          if (retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-      return { success: false, error: 'Failed to add to cart after multiple retries.' };
     },
 
     addToCart(product) {
@@ -337,32 +213,6 @@ export const useSalesStore = defineStore('sales', {
         quantity: 1
       })
       return { success: true }
-    },
-
-    async removeFromCartWithRetry(item) {
-      let retries = 0;
-      const maxRetries = 3;
-
-      while (retries < maxRetries) {
-        try {
-          const result = this.removeFromCart(item);
-          if (result.success) {
-            return result;
-          } else {
-            this.$q.notify({ type: 'negative', message: result.error || 'Failed to remove from cart. Please try again.' });
-            return result;
-          }
-        } catch (error) {
-          retries++;
-          console.error(`Error removing from cart (attempt ${retries}):`, error);
-          if (retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-
-      this.$q.notify({ type: 'negative', message: 'Failed to remove from cart after multiple retries. Please check your connection.' });
-      return { success: false, error: 'Failed to remove from cart after multiple retries.' };
     },
 
     async processCheckout() {
@@ -394,7 +244,7 @@ export const useSalesStore = defineStore('sales', {
           dateTimeframe: currentDate.toISOString(),
           createdAt: currentDate.toISOString(),
           updatedAt: currentDate.toISOString(),
-          firebaseId: saleId // Add this to help with syncing
+          firebaseId: saleId
         }
 
         // If online, add to Firestore first
@@ -409,7 +259,7 @@ export const useSalesStore = defineStore('sales', {
             console.log('Sale added to Firestore:', saleId)
           } catch (error) {
             console.error('Error adding sale to Firestore:', error)
-            throw error // Propagate error to prevent local save if Firestore fails
+            throw error
           }
         }
 
@@ -436,8 +286,6 @@ export const useSalesStore = defineStore('sales', {
         })
 
         this.clearCart()
-        
-        // Reload sales data
         await this.loadSales()
         
         return { success: true, sale }
