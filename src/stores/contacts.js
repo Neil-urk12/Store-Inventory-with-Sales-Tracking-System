@@ -26,9 +26,6 @@ import { DatabaseError, ValidationError } from '../db/dexiedb'
 
 const { isOnline } = useNetworkStatus()
 
-// Debounced queue processing to handle multiple rapid changes efficiently
-const processQueueDebounced = debounce(() => syncQueue.processQueue(), 1000)
-
 /**
  * Custom error class for contact-related errors
  */

@@ -1,17 +1,10 @@
 <script setup>
 import { computed } from 'vue'
 import { useNetworkStatus } from 'src/services/networkStatus'
-import { useSyncQueue } from 'src/services/syncQueue.js'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const { isOnline } = useNetworkStatus()
-const { 
-  pendingOperations: pendingChanges,
-  isSyncing,
-  syncProgress,
-  processQueue
-} = useSyncQueue()
 
 const showStatus = computed(() => !isOnline.value || isSyncing.value || pendingChanges.value > 0)
 const statusClass = computed(() => ({

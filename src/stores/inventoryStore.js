@@ -654,20 +654,9 @@ export const useInventoryStore = defineStore('inventory', {
             await deleteDoc(docRef)
           } catch (error) {
             console.error('Error deleting category from Firestore:', error)
-            await syncQueue.addToQueue({
-              type: 'delete',
-              collection: 'categories',
-              docId: categoryId
-            })
             this.error = handleError(error, 'Failed to delete category')
             return false
           }
-        } else {
-          await syncQueue.addToQueue({
-            type: 'delete',
-            collection: 'categories',
-            docId: categoryId
-          })
         }
 
         return true
