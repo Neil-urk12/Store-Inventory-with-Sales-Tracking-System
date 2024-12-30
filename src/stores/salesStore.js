@@ -19,19 +19,10 @@
 import { defineStore } from 'pinia'
 import { db } from '../db/dexiedb'
 import {
-  collection,
-  getDocs,
-  query,
-  orderBy,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  where,
   doc,
-  writeBatch,
   serverTimestamp,
-  runTransaction
+  runTransaction,
+  setDoc
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
@@ -41,8 +32,10 @@ import { useFinancialStore } from './financialStore'
 import { validateSales } from 'src/utils/validation'
 import { syncQueue } from 'src/services/syncQueue'
 import filterItems from 'src/utils/filterUtils'
+import { useCentralizedSyncService } from '../services/centralizedSyncService'
 
 const { isOnline } = useNetworkStatus()
+const { syncWithFirestore, syncStatus } = useCentralizedSyncService()
 const inventoryStore = useInventoryStore()
 const financialStore = useFinancialStore()
 
@@ -125,15 +118,47 @@ export const useSalesStore = defineStore('sales', {
     async initializeDb() {
       try {
         this.loading = true
+        
+        // First load local data
+        this.sales = await db.getAllSales() || []
+
         if (isOnline.value) {
-          await this.syncWithFirestore()
-          await syncQueue.processQueue()
-        } else this.sales = await db.getAllSales()
+            // Sync with Firestore
+            await syncWithFirestore('sales', {
+                validateItem: (sale) => {
+                    return sale && Array.isArray(sale.items) && typeof sale.total === 'number'
+                },
+                processItem: (sale) => {
+                    // Ensure all numeric values and dates are properly formatted
+                    const processed = {
+                        ...sale,
+                        id: sale.id || crypto.randomUUID(),
+                        date: sale.date || formatDate(new Date(), 'YYYY-MM-DD'),
+                        createdAt: sale.createdAt || new Date().toISOString(),
+                        updatedAt: sale.updatedAt || new Date().toISOString(),
+                        total: Number(sale.total) || 0,
+                        items: (sale.items || []).map(item => ({
+                            ...item,
+                            total: Number(item.total) || 0,
+                            price: Number(item.price) || 0,
+                            quantity: Number(item.quantity) || 0
+                        })),
+                        total: Number(sale.total) || 0
+                    }
+                    return processed
+                },
+                orderByField: 'createdAt'
+            })
+
+            // Reload local data after sync
+            this.sales = await db.getAllSales() || []
+            console.log('Sales data synced with Firestore')
+        }
 
         this.loading = false
         return true
       } catch (error) {
-        console.error(error, 'Failed to initialize database')
+        console.error('Failed to initialize database:', error)
         return false
       }
     },
@@ -150,61 +175,49 @@ export const useSalesStore = defineStore('sales', {
       if (changedSales.length === 0)
         return console.log('No sales changes to upload.')
 
-      this.syncStatus.inProgress = true
-      this.syncStatus.error = null
+      syncStatus.value.inProgress = true
+      syncStatus.value.error = null
 
-      console.log('Uploading changed sales data:', changedSales);
+      console.log('Uploading changed sales data:', changedSales)
 
       for (const sale of changedSales) {
         try {
           await runTransaction(fireDb, async (transaction) => {
             const saleRef = doc(fireDb, 'sales', sale.id)
-
-            const saleDoc = await getDoc(saleRef)
-            if (!saleDoc.exists()) {
-              console.log(`Creating new sale record for sale ID: ${sale.id}`);
-              transaction.set(saleRef, {
-                 ...sale,
-                dateTimeframe: new Date().toISOString(),
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
-            } else {
-              console.log(`Updating existing sale record for sale ID: ${sale.id}`);
-              transaction.update(saleRef, {
-                ...sale,
-                dateTimeframe: new Date().toISOString(),
-                updatedAt: serverTimestamp()
-              });
-            }
-          });
-          console.log(`Sale ${sale.id} uploaded/updated successfully!`);
-          this.syncStatus.processedItems++
+            transaction.set(saleRef, {
+              ...sale,
+              dateTimeframe: new Date().toISOString(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          })
+          console.log(`Sale ${sale.id} uploaded successfully!`)
+          syncStatus.value.processedItems++
         } catch (error) {
-          console.error(`Error uploading/updating sale ${sale.id}:`, error);
-          this.syncStatus.failedItems.push({
+          console.error(`Error uploading sale ${sale.id}:`, error)
+          syncStatus.value.failedItems.push({
             ...sale,
             error: error.message,
             syncOperation: 'create'
           })
-          if (error.code !== 'already-exists') {
-            // Add to sync queue with retry logic
-            syncQueue.addToQueue({
-              type: 'add',
-              data: sale,
-              retries: 0,
-              onError: err => {
-                console.error(
-                  `Failed to upload sale ${sale.id} after multiple retries:`,
-                  err
-                );
-              }
-            });
-          }
-          return
+          
+          // Comment out syncQueue usage
+          // if (error.code !== 'already-exists') {
+          //     await syncQueue.addToQueue({
+          //         type: 'add',
+          //         data: sale,
+          //         retries: 0,
+          //         onError: err => {
+          //             console.error(
+          //                 `Failed to upload sale ${sale.id} after multiple retries:`,
+          //                 err
+          //             )
+          //         }
+          //     })
+          // }
         }
       }
-      this.syncStatus.inProgress = false
+      syncStatus.value.inProgress = false
     },
     /**
      *  Unya na
@@ -213,258 +226,18 @@ export const useSalesStore = defineStore('sales', {
     async loadSales() {
       try {
         this.loading = true
-
-        if(isOnline.value)
-          await this.syncWithFirestore()
-
-        const localSales = await db.getAllSales()
+        const localSales = await db.getAllSales() || []
         
-        const salesWithValidDates = localSales.map(sale => {
-          if (!isValidDate(sale.date)) {
-            sale.date = formatDate(new Date(), 'YYYY-MM-DD')
-          }
-          return sale
-        })
-
-        const validation = await validateSales(salesWithValidDates)
-        if (!validation.isValid) {
-          console.error('Sales validation failed:', validation.errors)
-          throw new Error(validation.errors)
-        }
-
-        this.sales = salesWithValidDates
+        // Ensure all sales have valid dates
+        this.sales = localSales.map(sale => ({
+          ...sale,
+          date: isValidDate(sale.date) ? sale.date : formatDate(new Date(), 'YYYY-MM-DD')
+        }))
       } catch (error) {
         console.error('Error loading sales:', error)
         throw error
       } finally {
         this.loading = false
-      }
-    },
-    /**
-     *  Sync with firestore unya na
-     */
-    async syncWithFirestore() {
-      if (!isOnline.value)
-        return console.error('Cannot sync while offline')
-
-      this.syncStatus.inProgress = true
-      this.syncStatus.error = null
-      this.syncStatus.processedItems = 0
-      this.syncStatus.failedItems = []
-
-      const beforeSyncSales = await db.getAllSales()
-
-      try {
-        const localSales = await db.sales.orderBy('date').reverse().toArray()
-        const firestoreSnapshot = await getDocs(
-          query(collection(fireDb, 'sales'), orderBy('createdAt', 'desc'))
-        )
-        const firestoreSales = firestoreSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          firebaseId: doc.id
-        }))
-
-        const firestoreValidationResult = validateSales(localSales)
-        const localValidationResult = validateSales(firestoreSales)
-        if (!firestoreValidationResult.isValid && !localValidationResult)
-          throw new Error(
-            firestoreValidationResult.errors || localValidationResult.errors
-          )
-
-        await db.transaction('rw', db.sales, async () => {
-          for (const firestoreSale of firestoreSales) {
-            try {
-              const existingSales = localSales.filter(sale => sale.firebaseId === firestoreSale.firebaseId)
-
-              if (existingSales.length === 0 && !firestoreSale.localId) {
-                await db.sales.add({
-                  ...firestoreSale,
-                  syncStatus: 'synced',
-                  dateTimeframe: new Date().toISOString()
-                })
-                this.syncStatus.processedItems++
-                continue
-              }
-
-              if (existingSales.length === 0 && firestoreSale.localId) {
-                const existingSaleByLocalId = await db.sales
-                  .where('id')
-                  .equals(firestoreSale.localId)
-                  .first()
-
-                if (!existingSaleByLocalId) {
-                  await db.sales.add({
-                    ...firestoreSale,
-                    syncStatus: 'synced',
-                    dateTimeframe: new Date().toISOString()
-                  })
-                  this.syncStatus.processedItems++
-                }
-                continue
-              }
-
-              const [saleToKeep, ...duplicates] = existingSales
-              const duplicateIdsToDelete = []
-
-              if (saleToKeep.syncStatus === 'pending') {
-                this.syncStatus.pendingChanges++
-                await syncQueue.addToQueue({
-                  operation: 'update',
-                  collection: 'sales',
-                  data: {
-                    ...saleToKeep,
-                    updatedAt: serverTimestamp(),
-                    dateTimeframe: new Date().toISOString()
-                  },
-                  docId: saleToKeep.firebaseId
-                })
-
-                await db.sales.update(saleToKeep.id, {
-                  ...firestoreSale,
-                  syncStatus: 'synced',
-                  date: formatDate(new Date(firestoreSale.date)),
-                  updatedAt: serverTimestamp(),
-                  dateTimeframe: new Date().toISOString()
-                })
-                this.syncStatus.processedItems++
-              } else if (
-                new Date(firestoreSale.updatedAt) >
-                new Date(saleToKeep.updatedAt)
-              ) {
-                await db.sales.update(saleToKeep.id, {
-                  ...firestoreSale,
-                  syncStatus: 'synced',
-                  dateTimeframe: new Date().toISOString()
-                })
-                this.syncStatus.processedItems++
-              } else {
-                this.syncStatus.pendingChanges++
-                await syncQueue.addToQueue({
-                  type: 'update',
-                  collection: 'sales',
-                  data: {
-                    ...saleToKeep,
-                    updatedAt: serverTimestamp(),
-                    syncStatus: 'synced',
-                    dateTimeframe: new Date().toISOString()
-                  },
-                  docId: firestoreSale.firebaseId
-                })
-
-                await db.sales.update(saleToKeep.id, { syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
-                this.syncStatus.processedItems++
-              }
-
-              for (const duplicate of duplicates)
-                duplicateIdsToDelete.push(duplicate.id)
-
-              if (duplicateIdsToDelete.length > 0)
-                await db.bulkDeleteSales(duplicateIdsToDelete)
-            } catch (error) {
-              this.syncStatus.failedItems.push({
-                ...firestoreSale,
-                error: error.message,
-                syncOperation: 'create'
-              })
-            }
-          }
-        })
-
-        for (const localSale of localSales) {
-          if (!localSale.firebaseId) {
-            try {
-              await runTransaction(fireDb, async (transaction) => {
-                const newSaleRef = doc(collection(fireDb, 'sales'))
-                const newSaleWithTimestamp = {
-                  ...localSale,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                  dateTimeframe: new Date().toISOString()
-                }
-
-                const conflictQuery = query(
-                  collection(fireDb, 'sales'),
-                  where('id', '==', newSaleWithTimestamp.id),
-                  where('createdAt', '>=', new Date(Date.now() - 60000))
-                );
-                const conflictSnapshot = await getDocs(conflictQuery)
-
-                if (!conflictSnapshot.empty) {
-                  console.warn(`Conflict detected for sale ${newSaleWithTimestamp.id}. Skipping.`)
-                  this.syncStatus.failedItems.push({
-                    ...newSaleWithTimestamp,
-                    error: 'Conflict detected',
-                    syncOperation: 'create'
-                  })
-                  return
-                }
-
-                transaction.set(newSaleRef, newSaleWithTimestamp)
-
-                await db.sales.update(localSale.id, { firebaseId: newSaleRef.id, syncStatus: 'synced', dateTimeframe: new Date().toISOString() })
-                this.syncStatus.processedItems++
-              })
-            } catch (error) {
-              console.error('Error creating sale in Firestore:', error)
-              this.syncStatus.failedItems.push({
-                ...localSale,
-                error: error.message,
-                syncOperation: 'create'
-              })
-            }
-          } else {
-            const firestoreFirebaseIds = new Set(firestoreSales.map(sale => sale.firebaseId))
-
-            if (firestoreFirebaseIds.has(localSale.firebaseId))
-              continue
-
-            const currentSaleItem = await db.sales.get(localSale.id);
-
-            if (currentSaleItem && currentSaleItem.syncStatus === 'pending')
-              continue
-
-            this.syncStatus.pendingChanges++
-            await syncQueue.addToQueue({
-              type: 'delete',
-              collection: 'sales',
-              docId: localSale.firebaseId,
-              data: {
-                updatedAt: serverTimestamp(),
-                dateTimeframe: new Date().toISOString()
-              },
-            })
-
-            await db.deleteSale(localSale.id);
-            this.syncStatus.processedItems++
-          }
-        }
-
-        const afterSyncSales = await db.getAllSales()
-
-        const changedSales = afterSyncSales.filter(afterSale => {
-          const beforeSale = beforeSyncSales.find(
-            beforeSale => beforeSale.id === afterSale.id
-          )
-          return !beforeSale || JSON.stringify(beforeSale) !== JSON.stringify(afterSale)
-        })
-
-        if (changedSales.length > 0) {
-          console.log(
-            'Changes detected. Uploading',
-            changedSales.length,
-            'sales records...'
-          )
-          this.sales = afterSyncSales
-          this.uploadSalesData(changedSales)
-        } else {
-          console.log('No changes detected. Skipping upload.')
-        }
-      } catch (error) {
-        console.error('Error syncing with Firestore : ', error)
-        this.syncStatus.error = error.message
-        throw error
-      } finally {
-        this.syncStatus.inProgress = false
       }
     },
     /**
@@ -601,8 +374,10 @@ export const useSalesStore = defineStore('sales', {
 
       try {
         const currentDate = new Date()
+        const saleId = crypto.randomUUID()
+        
         const sale = {
-          id: crypto.randomUUID(),
+          id: saleId,
           items: this.cart.map(item => ({
             id: item.id,
             name: item.name,
@@ -617,18 +392,40 @@ export const useSalesStore = defineStore('sales', {
           paymentMethod: this.selectedPaymentMethod,
           date: formatDate(currentDate, 'YYYY-MM-DD'),
           dateTimeframe: currentDate.toISOString(),
-          createdAt: currentDate.toISOString()
+          createdAt: currentDate.toISOString(),
+          updatedAt: currentDate.toISOString(),
+          firebaseId: saleId // Add this to help with syncing
         }
 
-        this.cart.forEach(async item => {
-          const product = this.getProducts.find(p => p.id === item.id)
-          product.quantity = product.quantity - item.quantity
-          if (product)
-            await inventoryStore.updateExistingItem(item.id, product)
-        })
+        // If online, add to Firestore first
+        if (isOnline.value) {
+          try {
+            const saleRef = doc(fireDb, 'sales', saleId)
+            await setDoc(saleRef, {
+              ...sale,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+            console.log('Sale added to Firestore:', saleId)
+          } catch (error) {
+            console.error('Error adding sale to Firestore:', error)
+            throw error // Propagate error to prevent local save if Firestore fails
+          }
+        }
 
+        // Update inventory quantities
+        for (const item of this.cart) {
+          const product = this.getProducts.find(p => p.id === item.id)
+          if (product) {
+            product.quantity = product.quantity - item.quantity
+            await inventoryStore.updateExistingItem(item.id, product)
+          }
+        }
+
+        // Add to local database
         await db.sales.add(sale)
 
+        // Add financial transaction
         await financialStore.addTransaction({
           paymentMethod: this.selectedPaymentMethod,
           type: 'income',
@@ -639,7 +436,10 @@ export const useSalesStore = defineStore('sales', {
         })
 
         this.clearCart()
-
+        
+        // Reload sales data
+        await this.loadSales()
+        
         return { success: true, sale }
       } catch (error) {
         console.error('Checkout error:', error)
