@@ -383,7 +383,7 @@ class AppDatabase extends Dexie {
    * @description Returns an array of all contacts in the database.
   */
   async getAllContacts() {
-    return await this.contactsList.toArray()
+    return await this.contacts.toArray()
   }
   /**
    * @async
