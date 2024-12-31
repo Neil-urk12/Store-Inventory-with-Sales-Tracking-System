@@ -209,9 +209,7 @@ watch(() => salesStore.sales, () => {
 }, { deep: true })
 
 watch(() => salesStore.sales, async (newSales) => {
-  if (newSales.length === 0) {
-    await salesStore.initializeDb()
-  } else if (newSales.length > 0) {
+  if (newSales.length > 0) {
     $q.notify({
       type: 'positive',
       message: 'Sales loaded successfully'

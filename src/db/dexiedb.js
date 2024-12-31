@@ -50,25 +50,15 @@ class AppDatabase extends Dexie {
    * @description Creates a new instance of the AppDatabase class.
   */
   constructor() {
-    super('inventoryDb'); // Name of the database
+    super('inventoryDb')
 
-    this.version(3).stores({
-      // Inventory tables
-      categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
-      items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
-
-      // Sales tables
-      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
-
-      cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
-
-      // Contacts tables
-      contactCategories: '++id, name, value, createdAt, syncStatus, firebaseId',
-      contactsList: '++id, categoryId, name, email, phone, avatar, [categoryId+name], syncStatus, firebaseId',
-
-      // Sync queue table
-      syncQueue: '++id, type, collection, data, docId, timestamp, attempts, lastAttempt, status, error',
-      syncLocks: 'lockId, timestamp, owner'
+    this.version(1).stores({
+      items: '++id, name, sku, categoryId, quantity, price, firebaseId, syncStatus',
+      categories: '++id, name, firebaseId, syncStatus',
+      sales: '++id, date, total, paymentMethod, firebaseId, syncStatus',
+      cashFlow: '++id, date, type, amount, paymentMethod, description, firebaseId, syncStatus',
+      contacts: '++id, name, email, phone, categoryId, firebaseId, syncStatus',
+      contactCategories: '++id, name, firebaseId, syncStatus'
     })
 
     this.items.hook('creating', (primKey, obj) => {
@@ -563,19 +553,15 @@ class AppDatabase extends Dexie {
       this.cashFlow,
       this.contactCategories,
       this.contactsList,
-      this.syncQueue,
-      this.syncLocks,
       async () => {
         await Promise.all([
           this.items.clear(),
           this.sales.clear(),
           this.cashFlow.clear(),
           this.contactCategories.clear(),
-          this.contactsList.clear(),
-          this.syncQueue.clear(),
-          this.syncLocks.clear()
+          this.contactsList.clear()
         ])
-    });
+    })
   }
 
   /**
