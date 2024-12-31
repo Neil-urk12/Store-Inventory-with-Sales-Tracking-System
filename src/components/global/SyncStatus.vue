@@ -22,6 +22,7 @@ const canManualSync = computed(() =>
 
 async function triggerManualSync() {
   try {
+    const { syncWithFirestore } = useCentralizedSyncService()
     const collections = ['sales', 'inventory', 'categories', 'financial']
     for (const collection of collections) {
       await syncWithFirestore(collection)
@@ -31,6 +32,7 @@ async function triggerManualSync() {
       message: 'Sync completed successfully'
     })
   } catch (error) {
+    console.error('Sync error:', error)
     $q.notify({
       type: 'negative',
       message: 'Sync failed. Please try again.'

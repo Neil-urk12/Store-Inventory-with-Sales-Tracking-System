@@ -45,6 +45,22 @@ class CentralizedSyncService {
     })
 
     this.unsubscribers = new Map()
+    
+    // Add online listener for auto-sync
+    window.addEventListener('online', () => {
+      this.syncAllCollections()
+    })
+  }
+
+  async syncAllCollections() {
+    const collections = ['sales', 'inventory', 'categories', 'financial']
+    for (const collection of collections) {
+      try {
+        await this.syncWithFirestore(collection)
+      } catch (error) {
+        console.error(`Error syncing ${collection}:`, error)
+      }
+    }
   }
 
   async syncWithFirestore(collectionName, options = {}) {
