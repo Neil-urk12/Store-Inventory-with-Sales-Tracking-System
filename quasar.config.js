@@ -142,52 +142,52 @@ export default configure(function (/* ctx */) {
       extendGenerateSWOptions (cfg) {
         cfg.skipWaiting = true
         cfg.clientsClaim = true
-      //   cfg.cleanupOutdatedCaches = true
-      //   cfg.runtimeCaching = [
-      //     {
-      //       urlPattern: new RegExp('^https://api\\.'),
-      //       handler: 'NetworkFirst',
-      //       options: {
-      //         cacheName: 'api-cache',
-      //         networkTimeoutSeconds: 5,
-      //         expiration: {
-      //           maxEntries: 50,
-      //           maxAgeSeconds: 60 * 60 // 1 hour
-      //         },
-      //         cacheableResponse: {
-      //           statuses: [0, 200]
-      //         }
-      //       }
-      //     },
-      //     {
-      //       urlPattern: new RegExp('\\.(png|jpg|jpeg|svg|gif|webp)$'),
-      //       handler: 'CacheFirst',
-      //       options: {
-      //         cacheName: 'image-cache',
-      //         expiration: {
-      //           maxEntries: 60,
-      //           maxAgeSeconds: 30 * 24 * 60 * 60
-      //         },
-      //         cacheableResponse: {
-      //           statuses: [0, 200]
-      //         }
-      //       }
-      //     },
-      //     {
-      //       urlPattern: new RegExp('\\.(js|css|html)$'),
-      //       handler: 'StaleWhileRevalidate',
-      //       options: {
-      //         cacheName: 'static-resources',
-      //         expiration: {
-      //           maxEntries: 60,
-      //           maxAgeSeconds: 24 * 60 * 60
-      //         },
-      //         cacheableResponse: {
-      //           statuses: [0, 200]
-      //         }
-      //       }
-      //     }
-      //   ]
+        cfg.cleanupOutdatedCaches = true
+        cfg.runtimeCaching = [
+          {
+            urlPattern: new RegExp('^https://api\\.'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 // 1 hour
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: new RegExp('\\.(png|jpg|jpeg|svg|gif|webp)$'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'image-cache',
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 30 * 24 * 60 * 60
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: new RegExp('\\.(js|css|html)$'),
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'static-resources',
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 24 * 60 * 60
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          }
+        ]
       },
       manifest: {
         name: 'Store Inventory with Sales Tracking System',
@@ -197,7 +197,7 @@ export default configure(function (/* ctx */) {
         orientation: 'portrait',
         background_color: '#ffffff',
         theme_color: '#027be3',
-        start_url: '.',
+        start_url: '/',
         icons: [
           {
             src: 'icons/icon-128x128.png',
