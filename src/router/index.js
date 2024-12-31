@@ -23,12 +23,12 @@ export default route(function (/* { store, ssrContext } */) {
         path: '/',
         component: () => import('layouts/MainLayout.vue'),
         children: [
-          { path: '/', name: 'home', component: () => import('pages/HomeView.vue'), meta: { requiresAuth: false } },
-          { path: '/inventory', component: () => import('pages/InventoryView.vue'), meta: { requiresAuth: false } },
-          { path: '/sales', component: () => import('pages/SalesView.vue'), meta: { requiresAuth: false } },
-          { path: '/sales/history', component: () => import('pages/SalesHistoryView.vue'), meta: { requiresAuth: false } },
-          { path: '/reports', component: () => import('pages/ReportsView.vue'), meta: { requiresAuth: false } },
-          { path: '/contacts', component: () => import('pages/ContactsView.vue'), meta: { requiresAuth: false } },
+          { path: '/', name: 'home', component: () => import('pages/HomeView.vue'), meta: { requiresAuth: true } },
+          { path: '/inventory', component: () => import('pages/InventoryView.vue'), meta: { requiresAuth: true } },
+          { path: '/sales', component: () => import('pages/SalesView.vue'), meta: { requiresAuth: true } },
+          { path: '/sales/history', component: () => import('pages/SalesHistoryView.vue'), meta: { requiresAuth: true } },
+          { path: '/reports', component: () => import('pages/ReportsView.vue'), meta: { requiresAuth: true } },
+          { path: '/contacts', component: () => import('pages/ContactsView.vue'), meta: { requiresAuth: true } },
         ]
       },
       { path: '/:catchAll(.*)*', component: () => import('pages/ErrorNotFound.vue') }
