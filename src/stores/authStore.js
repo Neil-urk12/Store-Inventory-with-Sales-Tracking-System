@@ -45,7 +45,7 @@ export const useAuthStore = defineStore('auth', {
     /**
      * @async
      * @method loginWithEmail
-     * @param {string} email - User email
+     * @param {string} email - User emailF
      * @param {string} password - User password
      * @param {boolean} [rememberMe=false] - Whether to persist authentication
      * @returns {Promise<boolean>} Success status

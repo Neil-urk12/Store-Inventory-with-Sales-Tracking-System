@@ -46,39 +46,33 @@ export default configure(function (/* ctx */) {
     // Full list of options: https://v2.quasar.dev/quasar-cli-vite/quasar-config-js#build
     build: {
       target: {
-        browser: [ 'es2019', 'edge88', 'firefox78', 'chrome87', 'safari13.1' ],
+        browser: ['chrome92','edge92', 'firefox91'],
         node: 'node20'
       },
-
-      vueRouterMode: 'hash', // available values: 'hash', 'history'
-      // vueRouterBase,
-      // vueDevtools,
-      // vueOptionsAPI: false,
-
-      // rebuildCache: true, // rebuilds Vite/linter/etc cache on startup
-
-      // publicPath: '/',
-      // analyze: true,
-      // env: {},
-      // rawDefine: {}
-      // ignorePublicFolder: true,
-      // minify: false,
-      // polyfillModulePreload: true,
-      // distDir
-
-      // extendViteConf (viteConf) {},
-      // viteVuePluginOptions: {},
-
-
+      vueRouterMode: 'hash', // changed back to hash for better PWA support
+      // distDir: 'dist/spa',
       // vitePlugins: [
-      //   [ 'package-name', { ..pluginOptions.. }, { server: true, client: true } ]
-      // ]
+      //   ['@vitejs/plugin-vue']
+      // ],
+      // extendViteConf (viteConf) {
+      //   viteConf.optimizeDeps = {
+      //     include: ['vue', 'vue-router', '@vue/devtools-api']
+      //   }
+      // }
     },
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-vite/quasar-config-js#devServer
     devServer: {
       // https: true
-      open: true // opens browser window automatically
+      open: true, // opens browser window automatically
+      // port: 9200,
+      // https: false,
+      // hmr: true,
+      // headers: {
+      //   'Access-Control-Allow-Origin': '*',
+      //   'Cache-Control': 'no-store',
+      //   'Service-Worker-Allowed': '/'
+      // }
     },
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-js#framework
@@ -146,43 +140,89 @@ export default configure(function (/* ctx */) {
       manifestFilename: 'manifest.json',
       useCredentialsForManifestTag: false,
       extendGenerateSWOptions (cfg) {
-        // cfg.swSrc = 'src-pwa/custom-service-worker.js'
         cfg.skipWaiting = true
         cfg.clientsClaim = true
+      //   cfg.cleanupOutdatedCaches = true
+      //   cfg.runtimeCaching = [
+      //     {
+      //       urlPattern: new RegExp('^https://api\\.'),
+      //       handler: 'NetworkFirst',
+      //       options: {
+      //         cacheName: 'api-cache',
+      //         networkTimeoutSeconds: 5,
+      //         expiration: {
+      //           maxEntries: 50,
+      //           maxAgeSeconds: 60 * 60 // 1 hour
+      //         },
+      //         cacheableResponse: {
+      //           statuses: [0, 200]
+      //         }
+      //       }
+      //     },
+      //     {
+      //       urlPattern: new RegExp('\\.(png|jpg|jpeg|svg|gif|webp)$'),
+      //       handler: 'CacheFirst',
+      //       options: {
+      //         cacheName: 'image-cache',
+      //         expiration: {
+      //           maxEntries: 60,
+      //           maxAgeSeconds: 30 * 24 * 60 * 60
+      //         },
+      //         cacheableResponse: {
+      //           statuses: [0, 200]
+      //         }
+      //       }
+      //     },
+      //     {
+      //       urlPattern: new RegExp('\\.(js|css|html)$'),
+      //       handler: 'StaleWhileRevalidate',
+      //       options: {
+      //         cacheName: 'static-resources',
+      //         expiration: {
+      //           maxEntries: 60,
+      //           maxAgeSeconds: 24 * 60 * 60
+      //         },
+      //         cacheableResponse: {
+      //           statuses: [0, 200]
+      //         }
+      //       }
+      //     }
+      //   ]
       },
-      manifest : {
-        name : 'Store Inventory with Sales Tracking System',
-        short_name : 'Store Inventory with Sales Tracking System',
-        description : 'A system that can help small business owners track their stocks and sales with a very user-friendly interface and great ux design.',
-        display : 'standalone',
-        orientation : 'portrait',
-        background_color : '#ffffff',
-        theme_color : '#027be3',
-        icons : [
+      manifest: {
+        name: 'Store Inventory with Sales Tracking System',
+        short_name: 'Store Inventory with Sales Tracking System',
+        description: 'A system that can help small business owners track their stocks and sales with a very user-friendly interface and great ux design.',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#ffffff',
+        theme_color: '#027be3',
+        start_url: '.',
+        icons: [
           {
-            src : 'icons/icon-128x128.png',
-            sizes : '128x128',
-            type : 'image/png'
+            src: 'icons/icon-128x128.png',
+            sizes: '128x128',
+            type: 'image/png'
           },
           {
-            src : 'icons/icon-192x192.png',
-            sizes : '192x192',
-            type : 'image/png'
+            src: 'icons/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
           },
           {
-            src : 'icons/icon-256x256.png',
-            sizes : '256x256',
-            type : 'image/png'
+            src: 'icons/icon-256x256.png',
+            sizes: '256x256',
+            type: 'image/png'
           },
           {
-            src : 'icons/icon-384x384.png',
-            sizes : '384x384',
-            type : 'image/png'
+            src: 'icons/icon-384x384.png',
+            sizes: '384x384',
+            type: 'image/png'
           },
           {
-            src : 'icons/icon-512x512.png',
-            sizes : '512x512',
-            type : 'image/png'
+            src: 'icons/icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
           }
         ]
       }

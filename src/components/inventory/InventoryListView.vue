@@ -40,22 +40,22 @@ const stockFilter = ref('all')
 
 const filteredItems = computed(() => {
   let result = [...items.value]
-  
+
   // Stock filter
   if (stockFilter.value === 'low') {
     result = result.filter(item => item.quantity <= 10 && item.quantity > 0)
   } else if (stockFilter.value === 'out') {
     result = result.filter(item => item.quantity <= 0)
   }
-  
+
   return result
 })
 
-const lowStockItems = computed(() => 
+const lowStockItems = computed(() =>
   items.value.filter(item => item.quantity <= 10)
 )
 
-const outOfStockItems = computed(() => 
+const outOfStockItems = computed(() =>
   items.value.filter(item => item.quantity <= 0)
 )
 
@@ -74,14 +74,14 @@ function exportToCSV() {
     .filter(col => col.name !== 'actions')
     .map(col => col.label)
     .join(',')
-  
-  const rows = filteredItems.value.map(item => 
+
+  const rows = filteredItems.value.map(item =>
     columns
       .filter(col => col.name !== 'actions')
       .map(col => `"${item[col.field]}"`)
       .join(',')
   ).join('\n')
-  
+
   const csv = `${headers}\n${rows}`
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = window.URL.createObjectURL(blob)
@@ -166,7 +166,7 @@ function checkLowStock() {
       ]
     })
   }
-  
+
   if (outOfStockItems.value.length > 0) {
     $q.notify({
       type: 'negative',
@@ -203,7 +203,7 @@ function checkLowStock() {
           style="min-width: 150px"
         />
       </div>
-      
+
       <div class="row q-gutter-sm">
         <q-btn
           color="primary"
