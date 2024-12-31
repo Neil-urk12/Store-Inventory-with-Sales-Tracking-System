@@ -42,6 +42,7 @@
     "canvas": "^2.11.2",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.14",
+    "sass": "^1.83.0",
     "vitest": "^1.0.4",
     "workbox-build": "7.0.x",
     "workbox-cacheable-response": "7.0.x",
