@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "quasar dev",
     "dev:pwa": "quasar dev -m pwa",
-    "build": "quasar build",
+    "build": "quasar build -m pwa",
     "build:pwa": "quasar build -m pwa",
     "test": "vitest",
     "test:ui": "vitest --ui",
