@@ -5,18 +5,27 @@ const ColorToggle = defineAsyncComponent(() => import('src/components/layout/Col
 import { useAuthStore } from 'src/stores/authStore'
 import { useRouter } from 'vue-router'
 const SyncStatus = defineAsyncComponent(() => import('src/components/global/SyncStatus.vue'))
+import { useQuasar } from 'quasar'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const $q = useQuasar()
 
 defineOptions({
   name: 'MainLayout'
 })
 
 async function logout (){
-  await authStore.logout()
-  localStorage.removeItem("isAuthenticated")
-  router.push('/login')
+  $q.dialog({
+    title: 'Confirm Logout',
+    message: 'Are you sure you want to sign out?',
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    await authStore.logout()
+    localStorage.removeItem("isAuthenticated")
+    router.push('/login')
+  })
 }
 
 const linksList = [
@@ -44,7 +53,7 @@ const leftDrawerOpen = ref(false)
         />
 
         <q-toolbar-title>
-          <div class="absolute-center bg-primary">
+          <div class="absolute-center bg-primary" icon="store">
             NJL Inventory System
           </div>
         </q-toolbar-title>
@@ -60,6 +69,7 @@ const leftDrawerOpen = ref(false)
       <q-list>
         <q-item-label
           header
+          
         >
           NJL Store Inventory System
         </q-item-label>

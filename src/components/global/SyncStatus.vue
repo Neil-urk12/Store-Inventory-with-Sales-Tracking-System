@@ -1,19 +1,14 @@
 <script setup>
 import { computed } from 'vue'
 import { useNetworkStatus } from 'src/services/networkStatus'
-import { useSyncQueue } from 'src/services/syncQueue.js'
+import { useCentralizedSyncService } from 'src/services/centralizedSyncService'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const { isOnline } = useNetworkStatus()
-const { 
-  pendingOperations: pendingChanges,
-  isSyncing,
-  syncProgress,
-  processQueue
-} = useSyncQueue()
+const { isSyncing, syncProgress, syncStatus } = useCentralizedSyncService()
 
-const showStatus = computed(() => !isOnline.value || isSyncing.value || pendingChanges.value > 0)
+const showStatus = computed(() => !isOnline.value || isSyncing.value || syncStatus.value.pendingChanges > 0)
 const statusClass = computed(() => ({
   'bg-warning text-white': !isOnline.value,
   'bg-info text-white': isSyncing.value
@@ -21,18 +16,23 @@ const statusClass = computed(() => ({
 
 const canManualSync = computed(() => 
   isOnline.value && 
-  pendingChanges.value > 0 && 
+  syncStatus.value.pendingChanges > 0 && 
   !isSyncing.value
 )
 
 async function triggerManualSync() {
   try {
-    await processQueue()
+    const { syncWithFirestore } = useCentralizedSyncService()
+    const collections = ['sales', 'inventory', 'categories', 'financial']
+    for (const collection of collections) {
+      await syncWithFirestore(collection)
+    }
     $q.notify({
       type: 'positive',
       message: 'Sync completed successfully'
     })
   } catch (error) {
+    console.error('Sync error:', error)
     $q.notify({
       type: 'negative',
       message: 'Sync failed. Please try again.'
@@ -59,9 +59,9 @@ function checkNetworkQuality() {
       <template v-if="!isOnline">
         <q-icon name="cloud_off" />
         <span class="q-ml-sm">You're offline. Changes will sync when connection is restored.</span>
-        <template v-if="pendingChanges > 0">
+        <template v-if="syncStatus.pendingChanges > 0">
           <br>
-          <small>{{ pendingChanges }} changes pending</small>
+          <small>{{ syncStatus.pendingChanges }} changes pending</small>
         </template>
       </template>
       

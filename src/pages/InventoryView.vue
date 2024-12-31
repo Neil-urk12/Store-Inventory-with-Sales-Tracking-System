@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted } from "vue"
+import { onMounted, onUnmounted, onBeforeUnmount } from "vue"
 import { useInventoryStore } from "src/stores/inventoryStore"
 import { defineAsyncComponent } from "vue"
 const InventoryHeaderActions = defineAsyncComponent(() => import('src/components/inventory/InventoryHeaderActions.vue'))
@@ -16,6 +16,10 @@ onMounted(async () => {
 onUnmounted(() => {
   inventoryStore.cleanup(true)
 })
+
+// onBeforeUnmount(() => {
+//   inventoryStore.cleanupListeners()
+// })
 </script>
 
 <template>

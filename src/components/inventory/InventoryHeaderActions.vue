@@ -1,3 +1,91 @@
+/**
+ * @fileoverview Header component for inventory management interface.
+ * Provides search, filtering, and action buttons for inventory operations.
+ * Handles category management through a dialog interface.
+ */
+
+ <script setup>
+import { useInventoryStore } from 'src/stores/inventoryStore'
+import { onMounted, ref, watch } from 'vue'
+import { useQuasar, debounce } from 'quasar'
+
+const $q = useQuasar()
+const inventoryStore = useInventoryStore()
+const newCategoryName = ref('')
+const loading = ref(false)
+
+watch(() => inventoryStore.categoryDialog, (newVal) => {
+  if (!newVal)
+    newCategoryName.value = ''
+})
+
+const debouncedSearch = debounce ((itemToSearch) =>
+  inventoryStore.handleSearch(itemToSearch), 500)
+
+const handleAddCategory = async () => {
+  if (!newCategoryName.value.trim()) {
+    $q.notify({
+      color: 'negative',
+      message: 'Category name is required',
+      position: 'top'
+    })
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await inventoryStore.addCategory(newCategoryName.value.trim())
+    if (result) {
+      $q.notify({
+        color: 'positive',
+        message: 'Category added successfully',
+        position: 'top'
+      })
+      newCategoryName.value = ''
+      inventoryStore.closeCategoryDialog()
+    } else {
+      $q.notify({
+        color: 'negative',
+        message: inventoryStore.error || 'Failed to add category',
+        position: 'top'
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      color: 'negative',
+      message: error.message || 'Failed to add category',
+      position: 'top'
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleDeleteCategory = async (categoryId) => {
+  try {
+    const result = await inventoryStore.deleteCategory(categoryId)
+    if (result) {
+      $q.notify({
+        color: 'positive',
+        message: 'Category deleted successfully',
+        position: 'top'
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      color: 'negative',
+      message: error.message || 'Failed to delete category',
+      position: 'top'
+    })
+  }
+}
+
+onMounted(async () => {
+  if(inventoryStore.categories.length === 0)
+    await inventoryStore.loadCategories()
+})
+</script>
+
 <template>
   <div class="row q-col-gutter-md q-mb-md items-center">
     <div class="col-12 col-sm-6">
@@ -94,83 +182,23 @@
       </q-card-section>
 
       <q-card-actions align="right">
-        <q-btn flat label="Cancel" color="primary" v-close-popup />
-        <q-btn flat label="Add" color="primary" @click="handleAddCategory" />
+        <q-btn flat label="Cancel" color="primary" v-close-popup :disable="loading" />
+        <q-btn 
+          flat 
+          label="Add" 
+          color="primary" 
+          @click="handleAddCategory" 
+          :loading="loading"
+          :disable="!newCategoryName"
+        >
+          <template v-slot:loading>
+            <q-spinner-dots />
+          </template>
+        </q-btn>
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
-
-<script setup>
-import { useInventoryStore } from 'src/stores/inventoryStore'
-import { onMounted, ref, watch } from 'vue'
-import { useQuasar, debounce } from 'quasar'
-
-const $q = useQuasar()
-const inventoryStore = useInventoryStore()
-const newCategoryName = ref('')
-
-watch(() => inventoryStore.categoryDialog, (newVal) => {
-  if (!newVal)
-    newCategoryName.value = ''
-})
-
-const debouncedSearch = debounce ((itemToSearch) =>
-  inventoryStore.handleSearch(itemToSearch), 500)
-
-const handleAddCategory = async () => {
-  if (!newCategoryName.value) {
-    $q.notify({
-      color: 'negative',
-      message: 'Category name is required',
-      position: 'top'
-    })
-    return
-  }
-
-  const result = await inventoryStore.addCategory(newCategoryName.value)
-
-  if (result) {
-    $q.notify({
-      color: 'positive',
-      message: 'Category added successfully',
-      position: 'top'
-    })
-    newCategoryName.value = ''
-    inventoryStore.closeCategoryDialog()
-  } else {
-    $q.notify({
-      color: 'negative',
-      message: inventoryStore.error || 'Failed to add category',
-      position: 'top'
-    })
-  }
-}
-
-const handleDeleteCategory = async (categoryId) => {
-  try {
-    const result = await inventoryStore.deleteCategory(categoryId)
-    if (result) {
-      $q.notify({
-        color: 'positive',
-        message: 'Category deleted successfully',
-        position: 'top'
-      })
-    }
-  } catch (error) {
-    $q.notify({
-      color: 'negative',
-      message: error.message || 'Failed to delete category',
-      position: 'top'
-    })
-  }
-}
-
-onMounted(async () => {
-  if(inventoryStore.categories.length === 0)
-    await inventoryStore.loadCategories()
-})
-</script>
 
 <style scoped>
 .q-btn-group {

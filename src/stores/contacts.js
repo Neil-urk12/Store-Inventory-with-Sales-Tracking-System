@@ -19,15 +19,12 @@ import {
 } from 'firebase/firestore'
 import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
-import { syncQueue } from '../services/syncQueue'
 import { debounce } from 'lodash'
+import { formatDate } from '../utils/dateUtils'
 import { validateContact, validateContactCategory, validateDataBeforeSync } from '../utils/validation'
 import { DatabaseError, ValidationError } from '../db/dexiedb'
 
 const { isOnline } = useNetworkStatus()
-
-// Debounced queue processing to handle multiple rapid changes efficiently
-const processQueueDebounced = debounce(() => syncQueue.processQueue(), 1000)
 
 /**
  * Custom error class for contact-related errors
@@ -125,7 +122,6 @@ export const useContactsStore = defineStore('contacts', {
         }
         if (isOnline.value) {
           await this.syncWithFirestore()
-          await processQueueDebounced()
         }
       } catch (error) {
         this._handleActionError(error, 'initializeDb')
@@ -163,32 +159,62 @@ export const useContactsStore = defineStore('contacts', {
       try {
         const sanitizedContact = {
           ...contact,
-          name: contact.name?.trim(),
-          email: contact.email?.trim()?.toLowerCase() || null,
+          id: contact.id?.toString(),
+          name: contact.name?.trim() || '',
+          email: contact.email?.trim() || null,
           phone: contact.phone?.trim() || null,
-          categoryId: contact.categoryId?.trim(),
-          syncStatus: 'pending',
-          createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
-          updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
+          categoryId: contact.categoryId?.toString(),
+          createdAt: new Date(),
+          updatedAt: new Date()
         }
 
-        if(this.contactsList.length === 0) this.contactsList = await db.getAllContacts()
+        Object.keys(sanitizedContact).forEach(key => {
+          if (sanitizedContact[key] === undefined) {
+            delete sanitizedContact[key]
+          }
+        })
 
-        const validation = await validateContact(sanitizedContact, this.contactsList, contact.id)
+        const contactPerson = {
+          ...sanitizedContact,
+          categoryId: sanitizedContact.categoryId || '',
+          name: sanitizedContact.name || '',
+          email: sanitizedContact.email || null,
+          phone: sanitizedContact.phone || null
+        }
+
+        if(this.contactsList.length === 0) 
+          this.contactsList = await db.getAllContacts()
+
+        const validation = await validateContact(contactPerson, this.contactsList, contact.id)
 
         if (!validation.isValid)
           throw new ValidationError(validation.errors[0])
 
-        const id = await db.addContact(sanitizedContact)
+        const id = (await db.addContact(contactPerson)).toString()
+
+        const newContact = {
+          ...contactPerson,
+          id: id
+        }
+        
+        const category = this.contactCategories.find(c => c.id === sanitizedContact.categoryId)
+        if (category) {
+          if (!category.contacts) category.contacts = []
+          category.contacts.push(newContact)
+        }
 
         if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'contactsList',
-            data: { ...sanitizedContact, id: id.toString() },
-            timestamp: new Date()
-          })
-          await processQueueDebounced()
+          try {
+            const contactRef = doc(fireDb, 'contactsList', id.toString())
+            await setDoc(contactRef, {
+              ...contactPerson,
+              id: id.toString(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            console.error('Error adding contact to Firestore:', error)
+          }
         }
 
         await this.loadContactCategories()
@@ -214,15 +240,29 @@ export const useContactsStore = defineStore('contacts', {
           throw new ValidationError(validation.errors[0])
 
         const id = await db.addContactCategory(contactCategory)
-        if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'add',
-            collection: 'contactCategories',
-            data: { ...contactCategory, localId: id },
-            timestamp: new Date()
-          })
-          await processQueueDebounced()
+        
+        const newCategory = {
+          id: id.toString(),
+          ...contactCategory,
+          contacts: []
         }
+        
+        this.contactCategories.push(newCategory)
+        
+        if (isOnline.value) {
+          try {
+            const categoryRef = doc(fireDb, 'contactCategories', id.toString())
+            await setDoc(categoryRef, {
+              ...contactCategory,
+              id: id.toString(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            console.error('Error adding category to Firestore:', error)
+          }
+        }
+
         await this.loadContactCategories()
         return id
       } catch (error) {
@@ -241,16 +281,19 @@ export const useContactsStore = defineStore('contacts', {
     async updateContactCategory(id, changes) {
       try {
         await db.updateContactCategory(id, changes)
+        
         if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'update',
-            collection: 'contactCategories',
-            docId: id,
-            data: changes,
-            timestamp: new Date()
-          })
-          await processQueueDebounced()
+          try {
+            const categoryRef = doc(fireDb, 'contactCategories', id.toString())
+            await updateDoc(categoryRef, {
+              ...changes,
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            console.error('Error updating category in Firestore:', error)
+          }
         }
+
         await this.loadContactCategories()
       } catch (error) {
         this._handleActionError(error, 'updateContactCategory')
@@ -268,13 +311,11 @@ export const useContactsStore = defineStore('contacts', {
       try {
         await db.deleteContactCategory(id)
         if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'delete',
-            collection: 'contactCategories',
-            docId: id.toString(),
-            timestamp: new Date()
-          })
-          await processQueueDebounced()
+          try {
+            await deleteDoc(doc(fireDb, 'contactCategories', id.toString()))
+          } catch (error) {
+            console.error('Error deleting category from Firestore:', error)
+          }
         }
         await this.loadContactCategories()
       } catch (error) {
@@ -293,16 +334,19 @@ export const useContactsStore = defineStore('contacts', {
     async updateContact(id, changes) {
       try {
         await db.updateContact(id, changes)
+        
         if (isOnline.value) {
-          await syncQueue.addToQueue({
-            type: 'update',
-            collection: 'contactsList',
-            docId: id.toString(),
-            data: { ...changes, id: id.toString() },
-            timestamp: new Date()
-          })
-          await processQueueDebounced()
+          try {
+            const contactRef = doc(fireDb, 'contactsList', id.toString())
+            await updateDoc(contactRef, {
+              ...changes,
+              updatedAt: serverTimestamp()
+            })
+          } catch (error) {
+            console.error('Error updating contact in Firestore:', error)
+          }
         }
+
         await this.loadContactCategories()
       } catch (error) {
         this._handleActionError(error, 'updateContact')
@@ -322,32 +366,18 @@ export const useContactsStore = defineStore('contacts', {
         const firebaseRecord = localRecord ? localRecord.firebaseId : localRecord.localId || localRecord.id
         await db.deleteContact(contactId)
 
-        const deleteOperation = {
-          type: 'delete',
-          collection: 'contactsList',
-          docId: contactId.toString(),
-          firebaseId: firebaseRecord
-        }
-
-        if (isOnline.value) {
-          if (firebaseRecord) {
-            try {
-              await deleteDoc(doc(fireDb, 'contactsList', firebaseRecord))
-            } catch (error) {
-              if (error.code === 'not-found')
-                console.warn(`Firebase document with ID ${firebaseRecord} not found`)
-              else {
-                console.error('Error deleting from Firebase:', error)
-                if (this.handleSyncError(error))
-                  await syncQueue.processQueue(deleteOperation)
-                else
-                  throw error
-              }
+        if (isOnline.value && firebaseRecord) {
+          try {
+            await deleteDoc(doc(fireDb, 'contactsList', firebaseRecord))
+          } catch (error) {
+            if (error.code === 'not-found')
+              console.warn(`Firebase document with ID ${firebaseRecord} not found`)
+            else {
+              console.error('Error deleting from Firebase:', error)
+              throw error
             }
-          } else
-            await syncQueue.processQueue(deleteOperation)
-        } else
-          await syncQueue.addToQueue(deleteOperation)
+          }
+        }
         await this.loadContactCategories()
       } catch (error) {
         this._handleActionError(error, 'deleteContact')

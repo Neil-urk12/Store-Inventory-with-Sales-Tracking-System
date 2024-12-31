@@ -1,7 +1,25 @@
 /**
- * @fileoverview The local database instance.
- * All functions and methods are managed and implemented in this file.
- * **/
+ * @fileoverview Local database implementation using Dexie.js.
+ * Provides offline-first storage with:
+ * - Schema versioning
+ * - CRUD operations
+ * - Data validation
+ * - Sync status tracking
+ */
+
+/**
+ * @typedef {Object} ValidationError
+ * @property {string} code - Error code
+ * @property {string} message - Error message
+ * @property {string} field - Field that failed validation
+ */
+
+/**
+ * @typedef {Object} DatabaseError
+ * @property {string} code - Error code
+ * @property {string} message - Error message
+ * @property {Error} [originalError] - Original error object
+ */
 
 import Dexie from 'dexie';
 import { useInventoryStore } from 'src/stores/inventoryStore';
@@ -34,29 +52,20 @@ class AppDatabase extends Dexie {
   constructor() {
     super('inventoryDb')
 
-    this.version(3).stores({
-      // Inventory tables
-      categories: '++id, name, description, createdAt, updatedAt, syncStatus, firebaseId',
-      items: '++id, name, sku, categoryId, category, quantity, price, image, createdAt, updatedAt, syncStatus, firebaseId, [categoryId+name]',
-
-      // Sales tables
-      sales: '++id, total, paymentMethod, date, items, syncStatus, firebaseId, dateTimeframe',
-      cashFlow: '++id, paymentMethod, type, amount, date, description, syncStatus, firebaseId',
-
-      // Contacts tables
-      contactCategories: '++id, name, value, createdAt, syncStatus, firebaseId',
-      contactsList: '++id, categoryId, name, email, phone, avatar, [categoryId+name], syncStatus, firebaseId',
-
-      // Sync queue table
-      syncQueue: '++id, type, collection, data, docId, timestamp, attempts, lastAttempt, status, error',
-      syncLocks: 'lockId, timestamp, owner'
+    this.version(1).stores({
+      items: '++id, name, sku, categoryId, quantity, price, firebaseId, syncStatus',
+      categories: '++id, name, firebaseId, syncStatus',
+      sales: '++id, date, total, paymentMethod, firebaseId, syncStatus',
+      cashFlow: '++id, date, type, amount, paymentMethod, description, firebaseId, syncStatus',
+      contacts: '++id, name, email, phone, categoryId, firebaseId, syncStatus',
+      contactCategories: '++id, name, firebaseId, syncStatus'
     })
 
     this.items.hook('creating', (primKey, obj) => {
       obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
       obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
       obj.syncStatus = obj.syncStatus || 'pending'
-      
+
       // Ensure category information is preserved
       if (obj.categoryId && !obj.category) {
         const store = useInventoryStore()
@@ -138,7 +147,7 @@ class AppDatabase extends Dexie {
       const existingItem = await this.items.where('sku').equals(newItem.sku).first()
       if (existingItem)
         throw new ValidationError(`Item with SKU ${newItem.sku} already exists`)
-      
+
       return await this.transaction('rw', this.items, async () => {
         return await this.items.add(newItem)
       })
@@ -384,114 +393,106 @@ class AppDatabase extends Dexie {
    * @description Adds a contact to the database.
   */
   async addContact(contactPerson) {
-    if(!contactPerson.name?.trim()) throw new ValidationError('Contact name is required')
-    if(!contactPerson.categoryId) throw new ValidationError('Contact category is required')
+    if (!contactPerson.name?.trim()) {
+      throw new ValidationError('Contact name is required');
+    }
+    if (!contactPerson.categoryId) {
+      throw new ValidationError('Contact category is required');
+    }
 
     try {
-      // const sanitizedContact = {
-      //   ...contactPerson,
-      //   name: contactPerson.name.trim(),
-      //   email: contactPerson.email?.trim()?.toLowerCase() || null,
-      //   phone: contactPerson.phone?.trim() || null,
-      //   categoryId: contactPerson.categoryId?.trim(),
-      //   createdAt: formatDate(new Date(), 'YYYY-MM-DD'),
-      //   updatedAt: formatDate(new Date(), 'YYYY-MM-DD'),
-      //   syncStatus: 'pending'
-      // }
+      // Prepare contact data with proper types
+      const contact = {
+        ...contactPerson,
+        name: contactPerson.name.trim().toLowerCase(),
+        email: contactPerson.email?.trim()?.toLowerCase() || null,
+        phone: contactPerson.phone?.trim() || null,
+        categoryId: contactPerson.categoryId.toString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        syncStatus: 'pending'
+      };
 
-      const checkDuplicateContact = await this.checkDuplicateContact(contact)
-      if (checkDuplicateContact.exists) {
-        const errorMessage = {
+      // Check for duplicates
+      const duplicateCheck = await this.checkDuplicateContact(contact);
+      if (duplicateCheck.exists) {
+        const errorMessages = {
           '[categoryId+name]': 'A contact with this name already exists in the category',
           'email': 'A contact with this email already exists',
           'phone': 'A contact with this phone number already exists'
-        }
-        throw new ValidationError(errorMessage[checkDuplicateContact.field])
+        };
+        throw new ValidationError(errorMessages[duplicateCheck.field]);
       }
 
-      // let query = this.contactsList
-      //   .where('[categoryId+name]')
-      //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
+      // Add the contact
+      const id = await this.contactsList.add(contact);
+      return id;
 
-      // if (contactPerson.email?.trim() && contactPerson.email?.trim() !== '')
-      //   query = query.or('email').equals(contactPerson.email.trim().toLowerCase())
-
-      // if (contactPerson.phone?.trim() && contactPerson.phone?.trim() !== '')
-      //   query = query.or('phone').equals(contactPerson.phone.trim())
-      // const existingContact = await query.first()
-      // if (existingContact) {
-      //   const errorMessage = existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
-      //     ? 'A contact with this name already exists in the category'
-      //     : existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase()
-      //       ? 'A contact with this email already exists'
-      //       : 'A contact with this phone number already exists';
-      //   console.error(`addContact: Duplicate contact detected: ${errorMessage}`);
-      //   throw new ValidationError(errorMessage);
-      // }
-    // if (existingContact) {
-    //   if (existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase())
-    //     throw new ValidationError('A contact with this name already exists in the category')
-    //   else if (existingContact.email.toLowerCase() === contactPerson.email?.trim().toLowerCase())
-    //     throw new ValidationError('A contact with this email already exists')
-    //   else if (existingContact.phone === contactPerson.phone?.trim())
-    //     throw new ValidationError('A contact with this phone number already exists')
-    // }
-    //====================================
-    // const existingContact = await this.contactsList
-    //   .where('[categoryId+name]')
-    //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
-    //   .or('email')
-    //   .equals(contactPerson.email?.trim().toLowerCase() || undefined)
-    //   .or('phone')
-    //   .equals(contactPerson.phone?.trim() || undefined)
-    //   .first()
-    //====================================
-    // const existingContact = await this.contactsList
-    //   .where('[categoryId+name]')
-    //   .equals([contactPerson.categoryId, contactPerson.name.trim().toLowerCase()])
-    //   .or('email')
-    //   .equals(contactPerson.email?.trim().toLowerCase())
-    //   .first()
-
-    // if (existingContact) {
-    //   throw new ValidationError(
-    //     existingContact.name.toLowerCase() === contactPerson.name.trim().toLowerCase()
-    //       ? 'A contact with this name already exists in the category'
-    //       : 'A contact with this email already exists'
-    //   )
-    // }
-
-      console.log(`addContact: Adding new contact:`, contactPerson)
-      return await this.contactsList.add(contactPerson)
     } catch (error) {
-      if(error instanceof ValidationError) throw error
-      console.error('Database error adding contact:', error)
-      throw new DatabaseError('Failed to add contact')
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      console.error('Database error adding contact:', error);
+      throw new DatabaseError('Failed to add contact');
     }
   }
   /**
-   * Inprogress use this to simplify query in addContact unya
-   * 
+   * @async
+   * @method checkDuplicateContact
+   * @param {Object} contact
+   * @returns {Promise<Object>}
+   * @description Checks for duplicate contacts in the database.
   */
   async checkDuplicateContact(contact) {
-    return await this.transaction('rw', this.contactsList, async () => {
-    const duplicateContactsCheck = [
-      { field: '[categoryId+name]', value: [contact.categoryId, contact.name.trim().toLowerCase()], enabled: true },
-      { field: 'email', value: contact.email?.trim().toLowerCase(), enabled: contact.email?.trim() !== '' },
-      { field: 'phone', value: contact.phone?.trim(), enabled: contact.phone?.trim() !== '' }
-      ].filter(check => check.enabled)
+    try {
+      // First check the compound key (categoryId + name)
+      const existingByName = await this.contactsList
+        .where('[categoryId+name]')
+        .equals([contact.categoryId.toString(), contact.name.trim().toLowerCase()])
+        .first();
 
-      for (const check of duplicateContactsCheck) {
-        const existingContact = await this.contactsList
-          .where(check.field)
-          .equals(check.value)
-          .first()
-        if (existingContact) {
-          return { exists: true, field: check.field, existingContact: existingContact }
+      if (existingByName) {
+        return {
+          exists: true,
+          field: '[categoryId+name]'
+        };
+      }
+
+      // Then check email if provided
+      if (contact.email?.trim()) {
+        const existingByEmail = await this.contactsList
+          .where('email')
+          .equals(contact.email.trim().toLowerCase())
+          .first();
+
+        if (existingByEmail) {
+          return {
+            exists: true,
+            field: 'email'
+          };
         }
       }
-      return { exists: false }
-    })
+
+      // Finally check phone if provided
+      if (contact.phone?.trim()) {
+        const existingByPhone = await this.contactsList
+          .where('phone')
+          .equals(contact.phone.trim())
+          .first();
+
+        if (existingByPhone) {
+          return {
+            exists: true,
+            field: 'phone'
+          };
+        }
+      }
+
+      return { exists: false };
+    } catch (error) {
+      console.error('Error checking for duplicate contact:', error);
+      throw new DatabaseError('Error checking for duplicate contact');
+    }
   }
   /**
    * @async
@@ -562,19 +563,49 @@ class AppDatabase extends Dexie {
       this.cashFlow,
       this.contactCategories,
       this.contactsList,
-      this.syncQueue,
-      this.syncLocks,
       async () => {
         await Promise.all([
           this.items.clear(),
           this.sales.clear(),
           this.cashFlow.clear(),
           this.contactCategories.clear(),
-          this.contactsList.clear(),
-          this.syncQueue.clear(),
-          this.syncLocks.clear()
+          this.contactsList.clear()
         ])
-    });
+    })
+  }
+
+  /**
+   * @async
+   * @method deleteCategory
+   * @param {string} categoryId - ID of the category to delete
+   * @returns {Promise<void>}
+   * @description Deletes a category if it has no associated items
+   * @throws {Error} If category has associated items or deletion fails
+   */
+  async deleteCategory(categoryId) {
+    try {
+      // Check if category exists
+      const category = await this.categories.get(categoryId)
+      if (!category) {
+        throw new Error('Category not found')
+      }
+
+      // Check if any items use this category
+      const itemsCount = await this.items
+        .where('categoryId')
+        .equals(categoryId)
+        .count()
+
+      if (itemsCount > 0) {
+        throw new Error('Cannot delete category with existing items')
+      }
+
+      // Delete the category
+      await this.categories.delete(categoryId)
+    } catch (error) {
+      console.error('Database error deleting category:', error)
+      throw error
+    }
   }
 
   /**

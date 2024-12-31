@@ -1,5 +1,18 @@
 /**
- * @fileoverview Manages financial operations including cash flow and transactions
+ * @fileoverview Manages financial data and reporting.
+ * Features:
+ * - Revenue tracking
+ * - Expense management
+ * - Profit calculations
+ * - Financial reporting
+ */
+
+/**
+ * @typedef {Object} FinancialReport
+ * @property {Object} revenue - Revenue breakdown
+ * @property {Object} expenses - Expense categories
+ * @property {Object} profit - Profit analysis
+ * @property {Object} trends - Historical trends
  */
 
 import { defineStore } from 'pinia'

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Dialog component for creating and editing inventory items.
+ * Provides form validation, offline support, and real-time network status.
+ * Handles SKU generation and category selection.
+ */
+
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { useQuasar } from 'quasar'
@@ -13,6 +19,7 @@ const editMode = computed(() => inventoryStore.editMode)
 const formRef = ref(null)
 const imageLoading = ref(false)
 const imageError = ref(false)
+const submitting = ref(false)
 
 // Image preview handling
 const imagePreviewUrl = ref('')
@@ -54,11 +61,21 @@ watch(() => editedItem.value.image, (newUrl) => {
 })
 
 const validateAndSave = async () => {
-  if (!formRef.value) return
+  if (!formRef.value || submitting.value) 
+    return submitting.value = false
 
   try {
+    submitting.value = true
     const isValid = await formRef.value.validate()
-    if (!isValid) return
+    if (!isValid) {
+      $q.notify({
+        color: 'negative',
+        message: 'Please fill out all required fields',
+        position: 'top'
+      })
+      submitting.value = false
+      return
+    }
 
     if (!editMode.value) {
       try {
@@ -97,8 +114,7 @@ const validateAndSave = async () => {
       })
 
     inventoryStore.itemDialog = false
-    // formRef.value.resetValidation()
-    await inventoryStore.loadInventory() // Refresh the inventory list
+    await inventoryStore.loadInventory()
   } catch (err) {
     console.error('Save error:', err)
     $q.notify({
@@ -108,6 +124,8 @@ const validateAndSave = async () => {
       icon: 'error',
       position: 'top'
     })
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -205,7 +223,7 @@ const validateAndSave = async () => {
           label="Cancel"
           color="primary"
           v-close-popup
-          :disable="loading"
+          :disable="submitting"
         />
         <q-btn
           flat
@@ -213,7 +231,8 @@ const validateAndSave = async () => {
           :color="isOnline ? 'primary' : 'warning'"
           type="submit"
           @click="validateAndSave"
-          :loading="loading"
+          :loading="submitting"
+          :disable="submitting"
         >
           <template v-slot:loading>
             <q-spinner-dots />
