@@ -148,6 +148,14 @@ class AppDatabase extends Dexie {
       if (existingItem)
         throw new ValidationError(`Item with SKU ${newItem.sku} already exists`)
 
+      const existingByName = await this.items
+        .where('name')
+        .equalsIgnoreCase(item.name.trim())
+        .first()
+        
+      if (existingByName) 
+        throw new ValidationError(`Item with name "${item.name}" already exists`)
+
       return await this.transaction('rw', this.items, async () => {
         return await this.items.add(newItem)
       })

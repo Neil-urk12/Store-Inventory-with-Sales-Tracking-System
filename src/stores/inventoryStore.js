@@ -321,8 +321,14 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async createNewItem(item) {
       this.loading = true
-
       try {
+        const existingItem = await db.items
+          .where('sku')
+          .equals(item.sku)
+          .first()
+
+        if (existingItem) 
+          throw new Error ('Item with the same SKU already exists')
 
         if (item.categoryId) {
           const categoryExists = await db.categories
@@ -338,29 +344,32 @@ export const useInventoryStore = defineStore('inventory', {
         if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
 
-        const processedItem = {
-          ...processItem(item),
-          syncStatus: 'pending' // Ensure syncStatus is set
-        }
-        await db.createItem(processedItem)
         const id = crypto.randomUUID()
 
+        const processedItem = {
+          ...processItem(item),
+          syncStatus: 'pending', // Ensure syncStatus is set
+          id: id
+        }
+        
+        const result = await db.createItem(processedItem)
+        console.log(result)
         if (isOnline.value) {
-          // Include syncStatus in Firestore document
           const docRef = await addDoc(collection(fireDb, 'items'), {
             ...processedItem,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-            syncStatus: 'synced' // Include syncStatus in Firestore
+            syncStatus: 'synced'
           })
 
-          await db.updateItem(id, { firebaseId: docRef.id, syncStatus: 'synced' })
-          await this.loadInventory()
-          return { id: id, firebaseId: docRef.id, offline: false }
+          await db.updateItem(id, { 
+            firebaseId: docRef.id, 
+            syncStatus: 'synced' 
+          })
         }
 
         await this.loadInventory()
-        return { id: id, offline: true }
+        return { id: id, offline: !isOnline.value }
       } catch (error) {
         console.error('Error creating item:', error)
         throw error
@@ -781,15 +790,15 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         this.loading = true
         const allItems = await db.items.toArray()
-        const seenFirebaseIds = new Set()
+        const seenSkus = new Set()
         const duplicates = []
 
         for (const item of allItems) {
-          if (item.firebaseId) {
-            if (seenFirebaseIds.has(item.firebaseId)) {
+          if (item.sku) {
+            if (seenSkus.has(item.sku)) {
               duplicates.push(item.id)
             } else {
-              seenFirebaseIds.add(item.firebaseId)
+              seenSkus.add(item.sku)
             }
           }
         }
@@ -812,7 +821,6 @@ export const useInventoryStore = defineStore('inventory', {
         this.loading = false
       }
     },
-
     /**
      * @param {boolean} [fullCleanup=false] - Whether to perform a full data cleanup or just reset UI state
      * @description Resets UI state and optionally clears all data.

@@ -7,7 +7,7 @@
 <script setup>
 import { useInventoryStore } from 'src/stores/inventoryStore'
 import { useQuasar } from 'quasar'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useNetworkStatus } from 'src/services/networkStatus'
 
 const inventoryStore = useInventoryStore()
@@ -17,55 +17,18 @@ const editedItem = computed(() => inventoryStore.editedItem)
 const loading = computed(() => inventoryStore.loading)
 const editMode = computed(() => inventoryStore.editMode)
 const formRef = ref(null)
-const imageLoading = ref(false)
-const imageError = ref(false)
 const submitting = ref(false)
 
-// Image preview handling
-const imagePreviewUrl = ref('')
-const checkImage = async (url) => {
-  if (!url) {
-    imagePreviewUrl.value = ''
-    imageError.value = false
+const validateAndSave = async () => {
+  submitting.value = true
+  console.log(!formRef.value)
+  console.log(!submitting.value)
+  if (!formRef.value || !submitting.value) {
+    submitting.value = false
     return
   }
 
-  imageLoading.value = true
-  imageError.value = false
-
   try {
-    const response = await fetch(url, { method: 'HEAD' })
-    if (response.ok && response.headers.get('content-type')?.startsWith('image/')) {
-      imagePreviewUrl.value = url
-      imageError.value = false
-    } else {
-      imageError.value = true
-      imagePreviewUrl.value = ''
-    }
-  } catch (err) {
-    imageError.value = true
-    imagePreviewUrl.value = ''
-  } finally {
-    imageLoading.value = false
-  }
-}
-
-// Watch for image URL changes
-watch(() => editedItem.value.image, (newUrl) => {
-  if (newUrl)
-    checkImage(newUrl)
-  else {
-    imagePreviewUrl.value = ''
-    imageError.value = false
-  }
-})
-
-const validateAndSave = async () => {
-  if (!formRef.value || submitting.value) 
-    return submitting.value = false
-
-  try {
-    submitting.value = true
     const isValid = await formRef.value.validate()
     if (!isValid) {
       $q.notify({
@@ -150,7 +113,6 @@ const validateAndSave = async () => {
       <q-card-section>
         <q-form
           ref="formRef"
-          @submit.prevent="validateAndSave"
           class="q-gutter-md"
           greedy
         >
@@ -242,11 +204,3 @@ const validateAndSave = async () => {
     </q-card>
   </q-dialog>
 </template>
-
-<style scoped>
-.image-preview {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 8px;
-}
-</style>
