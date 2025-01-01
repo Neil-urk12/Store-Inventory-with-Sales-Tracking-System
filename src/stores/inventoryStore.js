@@ -781,15 +781,15 @@ export const useInventoryStore = defineStore('inventory', {
       try {
         this.loading = true
         const allItems = await db.items.toArray()
-        const seenFirebaseIds = new Set()
+        const seenSkus = new Set()
         const duplicates = []
 
         for (const item of allItems) {
-          if (item.firebaseId) {
-            if (seenFirebaseIds.has(item.firebaseId)) {
+          if (item.sku) {
+            if (seenSkus.has(item.sku)) {
               duplicates.push(item.id)
             } else {
-              seenFirebaseIds.add(item.firebaseId)
+              seenSkus.add(item.sku)
             }
           }
         }
@@ -812,7 +812,6 @@ export const useInventoryStore = defineStore('inventory', {
         this.loading = false
       }
     },
-
     /**
      * @param {boolean} [fullCleanup=false] - Whether to perform a full data cleanup or just reset UI state
      * @description Resets UI state and optionally clears all data.
