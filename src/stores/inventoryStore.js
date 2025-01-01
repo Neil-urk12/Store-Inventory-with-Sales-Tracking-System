@@ -321,8 +321,14 @@ export const useInventoryStore = defineStore('inventory', {
      */
     async createNewItem(item) {
       this.loading = true
-
       try {
+        const existingItem = await db.items
+          .where('sku')
+          .equals(item.sku)
+          .first()
+
+        if (existingItem) 
+          throw new Error ('Item with the same SKU already exists')
 
         if (item.categoryId) {
           const categoryExists = await db.categories
@@ -338,29 +344,32 @@ export const useInventoryStore = defineStore('inventory', {
         if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
 
-        const processedItem = {
-          ...processItem(item),
-          syncStatus: 'pending' // Ensure syncStatus is set
-        }
-        await db.createItem(processedItem)
         const id = crypto.randomUUID()
 
+        const processedItem = {
+          ...processItem(item),
+          syncStatus: 'pending', // Ensure syncStatus is set
+          id: id
+        }
+        
+        const result = await db.createItem(processedItem)
+        console.log(result)
         if (isOnline.value) {
-          // Include syncStatus in Firestore document
           const docRef = await addDoc(collection(fireDb, 'items'), {
             ...processedItem,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-            syncStatus: 'synced' // Include syncStatus in Firestore
+            syncStatus: 'synced'
           })
 
-          await db.updateItem(id, { firebaseId: docRef.id, syncStatus: 'synced' })
-          await this.loadInventory()
-          return { id: id, firebaseId: docRef.id, offline: false }
+          await db.updateItem(id, { 
+            firebaseId: docRef.id, 
+            syncStatus: 'synced' 
+          })
         }
 
         await this.loadInventory()
-        return { id: id, offline: true }
+        return { id: id, offline: !isOnline.value }
       } catch (error) {
         console.error('Error creating item:', error)
         throw error
