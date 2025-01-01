@@ -61,8 +61,10 @@ watch(() => editedItem.value.image, (newUrl) => {
 })
 
 const validateAndSave = async () => {
-  if (!formRef.value || submitting.value) 
-    return submitting.value = false
+  if (!formRef.value) {
+    submitting.value = false
+    return
+  }
 
   try {
     submitting.value = true
