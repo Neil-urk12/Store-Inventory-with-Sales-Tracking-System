@@ -184,7 +184,7 @@ function checkLowStock() {
 </script>
 
 <template>
-  <div class="q-pa-md">
+  <div class="q-pa-none q-gutter-sm">
     <div class="row q-mb-md items-center justify-between">
       <div class="row q-gutter-md items-center">
         <q-select
