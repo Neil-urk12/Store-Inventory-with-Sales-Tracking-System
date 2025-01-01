@@ -342,7 +342,8 @@ export const useInventoryStore = defineStore('inventory', {
           ...processItem(item),
           syncStatus: 'pending' // Ensure syncStatus is set
         }
-        const result = await db.createItem(processedItem)
+        await db.createItem(processedItem)
+        const id = crypto.randomUUID()
 
         if (isOnline.value) {
           // Include syncStatus in Firestore document
@@ -353,13 +354,13 @@ export const useInventoryStore = defineStore('inventory', {
             syncStatus: 'synced' // Include syncStatus in Firestore
           })
 
-          await db.updateItem(result, { firebaseId: docRef.id, syncStatus: 'synced' })
+          await db.updateItem(id, { firebaseId: docRef.id, syncStatus: 'synced' })
           await this.loadInventory()
-          return { id: result, firebaseId: docRef.id, offline: false }
+          return { id: id, firebaseId: docRef.id, offline: false }
         }
 
         await this.loadInventory()
-        return { id: result, offline: true }
+        return { id: id, offline: true }
       } catch (error) {
         console.error('Error creating item:', error)
         throw error
