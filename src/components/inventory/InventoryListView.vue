@@ -42,17 +42,16 @@ const filteredItems = computed(() => {
   let result = [...items.value]
 
   // Stock filter
-  if (stockFilter.value === 'low') {
+  if (stockFilter.value === 'low') 
     result = result.filter(item => item.quantity <= 10 && item.quantity > 0)
-  } else if (stockFilter.value === 'out') {
+  else if (stockFilter.value === 'out') 
     result = result.filter(item => item.quantity <= 0)
-  }
-
+  
   return result
 })
 
 const lowStockItems = computed(() =>
-  items.value.filter(item => item.quantity <= 10)
+  items.value.filter(item => item.quantity <= 3)
 )
 
 const outOfStockItems = computed(() =>
