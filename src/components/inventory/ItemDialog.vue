@@ -61,13 +61,15 @@ watch(() => editedItem.value.image, (newUrl) => {
 })
 
 const validateAndSave = async () => {
-  if (!formRef.value) {
+  submitting.value = true
+  console.log(!formRef.value)
+  console.log(!submitting.value)
+  if (!formRef.value || !submitting.value) {
     submitting.value = false
     return
   }
 
   try {
-    submitting.value = true
     const isValid = await formRef.value.validate()
     if (!isValid) {
       $q.notify({
@@ -152,7 +154,6 @@ const validateAndSave = async () => {
       <q-card-section>
         <q-form
           ref="formRef"
-          @submit.prevent="validateAndSave"
           class="q-gutter-md"
           greedy
         >
