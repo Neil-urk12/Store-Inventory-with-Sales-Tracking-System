@@ -4,7 +4,6 @@ import { useQuasar } from "quasar";
 import { useContactsStore } from "../stores/contacts";
 
 const $q = useQuasar();
-const isDark = computed(() => $q.dark.isActive);
 const contactsStore = useContactsStore();
 const isLoading = ref(true);
 
@@ -12,7 +11,8 @@ onMounted(async () => {
   try {
     console.log("initializing contacts db")
     if (contactsStore.contactCategories.length === 0) {
-      await contactsStore.initializeDb();
+      isLoading.value = true
+      await contactsStore.initializeDb()
     }
     console.log("contacts db initialized")
     console.log(contactsStore.contactCategories)
@@ -294,8 +294,8 @@ const hasCategories = computed(() => contactCategories.value.length > 0);
 
     <div v-if="!isLoading">
       <div v-if="hasCategories" class="row q-col-gutter-md">
-        <div v-for="category in contactCategories" 
-             :key="`category-${category.id}`" 
+        <div v-for="category in contactCategories"
+             :key="`category-${category.id}`"
              class="col-12 col-sm-6 col-md-4">
           <q-card flat bordered class="category-card">
             <q-card-section class="bg-primary text-white">
