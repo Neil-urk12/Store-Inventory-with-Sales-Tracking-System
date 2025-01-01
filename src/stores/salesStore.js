@@ -225,6 +225,7 @@ export const useSalesStore = defineStore('sales', {
       try {
         const currentDate = new Date()
         const saleId = crypto.randomUUID()
+        const now = new Date().toISOString()
 
         const sale = {
           id: saleId,
@@ -241,9 +242,9 @@ export const useSalesStore = defineStore('sales', {
           ),
           paymentMethod: this.selectedPaymentMethod,
           date: formatDate(currentDate, 'YYYY-MM-DD'),
-          dateTimeframe: currentDate.toISOString(),
-          createdAt: currentDate.toISOString(),
-          updatedAt: currentDate.toISOString(),
+          dateTimeframe: now,
+          createdAt: now,
+          updatedAt: now,
           firebaseId: saleId
         }
 
@@ -253,6 +254,7 @@ export const useSalesStore = defineStore('sales', {
             const saleRef = doc(fireDb, 'sales', saleId)
             await setDoc(saleRef, {
               ...sale,
+              syncStatus: 'synced',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })

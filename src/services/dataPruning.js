@@ -14,18 +14,27 @@ export class DataPruningService {
 
     await db.transaction('rw', [db.sales, db.inventory], async () => {
       // Prune old sales data
-      await db.sales
-        .where('date')
-        .below(cutoffDate)
-        .and(item => item.syncStatus === 'synced')
-        .delete()
+      try {
+        await db.sales
+          .where('date')
+          .below(cutoffDate)
+          .and(item => item.syncStatus === 'synced')
+          .delete()
 
-      // Prune old inventory history
-      await db.inventory
-        .where('lastModified')
-        .below(cutoffDate)
-        .and(item => item.syncStatus === 'synced')
-        .delete()
+        // Prune old inventory history
+        await db.inventory
+          .where('lastModified')
+          .below(cutoffDate)
+          .and(item => item.syncStatus === 'synced')
+          .delete()
+      } catch (error) {
+        if (error.name === 'ConstraintError') {
+          await db.sales.where('syncStatus').equals('pending').modify({syncStatus: 'error'});
+          await db.inventory.where('syncStatus').equals('pending').modify({syncStatus: 'error'});
+        }
+        console.error('Error pruning old data: ', error)
+        throw error
+      }
     })
   }
 
@@ -45,4 +54,4 @@ export class DataPruningService {
       this.checkStorageQuota()
     }, 24 * 60 * 60 * 1000)
   }
-} 
+}

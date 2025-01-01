@@ -118,10 +118,7 @@ export const useInventoryStore = defineStore('inventory', {
      * @property {Object|null} editedCategory - The category currently being edited in the dialog.
      * @property {Array<string>} selectedItems - Array of IDs of selected items.
      * @property {Object} dateRange - Selected date range for filtering data.
-     * @property {Array<Object>} inventoryData - Aggregated inventory data for reports.
-     * @property {Array<Object>} lowStockAlerts - Items with low stock levels.
      * @property {Array<Object>} topSellingProducts - Top selling products.
-     * @property {Object} chartData - Chart data for various timeframes.
      */
     return {
       loading: false,
@@ -152,20 +149,7 @@ export const useInventoryStore = defineStore('inventory', {
         from: formatDate(new Date(), 'YYYY-MM-DD'),
         to: formatDate(new Date(), 'YYYY-MM-DD')
       },
-      inventoryData: [],
-      lowStockAlerts: [],
       topSellingProducts: [],
-      /**
-       * @type {Object}
-       * @property {Object} daily - Chart data for daily timeframe.
-       * @property {Object} weekly - Chart data for weekly timeframe.
-       * @property {Object} monthly - Chart data for monthly timeframe.
-       */
-      chartData: {
-        daily: { labels: [], datasets: [] },
-        weekly: { labels: [], datasets: [] },
-        monthly: { labels: [], datasets: [] }
-      },
       // unsubscribeItems: null,
       // unsubscribeCategories: null
     }
@@ -237,13 +221,6 @@ export const useInventoryStore = defineStore('inventory', {
         'dead stock': 0,
         lastUpdated: formatDate(new Date(), 'MM/DD/YYYY')
       }))
-    },
-
-    /**
-     * @returns {Array} Items with low stock levels
-     */
-    getLowStockItems(state) {
-      return state.inventoryData.filter(item => item.currentStock <= item.minStock * 1.2)
     },
 
     /**
@@ -361,24 +338,29 @@ export const useInventoryStore = defineStore('inventory', {
         if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
 
-        const processedItem = processItem(item)
-        const result = await db.createItem(processedItem)
+        const processedItem = {
+          ...processItem(item),
+          syncStatus: 'pending' // Ensure syncStatus is set
+        }
+        await db.createItem(processedItem)
+        const id = crypto.randomUUID()
 
         if (isOnline.value) {
-          // If online, create directly in Firestore
+          // Include syncStatus in Firestore document
           const docRef = await addDoc(collection(fireDb, 'items'), {
             ...processedItem,
             createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp(),
+            syncStatus: 'synced' // Include syncStatus in Firestore
           })
 
-          await db.updateItem(result, { firebaseId: docRef.id })
+          await db.updateItem(id, { firebaseId: docRef.id, syncStatus: 'synced' })
           await this.loadInventory()
-          return { id: result, firebaseId: docRef.id, offline: false }
+          return { id: id, firebaseId: docRef.id, offline: false }
         }
 
         await this.loadInventory()
-        return { id: result, offline: true }
+        return { id: id, offline: true }
       } catch (error) {
         console.error('Error creating item:', error)
         throw error
@@ -460,17 +442,6 @@ export const useInventoryStore = defineStore('inventory', {
     /**
      * @async
      * @returns {Promise<void>}
-     * @description Deletes selected items from the local database
-     */
-    async deleteSelected() {
-      const selectedItems = this.selectedItems.filter(id => this.items.some(item => item.id === id))
-      this.items = this.items.filter(item => !selectedItems.includes(item.id))
-      this.selectedItems = []
-    },
-
-    /**
-     * @async
-     * @returns {Promise<void>}
      * @description Loads categories from the database and syncs with Firestore
      */
     async loadCategories() {
@@ -511,71 +482,6 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Merges local and Firestore categories, resolving conflicts
      * @private
      */
-    async mergeCategoriesWithFirestore(localCategories, firestoreCategories) {
-      try {
-        const batch = writeBatch(fireDb)
-        const updates = []
-
-        for (const localCat of localCategories) {
-          const firestoreCat = firestoreCategories.find(fc => fc.id === localCat.id)
-          if (!firestoreCat) {
-            if (localCat.id.startsWith('temp_')) {
-              const docRef = doc(collection(fireDb, 'categories'))
-              batch.set(docRef, {
-                name: localCat.name,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              })
-              updates.push({
-                type: 'update',
-                oldId: localCat.id,
-                newId: docRef.id,
-                data: localCat
-              })
-            }
-          } else if (new Date(localCat.updatedAt) > new Date(firestoreCat.updatedAt)) {
-            const docRef = doc(fireDb, 'categories', localCat.id)
-            batch.update(docRef, {
-              name: localCat.name,
-              updatedAt: serverTimestamp()
-            })
-          }
-        }
-
-        for (const firestoreCat of firestoreCategories) {
-          const localCat = localCategories.find(lc => lc.id === firestoreCat.id)
-          if (!localCat) {
-            await db.categories.add({
-              id: firestoreCat.id,
-              name: firestoreCat.name,
-              createdAt: firestoreCat.createdAt,
-              updatedAt: firestoreCat.updatedAt
-            })
-          } else if (new Date(firestoreCat.updatedAt) > new Date(localCat.updatedAt)) {
-            await db.categories.update(localCat.id, {
-              name: firestoreCat.name,
-              updatedAt: firestoreCat.updatedAt
-            })
-          }
-        }
-
-        await batch.commit()
-
-        for (const update of updates) {
-          if (update.type === 'update') {
-            await db.categories.where('id').equals(update.oldId).modify(category => {
-              category.id = update.newId
-            })
-          }
-        }
-
-        const updatedCategories = await db.categories.toArray()
-        this.categories = updatedCategories
-      } catch (error) {
-        console.error('Error merging categories:', error)
-        throw error
-      }
-    },
 
     /**
      * @async
@@ -602,6 +508,7 @@ export const useInventoryStore = defineStore('inventory', {
             const docRef = await addDoc(collection(fireDb, 'categories'), {
               id: crypto.randomUUID(),
               name: categoryName,
+              syncStatus: 'synced', // Add syncStatus field
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
@@ -866,19 +773,6 @@ export const useInventoryStore = defineStore('inventory', {
     },
 
     /**
-     * @returns {Promise<number>} The number of items that were successfully retried.
-     * @description Retries syncing all failed items.
-     */
-    async retryAllFailedItems() {
-      const failedItems = [...this.syncStatus.failedItems]
-      const results = await Promise.allSettled(
-        failedItems.map(item => this.retryFailedSync(item))
-      )
-
-      return results.filter(result => result.status === 'fulfilled' && result.value).length
-    },
-
-    /**
      * @async
      * @returns {Promise<void>}
      * @description Cleans up duplicate items in the local database based on their firebaseId.
@@ -944,8 +838,6 @@ export const useInventoryStore = defineStore('inventory', {
         this.sortBy = DEFAULT_SORT
         this.sortDirection = DEFAULT_SORT_DIRECTION
         this.categories = []
-        this.inventoryData = []
-        this.lowStockAlerts = []
         this.topSellingProducts = []
       }
 
