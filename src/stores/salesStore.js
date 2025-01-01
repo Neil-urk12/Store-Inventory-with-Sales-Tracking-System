@@ -258,7 +258,6 @@ export const useSalesStore = defineStore('sales', {
           firebaseId: saleId
         }
 
-        // If online, add to Firestore first
         if (isOnline.value) {
           try {
             const saleRef = doc(fireDb, 'sales', saleId)
@@ -283,7 +282,6 @@ export const useSalesStore = defineStore('sales', {
           }
         }
 
-        // Add to local database
         await db.sales.add(sale)
 
         // Add financial transaction
@@ -396,3 +394,11 @@ export const useSalesStore = defineStore('sales', {
     }
   }
 })
+
+function validateDateRange(range) {
+  const { from, to } = range
+  if (!from || !to) return false
+  if (new Date(from) > new Date(to)) return false
+  if (new Date(to) > new Date()) return false
+  return true
+}
