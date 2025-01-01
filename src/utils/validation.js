@@ -121,39 +121,6 @@ export const validateContact = async (contact, contactsList, newContactId = null
     existingContactsResults[2].value.length > 0
   )
     errors.push('Contact with this email already exists');
-
-  // const existingContacts = await Promise.allSettled([
-  //   contact.phone?.trim() ? contactsList.filter(c => c.phone?.trim() === contact.phone?.trim() && c.id !== contact.id) : [],
-  //   contactsList.filter(c => c.name === contact.name),
-  //   contact.email?.trim() ? contactsList.filter(c => c.email?.trim() === contact.email?.trim() && c.id !== contact.id) : []
-  // ])
-
-  // const existingContacts = await Promise.all([
-  //   contactsList.filter(c => c.phone === contact.phone && c.id !== contact.id),
-  //   contactsList.filter(c => c.name === contact.name && c.id !== contact.id),
-  //   contactsList.filter(c => c.email === contact.email && c.id !== contact.id)
-  // ])
-
-  // console.log('existingContacts', existingContacts)
-  // if(existingContacts[0].length > 0)
-  //   errors.push('Contact with this phone number already exists')
-  // if(existingContacts[1].length > 0)
-  //   errors.push('Contact with this name already exists')
-  // if(existingContacts[2].length > 0)
-  //   errors.push('Contact with this email already exists')
-
-  // const existingPhone = await contactsList.where('phone').equals(contact.phone).first()
-  // if (existingPhone && existingPhone.id !== contact.id)
-  //   errors.push('Contact with this phone number already exists')
-
-  // const existingName = await contactsList.where('name').equals(contact.name).first()
-  // if (existingName && existingName.id !== contact.id)
-  //   errors.push('Contact with this name already exists')
-
-  // const existingEmail = await contactsList.where('email').equals(contact.email).first()
-  // if (existingEmail && existingEmail.id !== contact.id)
-  //   errors.push('Contact with this email already exists')
-
   return {
     isValid: errors.length === 0,
     errors
@@ -214,25 +181,6 @@ export const validateDataBeforeSync = async (contacts, categories, contactsList)
       })
     }
   })
-  // contacts.forEach(contact => {
-  //   const validation = validateContact(contact, contactsList)
-  //   if (!validation.isValid) {
-  //     invalidContacts.push({
-  //       item: contact,
-  //       errors: validation.errors
-  //     })
-  //   }
-  // })
-
-  // categories.forEach(category => {
-  //   const validation = validateContactCategory(category)
-  //   if (!validation.isValid) {
-  //     invalidCategories.push({
-  //       item: category,
-  //       errors: validation.errors
-  //     })
-  //   }
-  // })
 
   return {
     isValid: invalidContacts.length === 0 && invalidCategories.length === 0,

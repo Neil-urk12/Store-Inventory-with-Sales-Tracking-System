@@ -127,15 +127,11 @@ export const useFinancialStore = defineStore('financial', {
         this.loadTransactions()
 
       try {
-        // const unsyncedTransactions = await db.cashFlow
-        //   .where('syncStatus')
-        //   .equals('pending')
-        //   .toArray()
         const unsyncedTransactions = this.financialData.filter(
           transaction => transaction.syncStatus === 'pending'
         )
 
-        if (unsyncedTransactions.length === 0) return console.log('No transactions to sync')
+        if (unsyncedTransactions.length === 0) return
 
         const firestoreRef = collection(fireDb, 'cashFlow')
 
@@ -305,8 +301,6 @@ export const useFinancialStore = defineStore('financial', {
               syncError: error.message
             })
           }
-        } else {
-          console.log('Offline - transaction will sync later')
         }
 
         return id
