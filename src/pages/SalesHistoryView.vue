@@ -21,7 +21,10 @@ const columns = [
     required: true,
     label: 'Date',
     align: 'left',
-    field: row => new Date(row.date).toLocaleString(),
+    field: row => {
+      const dateValue = row.timestamp || row.date
+      return new Date(dateValue).toLocaleString()
+    },
     sortable: true
   },
   {
@@ -57,10 +60,12 @@ const filteredSales = computed(() => {
   let filtered = [...sales.value]
 
   if (dateRange.value.from && dateRange.value.to) {
+    const fromDate = new Date(dateRange.value.from).setHours(0, 0, 0, 0)
+    const toDate = new Date(dateRange.value.to).setHours(23, 59, 59, 999)
+    
     filtered = filtered.filter(sale => {
-      const from = formatDate(new Date(dateRange.value.from), 'YYYY-MM-DD')
-      const to = formatDate(new Date(dateRange.value.to), 'YYYY-MM-DD')
-      return sale.date >= from && sale.date <= to
+      const saleDate = new Date(sale.date).getTime()
+      return saleDate >= fromDate && saleDate <= toDate
     })
   }
 
@@ -74,7 +79,6 @@ const filteredSales = computed(() => {
 
   return filtered
 })
-
 const showSaleDetails = (sale) => {
   selectedSale.value = sale
   showDetails.value = true
@@ -136,7 +140,6 @@ const computeFilteredSales = (sales) => {
 
 onMounted(async () => await loadSales())
 </script>
-
 
 <template>
   <q-page padding>

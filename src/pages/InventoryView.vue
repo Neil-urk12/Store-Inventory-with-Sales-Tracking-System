@@ -16,10 +16,6 @@ onMounted(async () => {
 onUnmounted(() => {
   inventoryStore.cleanup(true)
 })
-
-// onBeforeUnmount(() => {
-//   inventoryStore.cleanupListeners()
-// })
 </script>
 
 <template>
@@ -59,11 +55,6 @@ onUnmounted(() => {
   &:hover {
     transform: translateY(-5px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-  }
-}
-.inventory-table {
-  .q-table__card {
-    border-radius: 8px
   }
 }
 @media (max-width: 599px) {

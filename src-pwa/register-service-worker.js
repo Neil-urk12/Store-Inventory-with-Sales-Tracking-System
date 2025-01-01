@@ -53,14 +53,11 @@ register(process.env.SERVICE_WORKER_FILE, {
           label: 'Refresh',
           color: 'white',
           handler: () => {
-
-
             if (registration.waiting) {
               registration.waiting.postMessage({ type: 'SKIP_WAITING' })
               window.location.reload()
-            } else {
+            } else 
               window.location.reload()
-            }
           }
         }
       ],
