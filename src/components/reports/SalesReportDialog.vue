@@ -98,7 +98,6 @@ const updateSalesReportTimeframe = (value) => salesReportTimeframeFilter.value =
 const generateSalesReport = async () => {
   try {
     rawSalesData.value = await salesStore.generateSalesReport()
-    console.log(rawSalesData.value)
   } catch (error) {
     $q.notify({
       color: 'negative',

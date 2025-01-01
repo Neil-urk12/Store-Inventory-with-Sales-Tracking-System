@@ -515,7 +515,6 @@ export const useContactsStore = defineStore('contacts', {
         if (deleteCount > 0) {
           try {
             await batch.commit()
-            console.log(`Deleted ${deleteCount} duplicate documents from ${collectionName}`)
           } catch (error) {
             console.error(`Error deleting duplicates from ${collectionName}:`, error)
           }

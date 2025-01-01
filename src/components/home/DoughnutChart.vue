@@ -48,7 +48,6 @@ const chartData = computed(() => {
   items.forEach(item => {
     const category = item.category || 'Uncategorized'
     const quantity = Number(item.quantity) || 0
-    // console.log(`Processing item: ${item.name}, category: ${category}, quantity: ${quantity}`)
     categories[category] = (categories[category] || 0) + quantity
   })
 
@@ -110,7 +109,6 @@ async function createChart() {
       data: chartData.value,
       options: options.value
     })
-    console.log('Chart created successfully')
   } catch (error) {
     console.error('Error creating chart:', error)
   }
@@ -123,9 +121,7 @@ onMounted(async () => {
     if(inventoryStore.items.length === 0)
       await inventoryStore.loadInventory()
 
-    console.log('Inventory loaded')
     isLoading.value = false
-    // await nextTick()
     await createChart()
   } catch (error) {
     console.error('Error in mount:', error)

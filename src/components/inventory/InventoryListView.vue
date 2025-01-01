@@ -42,17 +42,16 @@ const filteredItems = computed(() => {
   let result = [...items.value]
 
   // Stock filter
-  if (stockFilter.value === 'low') {
-    result = result.filter(item => item.quantity <= 10 && item.quantity > 0)
-  } else if (stockFilter.value === 'out') {
+  if (stockFilter.value === 'low') 
+    result = result.filter(item => item.quantity <= 3 && item.quantity > 0)
+  else if (stockFilter.value === 'out') 
     result = result.filter(item => item.quantity <= 0)
-  }
-
+  
   return result
 })
 
 const lowStockItems = computed(() =>
-  items.value.filter(item => item.quantity <= 10)
+  items.value.filter(item => item.quantity <= 3)
 )
 
 const outOfStockItems = computed(() =>
@@ -124,7 +123,7 @@ async function updateField(item, field, value) {
 
 function getStockColor(quantity) {
   if (quantity <= 0) return 'negative'
-  if (quantity <= 10) return 'warning'
+  if (quantity <= 3) return 'warning'
   return 'positive'
 }
 

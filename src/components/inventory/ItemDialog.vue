@@ -14,15 +14,12 @@ const inventoryStore = useInventoryStore()
 const $q = useQuasar()
 const { isOnline } = useNetworkStatus()
 const editedItem = computed(() => inventoryStore.editedItem)
-const loading = computed(() => inventoryStore.loading)
 const editMode = computed(() => inventoryStore.editMode)
 const formRef = ref(null)
 const submitting = ref(false)
 
 const validateAndSave = async () => {
   submitting.value = true
-  console.log(!formRef.value)
-  console.log(!submitting.value)
   if (!formRef.value || !submitting.value) {
     submitting.value = false
     return

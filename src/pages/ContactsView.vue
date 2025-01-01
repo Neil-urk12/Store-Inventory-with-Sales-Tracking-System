@@ -9,13 +9,11 @@ const isLoading = ref(true);
 
 onMounted(async () => {
   try {
-    console.log("initializing contacts db")
     if (contactsStore.contactCategories.length === 0) {
       isLoading.value = true
       await contactsStore.initializeDb()
     }
     console.log("contacts db initialized")
-    console.log(contactsStore.contactCategories)
     isLoading.value = false;
   } catch (error) {
     $q.notify({

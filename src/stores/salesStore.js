@@ -88,7 +88,17 @@ export const useSalesStore = defineStore('sales', {
 
   actions: {
     /**
-     * initializeDB
+     * @method initializeDb
+     * @returns {Promise<boolean>} Returns true if initialization is successful, false otherwise
+     * @description Initializes the database by loading sales data from local storage and syncing with Firestore when online.
+     * This method performs the following steps:
+     * 1. Loads sales data from local database
+     * 2. If online, syncs with Firestore by:
+     *    - Validating each sale item has required properties
+     *    - Processing items to ensure proper formatting of numbers and dates
+     *    - Adding missing fields like IDs and timestamps
+     * 3. Reloads local data after sync
+     * @throws {Error} Logs error to console if initialization fails
      */
     async initializeDb() {
       try {
@@ -125,9 +135,7 @@ export const useSalesStore = defineStore('sales', {
                 orderByField: 'createdAt'
             })
 
-            // Reload local data after sync
             this.sales = await db.getAllSales() || []
-            console.log('Sales data synced with Firestore')
         }
 
         this.loading = false
@@ -136,10 +144,12 @@ export const useSalesStore = defineStore('sales', {
         console.error('Failed to initialize database:', error)
         return false
       }
-    },
-    /**
-     *  Unya na
-     *
+    },    /**
+     * @method loadSales
+     * @returns {Promise<void>}
+     * @description Loads all sales from the local database and formats their dates.
+     * Sets the sales in the store state after mapping and validating date formats.
+     * @throws {Error} If there's an error loading sales from the database
      */
     async loadSales() {
       try {
@@ -258,7 +268,6 @@ export const useSalesStore = defineStore('sales', {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
-            console.log('Sale added to Firestore:', saleId)
           } catch (error) {
             console.error('Error adding sale to Firestore:', error)
             throw error

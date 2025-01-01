@@ -348,12 +348,12 @@ export const useInventoryStore = defineStore('inventory', {
 
         const processedItem = {
           ...processItem(item),
-          syncStatus: 'pending', // Ensure syncStatus is set
+          syncStatus: 'pending',
           id: id
         }
         
         const result = await db.createItem(processedItem)
-        console.log(result)
+
         if (isOnline.value) {
           const docRef = await addDoc(collection(fireDb, 'items'), {
             ...processedItem,
@@ -809,8 +809,6 @@ export const useInventoryStore = defineStore('inventory', {
               await db.items.delete(id)
             }
           })
-
-          console.log(`Cleaned up ${duplicates.length} duplicate items`)
         }
 
         await this.loadInventory()
@@ -827,8 +825,6 @@ export const useInventoryStore = defineStore('inventory', {
      * Used for cleanup before navigation or component unmount.
      */
     cleanup(fullCleanup = false) {
-      // this.cleanupListeners()
-
       // Reset UI state
       this.loading = false
       this.error = null
@@ -848,20 +844,6 @@ export const useInventoryStore = defineStore('inventory', {
         this.categories = []
         this.topSellingProducts = []
       }
-
-      // // Reset sync status
-      // this.syncStatus = {
-      //   lastSync: null,
-      //   inProgress: false,
-      //   error: null,
-      //   pendingChanges: 0,
-      //   totalItems: 0,
-      //   processedItems: 0,
-      //   failedItems: [],
-      //   retryCount: 0,
-      //   maxRetries: 3,
-      //   retryDelay: 1000
-      // }
     },
 
     /**

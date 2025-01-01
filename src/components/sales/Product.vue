@@ -28,8 +28,6 @@ const handleAddToCart = (product) => {
 onMounted(async () => {
   if(filteredProducts.value === 0)
     await inventoryStore.loadInventory()
-
-  console.log(filteredProducts.value)
 })
 </script>
 

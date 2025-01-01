@@ -32,6 +32,15 @@ const handleAddCategory = async () => {
     return
   }
 
+  if (newCategoryName.value.trim().length > 26) {
+    $q.notify({
+      color: 'negative',
+      message: 'Category name cannot exceed 26 characters',
+      position: 'top'
+    })
+    return
+  }
+
   loading.value = true
   try {
     const result = await inventoryStore.addCategory(newCategoryName.value.trim())
@@ -176,7 +185,10 @@ onMounted(async () => {
         <q-input
           v-model="newCategoryName"
           label="Category Name"
-          :rules="[val => !!val || 'Category name is required']"
+          :rules="[
+            val => !!val || 'Category name is required',
+            val => val.length <= 26 || 'Category name cannot exceed 26 characters'
+          ]"
           @keyup.enter="handleAddCategory"
         />
       </q-card-section>
