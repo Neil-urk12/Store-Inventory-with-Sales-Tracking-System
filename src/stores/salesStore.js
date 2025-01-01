@@ -19,7 +19,7 @@ import { formatDate } from '../utils/dateUtils'
 import { useInventoryStore } from './inventoryStore'
 import { useFinancialStore } from './financialStore'
 import { useCentralizedSyncService } from '../services/centralizedSyncService'
-import { timestamp } from '@vueuse/core'
+import filterItems from '../utils/filterUtils'
 
 const { isOnline } = useNetworkStatus()
 const { syncWithFirestore, syncStatus } = useCentralizedSyncService()
