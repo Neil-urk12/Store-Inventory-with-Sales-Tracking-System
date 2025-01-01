@@ -124,7 +124,7 @@ class CentralizedSyncService {
   async handleFirestoreChanges(snapshot, collectionName, options) {
     const { localItems, processItem, validateItem, batchSize } = options
     const localUpdates = []
-    const batch = writeBatch(fireDb)
+    let batch = writeBatch(fireDb)
     let batchCount = 0
 
     for (const change of snapshot.docChanges?.() || snapshot.docs) {
@@ -143,12 +143,10 @@ class CentralizedSyncService {
         processedItem.syncStatus = 'synced'
 
       try {
-
         if (validateItem && !validateItem(processedItem)) {
           console.warn(`Invalid item in Firestore: ${doc.id}`)
           continue
         }
-
 
         if (processItem)
           processedItem = processItem(processedItem)
@@ -177,19 +175,19 @@ class CentralizedSyncService {
         batchCount++
         if (batchCount >= batchSize) {
           await batch.commit()
+          batch = writeBatch(fireDb)
           batchCount = 0
         }
       } catch (error) {
         console.error (`Error processing item ${doc.id} : `, error)
         continue
       }
-
-      if (batchCount > 0)
-        await batch.commit()
-
-      if (localUpdates.length > 0)
-        await this.processBatchUpdates(localUpdates, collectionName)
     }
+    if (batchCount > 0)
+      await batch.commit()
+
+    if (localUpdates.length > 0)
+      await this.processBatchUpdates(localUpdates, collectionName)
   }
 
   async processBatchUpdates(updates, collectionName) {
