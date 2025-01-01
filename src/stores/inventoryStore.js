@@ -588,6 +588,8 @@ export const useInventoryStore = defineStore('inventory', {
         if (!categoryName.trim() || typeof categoryName !== 'string')
           throw new Error('Invalid category name')
 
+        const sanitizedName = categoryName.trim()
+
         const existingCategory = this.categories.find(
           c => c.name.toLowerCase().replace(/\s+/g, '') === sanitizedName.toLowerCase().replace(/\s+/g, '')
         )
