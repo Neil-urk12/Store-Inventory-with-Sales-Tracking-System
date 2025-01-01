@@ -212,12 +212,16 @@ watch(() => salesStore.sales, async (newSales) => {
   if (newSales.length > 0) {
     $q.notify({
       type: 'positive',
-      message: 'Sales loaded successfully'
+      message: 'Sales loaded successfully',
+      position: 'bottom-right',
+      timeout: 2000
     })
   } else {
     $q.notify({
-      type: 'negative',
-      message: 'Error loading sales'
+      type: 'warning',
+      message: 'No sales data available to display',
+      position: 'bottom-right',
+      timeout: 2000
     })
   }
 }, { deep: true })
