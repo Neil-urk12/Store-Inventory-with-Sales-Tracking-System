@@ -19,6 +19,7 @@ import { formatDate } from '../utils/dateUtils'
 import { useInventoryStore } from './inventoryStore'
 import { useFinancialStore } from './financialStore'
 import { useCentralizedSyncService } from '../services/centralizedSyncService'
+import { timestamp } from '@vueuse/core'
 
 const { isOnline } = useNetworkStatus()
 const { syncWithFirestore, syncStatus } = useCentralizedSyncService()
@@ -235,7 +236,7 @@ export const useSalesStore = defineStore('sales', {
       try {
         const currentDate = new Date()
         const saleId = crypto.randomUUID()
-        const now = new Date().toISOString()
+        const timestamp = currentDate.toISOString()
 
         const sale = {
           id: saleId,
@@ -252,9 +253,10 @@ export const useSalesStore = defineStore('sales', {
           ),
           paymentMethod: this.selectedPaymentMethod,
           date: formatDate(currentDate, 'YYYY-MM-DD'),
-          dateTimeframe: now,
-          createdAt: now,
-          updatedAt: now,
+          dateTimeframe: timestamp,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          timestamp: timestamp,
           firebaseId: saleId
         }
 

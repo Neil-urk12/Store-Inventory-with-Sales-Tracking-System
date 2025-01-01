@@ -21,7 +21,10 @@ const columns = [
     required: true,
     label: 'Date',
     align: 'left',
-    field: row => new Date(row.date).toLocaleString(),
+    field: row => {
+      const dateValue = row.timestamp || row.date
+      return new Date(dateValue).toLocaleString()
+    },
     sortable: true
   },
   {
