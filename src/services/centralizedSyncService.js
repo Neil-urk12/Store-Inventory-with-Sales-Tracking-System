@@ -45,7 +45,7 @@ class CentralizedSyncService {
     })
 
     this.unsubscribers = new Map()
-    
+
     // Add online listener for auto-sync
     window.addEventListener('online', () => {
       this.syncAllCollections()
@@ -132,15 +132,18 @@ class CentralizedSyncService {
       if (doc.metadata?.hasPendingWrites) continue
 
       let processedItem = { ...doc.data(), firebaseId: doc.id }
-      
+
+      if (!processedItem.syncStatus)
+        processedItem.syncStatus = 'synced'
+
       if (validateItem && !validateItem(processedItem)) {
         console.warn(`Invalid item in Firestore: ${doc.id}`)
         continue
       }
 
-      if (processItem) {
+
+      if (processItem)
         processedItem = processItem(processedItem)
-      }
 
       const existingItem = localItems.find(
         item => item.firebaseId === processedItem.firebaseId
@@ -150,18 +153,17 @@ class CentralizedSyncService {
         const firestoreDate = processedItem.updatedAt || new Date()
         const localDate = new Date(existingItem.updatedAt || 0)
 
-        if (firestoreDate > localDate && existingItem.syncStatus !== 'pending') {
+        if (firestoreDate > localDate && existingItem.syncStatus !== 'pending')
           localUpdates.push({ id: existingItem.id, data: processedItem })
-        }
+
       } else {
         const duplicateCheck = await db[collectionName]
           .where('firebaseId')
           .equals(processedItem.firebaseId)
           .count()
 
-        if (duplicateCheck === 0) {
+        if (duplicateCheck === 0)
           localUpdates.push({ data: processedItem })
-        }
       }
 
       batchCount++
@@ -171,13 +173,11 @@ class CentralizedSyncService {
       }
     }
 
-    if (batchCount > 0) {
+    if (batchCount > 0)
       await batch.commit()
-    }
 
-    if (localUpdates.length > 0) {
+    if (localUpdates.length > 0)
       await this.processBatchUpdates(localUpdates, collectionName)
-    }
   }
 
   async processBatchUpdates(updates, collectionName) {
@@ -233,7 +233,7 @@ export function useCentralizedSyncService() {
     syncProgress: centralizedSyncService.syncProgress,
     isSyncing: centralizedSyncService.isSyncing,
     syncStatus: centralizedSyncService.syncStatus,
-    syncWithFirestore: (collectionName, options) => 
+    syncWithFirestore: (collectionName, options) =>
       centralizedSyncService.syncWithFirestore(collectionName, options),
     cleanupAllListeners: () => centralizedSyncService.cleanupAllListeners()
   }

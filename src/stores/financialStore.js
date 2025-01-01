@@ -289,6 +289,7 @@ export const useFinancialStore = defineStore('financial', {
 
             const docRef = await addDoc(firestoreRef, {
               ...cleanTransaction,
+              syncStatus: 'synced',
               timestamp: serverTimestamp(),
               lastUpdated: serverTimestamp()
             })

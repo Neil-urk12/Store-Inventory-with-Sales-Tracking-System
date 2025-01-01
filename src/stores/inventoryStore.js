@@ -361,18 +361,22 @@ export const useInventoryStore = defineStore('inventory', {
         if (errors.length > 0)
           throw new Error(`Validation failed: ${errors.join(', ')}`)
 
-        const processedItem = processItem(item)
+        const processedItem = {
+          ...processItem(item),
+          syncStatus: 'pending' // Ensure syncStatus is set
+        }
         const result = await db.createItem(processedItem)
 
         if (isOnline.value) {
-          // If online, create directly in Firestore
+          // Include syncStatus in Firestore document
           const docRef = await addDoc(collection(fireDb, 'items'), {
             ...processedItem,
             createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp(),
+            syncStatus: 'synced' // Include syncStatus in Firestore
           })
 
-          await db.updateItem(result, { firebaseId: docRef.id })
+          await db.updateItem(result, { firebaseId: docRef.id, syncStatus: 'synced' })
           await this.loadInventory()
           return { id: result, firebaseId: docRef.id, offline: false }
         }
@@ -602,6 +606,7 @@ export const useInventoryStore = defineStore('inventory', {
             const docRef = await addDoc(collection(fireDb, 'categories'), {
               id: crypto.randomUUID(),
               name: categoryName,
+              syncStatus: 'synced', // Add syncStatus field
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })

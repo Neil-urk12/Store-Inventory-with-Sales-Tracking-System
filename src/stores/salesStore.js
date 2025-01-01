@@ -253,6 +253,7 @@ export const useSalesStore = defineStore('sales', {
             const saleRef = doc(fireDb, 'sales', saleId)
             await setDoc(saleRef, {
               ...sale,
+              syncStatus: 'synced',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             })
