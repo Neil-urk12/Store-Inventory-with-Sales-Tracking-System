@@ -64,7 +64,6 @@ class AppDatabase extends Dexie {
     this.items.hook('creating', (primKey, obj) => {
       obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
       obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
-      obj.syncStatus = obj.syncStatus || 'pending'
 
       // Ensure category information is preserved
       if (obj.categoryId && !obj.category) {
@@ -76,12 +75,10 @@ class AppDatabase extends Dexie {
     this.categories.hook('creating', (primKey, obj) => {
       obj.createdAt = formatDate(new Date(), 'YYYY-MM-DD')
       obj.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
-      obj.syncStatus = obj.syncStatus || 'pending'
     })
 
     this.categories.hook('updating', (modifications, primKey, obj) => {
       modifications.updatedAt = formatDate(new Date(), 'YYYY-MM-DD')
-      modifications.syncStatus = modifications.syncStatus || 'pending'
     })
   }
 
@@ -152,8 +149,8 @@ class AppDatabase extends Dexie {
         .where('name')
         .equalsIgnoreCase(item.name.trim())
         .first()
-        
-      if (existingByName) 
+
+      if (existingByName)
         throw new ValidationError(`Item with name "${item.name}" already exists`)
 
       return await this.transaction('rw', this.items, async () => {
@@ -542,19 +539,6 @@ class AppDatabase extends Dexie {
       // Add new data
       await this[table].bulkAdd(firestoreData);
     });
-  }
-  /**
-   * @async
-   * @method syncWithFirestoreSimple
-   * @param {Array} items
-   * @param {String} tableName
-   * @returns {Promise<Object>}
-   * @description Syncs data from an array to a Dexie table.
-  */
-  async syncWithFirestoreSimple(items, tableName) {
-    const table = this.table(tableName);
-    await table.clear();
-    await table.bulkAdd(items);
   }
 
   //--------------------------------------------------------------------

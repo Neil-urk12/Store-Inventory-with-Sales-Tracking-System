@@ -1,66 +1,105 @@
 /**
  * @fileoverview Validation utilities for contacts and categories
+ *  Provides helpers for:
+ * - Data processing
+ * - Validation
+ * - Error handling
+ * - Type conversion
  */
-
-import { date } from "quasar"
+import { useInventoryStore } from 'src/stores/inventoryStore'
 
 /**
- *  later
-*/
-export async function validateSales(sales){
-  if (!Array.isArray(sales)) {
-    return {
-      isValid: false,
-      errors: ['Input must be an array of sales'],
-      sales: null
-    }
-  }
-  const errors = []
-  const validatedSales = []
+ * @typedef {Object} ValidationResult
+ * @property {boolean} isValid - Whether validation passed
+ * @property {Array<string>} errors - Array of validation error messages
+ */
 
-  for (let i = 0; i < sales.length; i++) {
-    const sale = sales[i];
-    let saleErrors = [];
+/**
+ * @typedef {Object} ProcessedItem
+ * @property {string} categoryId - Category ID or null
+ * @property {string} category - Category name
+ * @property {number} quantity - Normalized quantity
+ * @property {number} price - Normalized price
+ * @property {string} createdAt - ISO timestamp
+ */
 
-    if (!sale.total || typeof sale.total !== 'number' || sale.total <= 0) 
-      saleErrors.push(`Sale at index ${i}: Total payment must be a positive number`)
-
-    if (!sale.paymentMethod || typeof sale.paymentMethod !== 'string' || sale.paymentMethod.trim() === '') 
-      saleErrors.push(`Sale at index ${i}: Payment method is required and must be a non-empty string`)
-
-    if (!Array.isArray(sale.items)) 
-      saleErrors.push(`Sale at index ${i}: Items must be an array`)
-    else if (sale.items.length === 0)
-      saleErrors.push(`Sale at index ${i}: At least one item is required`)
-    else {
-      // Validate each item in the items array
-      sale.items.forEach((item, itemIndex) => {
-        if (!item || typeof item !== 'object') 
-          saleErrors.push(`Sale at index ${i}, item at index ${itemIndex} must be an object`);
-        else {
-          if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') saleErrors.push(`Sale at index ${i}, item name at index ${itemIndex} is required`);
-          if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) saleErrors.push(`Sale at index ${i}, item quantity at index ${itemIndex} must be a positive number`);
-          if (!item.price || typeof item.price !== 'number' || item.price <= 0) saleErrors.push(`Sale at index ${i}, item price at index ${itemIndex} must be a positive number`);
-          if (item.total !== undefined && (typeof item.total !== 'number' || item.total !== item.price * item.quantity)) saleErrors.push(`Sale at index ${i}, item total at index ${itemIndex} is incorrect`);
-        }
-      })
-    }
-    if (sale.date) {
-      if (isNaN(Date.parse(sale.date))) 
-        saleErrors.push(`Sale at index ${i}: Invalid date format. Date should be a valid date string`)
-      else 
-        sale.date = new Date(sale.date)
-    } else 
-      saleErrors.push(`Sale at index ${i}: Date is required`)
-
-    if (saleErrors.length > 0) errors.push(...saleErrors)
-    else validatedSales.push(sale)
-  }
+/**
+ * @function processItem
+ * @param {Object} item - Raw item data
+ * @param {string} [item.categoryId] - Optional category ID
+ * @param {string} [item.category] - Optional category name
+ * @param {number|string} [item.quantity] - Item quantity (will be converted to number)
+ * @param {number|string} [item.price] - Item price (will be converted to number)
+ * @param {string} [item.createdAt] - Creation timestamp
+ * @returns {Object} Processed item with defaults and type conversions
+ * @property {string} category - Category name, defaults to 'Uncategorized'
+ * @property {string|null} categoryId - Category ID or null if not provided
+ * @property {number} quantity - Normalized quantity value
+ * @property {number} price - Normalized price value
+ * @property {string} createdAt - ISO timestamp string
+ * @description Processes raw item data, ensuring all required fields are present and properly typed.
+ * Converts string numbers to actual numbers and sets default values for missing fields.
+ */
+export const processItem = (item) => {
+  const store = useInventoryStore()
 
   return {
-    isValid: errors.length === 0,
-    errors
+    ...item,
+    categoryId: item.categoryId || null,
+    category: item.category || store.getCategoryName(item.categoryId) || 'Uncategorized',
+    quantity: Number(item.quantity) || 0,
+    price: Number(item.price) || 0,
+    createdAt: item.createdAt || new Date().toISOString()
   }
+}
+
+/**
+ * @function validateItem
+ * @param {Object} item - Item to validate
+ * @param {string} [item.name] - Item name
+ * @param {string} [item.sku] - Stock Keeping Unit
+ * @param {number} [item.quantity] - Item quantity
+ * @param {number} [item.price] - Item price
+ * @param {string} [item.image] - Optional image URL
+ * @returns {Array<string>} Array of validation error messages
+ * @description Validates item data before saving. Checks for:
+ * - Required fields (name, SKU)
+ * - Numeric values (quantity, price)
+ * - Non-negative values (quantity, price)
+ * - Valid URL format for image (if provided)
+ */
+export const validateItem = (item) => {
+  const errors = []
+  if (!item.name?.trim()) errors.push('Name is required')
+  if (!item.sku?.trim()) errors.push('SKU is required')
+  if (typeof item.quantity !== 'number') errors.push('Quantity must be a number')
+  if (typeof item.price !== 'number') errors.push('Price must be a number')
+  if (item.price < 0) errors.push('Price cannot be negative')
+  if (item.quantity < 0) errors.push('Quantity cannot be negative')
+  // Image is optional, but validate URL format if provided
+  if (item.image && item.image.trim()) {
+    try {
+      new URL(item.image)
+    } catch (e) {
+      errors.push('Invalid image URL format')
+    }
+  }
+  return errors
+}
+
+/**
+ * @function handleError
+ * @param {Error} error - Error object to handle
+ * @param {*} [fallback=null] - Optional fallback value to return instead of throwing
+ * @returns {*} Fallback value if provided
+ * @throws {Error} Original error if no fallback is provided
+ * @description Generic error handler that either returns a fallback value or rethrows the error.
+ * Logs all errors to console before handling them.
+ */
+export const handleError = (error, fallback = null) => {
+  console.error('Operation failed:', error)
+  if (fallback !== null) return fallback
+  throw error
 }
 
 /**
@@ -69,7 +108,7 @@ export async function validateSales(sales){
  * @returns {Object} Validation result with isValid and errors
  */
 export const validateContact = async (contact, contactsList, newContactId = null) => {
-  if(!contactsList) throw new Error('Contacts list is required')
+  if (!contactsList) throw new Error('Contacts list is required')
 
   const errors = []
 
@@ -85,25 +124,24 @@ export const validateContact = async (contact, contactsList, newContactId = null
   const existingContactsPromises = [
     contact.phone?.trim()
       ? contactsList.filter(
-          (c) =>
-            c.phone?.trim() === contact.phone?.trim() && c.id !== newContactId
-        )
+        (c) =>
+          c.phone?.trim() === contact.phone?.trim() && c.id !== newContactId
+      )
       : Promise.resolve([]), // Resolve with an empty array if phone is empty
     contactsList.filter(
       (c) => c.name.trim() === contact.name.trim() && c.id !== newContactId
     ), // Added trim() to name comparison for consistency
     contact.email?.trim()
       ? contactsList.filter(
-          (c) =>
-            c.email?.trim() === contact.email?.trim() && c.id !== newContactId
-        )
+        (c) =>
+          c.email?.trim() === contact.email?.trim() && c.id !== newContactId
+      )
       : Promise.resolve([]), // Resolve with an empty array if email is empty
   ];
 
   const existingContactsResults = await Promise.allSettled(
     existingContactsPromises
   )
-
 
   // Check for fulfilled promises and if their value (the filtered array) has any elements
   if (
@@ -184,7 +222,7 @@ export const validateDataBeforeSync = async (contacts, categories, contactsList)
 
   return {
     isValid: invalidContacts.length === 0 && invalidCategories.length === 0,
-    invalidContacts : [...invalidContacts],
-    invalidCategories : [...invalidCategories]
+    invalidContacts: [...invalidContacts],
+    invalidCategories: [...invalidCategories]
   }
 }

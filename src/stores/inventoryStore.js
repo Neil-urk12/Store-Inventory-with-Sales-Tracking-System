@@ -25,7 +25,7 @@ import { db as fireDb } from '../firebase/firebaseconfig'
 import { useNetworkStatus } from '../services/networkStatus'
 import debounce from 'lodash/debounce'
 import { formatDate } from '../utils/dateUtils'
-import { processItem, validateItem, handleError } from '../utils/inventoryUtils'
+import { processItem, validateItem, handleError } from '../utils/validation'
 import filterItems from 'src/utils/filterUtils'
 import { useCentralizedSyncService } from '../services/centralizedSyncService'
 const { syncWithFirestore, syncStatus } = useCentralizedSyncService()
@@ -327,8 +327,8 @@ export const useInventoryStore = defineStore('inventory', {
           .equals(item.sku)
           .first()
 
-        if (existingItem) 
-          throw new Error ('Item with the same SKU already exists')
+        if (existingItem)
+          throw new Error('Item with the same SKU already exists')
 
         if (item.categoryId) {
           const categoryExists = await db.categories
@@ -351,7 +351,7 @@ export const useInventoryStore = defineStore('inventory', {
           syncStatus: 'pending',
           id: id
         }
-        
+
         const result = await db.createItem(processedItem)
 
         if (isOnline.value) {
@@ -362,9 +362,9 @@ export const useInventoryStore = defineStore('inventory', {
             syncStatus: 'synced'
           })
 
-          await db.updateItem(id, { 
-            firebaseId: docRef.id, 
-            syncStatus: 'synced' 
+          await db.updateItem(id, {
+            firebaseId: docRef.id,
+            syncStatus: 'synced'
           })
         }
 
@@ -704,12 +704,12 @@ export const useInventoryStore = defineStore('inventory', {
      * @description Handles search query changes
      */
     handleSearch(itemToSearch) {
-        // Debounced search function to prevent excessive filtering
-        const debouncedSearch = debounce((query) => {
-            this.searchQuery = query;
-        }, 300);
+      // Debounced search function to prevent excessive filtering
+      const debouncedSearch = debounce((query) => {
+        this.searchQuery = query;
+      }, 300);
 
-        debouncedSearch(itemToSearch);
+      debouncedSearch(itemToSearch);
     },
     /**
      * @method exportToCSV

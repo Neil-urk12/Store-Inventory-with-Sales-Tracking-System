@@ -5,7 +5,6 @@
 
 import { defineStore } from 'pinia'
 import {
-  getAuth,
   signInWithEmailAndPassword,
   signOut,
   setPersistence,
@@ -111,7 +110,7 @@ export const useAuthStore = defineStore('auth', {
         await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
         this.isAuthenticated = true
         this.user = {
-          email: 'admin@example.com',
+          email: 'admin@example.com',  //set this in .env file
           role: 'admin',
           displayName: 'Administrator',
           id: 'admin-user'
